@@ -1,0 +1,69 @@
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.radio-activity {
+	 li {
+	 	display: inline-block;
+	 	.active-type {
+	 		input[type="radio"] {
+	 			display: none;
+	 			~ label {
+	 				border: 1px solid $border-color;
+          padding: 6px 16px;
+	 				color: $gray-900;
+	 				cursor: pointer;
+	 				i {
+	 					margin-right: 5px;
+	 				}
+	 			}
+	 			&:checked {
+	 				~ label {
+	 			    	border-color: $primary;
+	 					color: $primary;
+	 				}
+	 			}
+	 		}
+	 	}
+	 	&:last-child {
+	 		margin-right: 0;
+	 	}
+	 }
+}
+
+.step-progress {
+  .step {
+    position: relative;
+    padding: 10px 25px;
+    font-weight: 500;
+    font-size: 14px;
+    color: $white;
+    background-color: $light;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 160px;
+
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%);
+    margin-right: -8px;
+
+    &.appointment {
+      background-color: $light-transparent;
+      color: $dark;
+    }
+  }
+
+  .step:first-child {
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+  }
+
+  .step:last-child {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 12px 50%);
+    margin-right: 0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+}
+

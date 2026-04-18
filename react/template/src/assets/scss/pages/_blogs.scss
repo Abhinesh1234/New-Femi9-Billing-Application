@@ -1,0 +1,53 @@
+// Blogs
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.blog-item {
+    .blog-img {
+        position: relative;
+        overflow: hidden;
+        img{
+            width: 100%;
+            transition: .8s;
+        }
+        &:hover{
+            &::before{
+                -webkit-animation: circle 1s;
+                animation: circle 1s;
+            }
+            img{
+                transform: scale(1.1);
+            }
+        }
+        &::before{
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            z-index: 2;
+            display: block;
+            content: "";
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 100%;
+            transform: translate(-50%, -50%);
+            -webkit-transform: translate(-50%, -50%);
+            -ms-transform: translate(-50%, -50%);
+            opacity: 0;
+        }
+    }
+}
+@keyframes circle {
+	0% {
+		opacity: 1;
+	}
+	40% {
+		opacity: 1;
+	}
+	100% {
+		width: 200%;
+		height: 200%;
+		opacity: 0;
+	}
+}

@@ -1,0 +1,135 @@
+//
+// breadcrumb.scss
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+// Breadcrumb item arrow
+.breadcrumb-item {
+    a {
+        color: $body-color;
+		font-weight: $font-weight-normal;
+
+        &:hover {
+            color: $primary;
+        }
+    }
+    +.breadcrumb-item {
+        &::before {
+			content: var(--bs-breadcrumb-divider, "\ea61");
+            font-family: "tabler-icons";
+        }
+    }
+}
+
+.page-header-breadcrumb {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: var(--bs-breadcrumb-divider, "\ea65");
+		font-family: "tabler-icons" !important;
+	}
+}
+
+[dir="rtl"] {
+	.page-header-breadcrumb {
+		.breadcrumb-item+.breadcrumb-item::before {
+			content: var(--bs-breadcrumb-divider, "\ea64");
+			font-family: "tabler-icons" !important;
+		}
+	}
+}
+.breadcrumb {
+	.breadcrumb-item {
+		color: $gray-500;
+		font-weight: $font-weight-medium;
+
+		a {
+
+			&:hover {
+				color: $primary;
+			}
+		}
+
+		&.active {
+			color: $gray-900;
+		}
+	}
+}
+.breadcrumb-arrow {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: var(--bs-breadcrumb-divider, "\ea65");
+		font-family: "tabler-icons" !important;
+	}
+}
+.breadcrumb-pipe {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: var(--bs-breadcrumb-divider, "\ea1f");
+		font-family: "tabler-icons" !important;
+	}
+}
+.breadcrumb-line {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: "-";
+		opacity: 1;
+	}
+}
+.breadcrumb-dot {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: "•";
+		opacity: 1;
+	}
+}
+.breadcrumb-divide {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: "\f054";
+		content: var(--bs-breadcrumb-divider, "\ea1f");
+		font-family: "tabler-icons" !important;
+	}
+}
+
+.breadcrumb-separatorless {
+	.breadcrumb-item+.breadcrumb-item::before {
+		content: "";
+		display: none;
+	}
+}
+.breadcrumb-colored {
+	padding: 12px 15px;
+	border-radius: $border-radius;
+
+	li {
+		a {
+			color: $white;
+		}
+	}
+
+	.breadcrumb-item {
+		a {
+			color: $white;
+		}
+
+		&.active {
+			color: $white;
+			opacity: 0.8;
+		}
+
+		&+.breadcrumb-item {
+			a {
+				color: $white;
+			}
+
+			&::before {
+				color: $white;
+			}
+		}
+	}
+}
+
+.embedded-breadcrumb:before {
+	opacity: 0.7;
+}
+[data-theme-mode="dark"] {
+	.embedded-breadcrumb:before {
+		filter: invert(1);
+	}
+}

@@ -1,0 +1,672 @@
+//
+// datatable.scss
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+// ── Ant Design Pagination ──────────────────────────────────────────────────────
+$pag-size: 34px;
+
+.ant-pagination {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    line-height: 1;
+
+    // Shared box style for every clickable item
+    .ant-pagination-item,
+    .ant-pagination-prev,
+    .ant-pagination-next,
+    .ant-pagination-jump-prev,
+    .ant-pagination-jump-next {
+        width: $pag-size;
+        height: $pag-size;
+        min-width: $pag-size;
+        border-radius: 6px;
+        border: 1px solid $border-color;
+        background: $white;
+        box-shadow: $box-shadow;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, border-color 0.15s;
+    }
+
+    // Page number links
+    .ant-pagination-item a {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        color: $gray-700;
+        font-size: 13px;
+        font-weight: $font-weight-medium;
+        line-height: 1;
+    }
+
+    // Prev / next arrow links
+    .ant-pagination-prev,
+    .ant-pagination-next {
+        .ant-pagination-item-link {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: transparent;
+            padding: 0;
+            color: $gray-700;
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        // our custom <i> icon
+        a {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: none;
+            color: $gray-700;
+            font-size: 14px;
+            line-height: 1;
+        }
+    }
+
+    // Hover for all items
+    .ant-pagination-item:hover,
+    .ant-pagination-prev:hover,
+    .ant-pagination-next:hover,
+    .ant-pagination-jump-prev:hover,
+    .ant-pagination-jump-next:hover {
+        border-color: $primary;
+        background: rgba($primary-rgb, 0.06);
+
+        a,
+        .ant-pagination-item-link {
+            color: $primary;
+        }
+    }
+
+    // Active page
+    .ant-pagination-item-active {
+        background: $primary;
+        border-color: $primary;
+        box-shadow: 0 2px 8px rgba($primary-rgb, 0.35);
+
+        a {
+            color: $white;
+            font-weight: $font-weight-semibold;
+        }
+
+        &:hover a { color: $white; }
+    }
+
+    // Ellipsis buttons
+    .ant-pagination-jump-prev,
+    .ant-pagination-jump-next {
+        .ant-pagination-item-link-icon { color: $primary; font-size: 12px; }
+        .ant-pagination-item-ellipsis  { color: $gray-500; font-size: 13px; letter-spacing: 1px; }
+    }
+}
+
+// ── Datatable footer (show-entries + pagination) ───────────────────────────────
+.datatable-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 4px;
+    margin-bottom: 12px;
+}
+
+// ── Show-entries Select ────────────────────────────────────────────────────────
+.datatable-length {
+    label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: $gray-500;
+        font-size: 14px;
+        line-height: 34px; // anchor text to the same 34px row height
+        margin: 0;
+    }
+
+    .ant-select {
+        height: 34px;
+
+        .ant-select-selector {
+            height: 34px !important;
+            border-radius: 6px !important;
+            border-color: $border-color !important;
+            box-shadow: $box-shadow !important;
+            padding: 0 10px !important;
+            display: flex;
+            align-items: center;
+        }
+
+        .ant-select-selection-item {
+            line-height: 32px !important; // visually center inside the 34px box
+            font-size: 13px;
+            color: $gray-700;
+        }
+
+        .ant-select-arrow {
+            color: $gray-500;
+            font-size: 11px;
+        }
+    }
+}
+
+// ── Resizable column header ────────────────────────────────────────────────────
+.ant-table-thead th {
+    position: relative;
+    &:hover > .col-resize-handle,
+    &:active > .col-resize-handle {
+        opacity: 1;
+    }
+}
+
+// Table always fills its container so the last column never detaches from
+// the right border. min-width: 100% allows horizontal scroll when total
+// explicit column widths exceed the container width.
+.custom-table {
+    .ant-table-content table,
+    .ant-table-body table {
+        min-width: 100% !important;
+    }
+}
+
+// Lock cursor during active column drag
+body[style*="col-resize"] * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+.dataTables_wrapper {
+    &.container-fluid {
+        padding: 0;
+    }
+}
+table.dataTable {
+    border-collapse: collapse !important;
+    margin: 15px 0 !important;
+
+    &.dtr-inline {
+        &.collapsed {
+            > tbody {
+                > tr {
+                    > td,
+                    th {
+                        &.dtr-control {
+                            &:before {
+                                background-color: $primary;
+                                box-shadow: 0px 0px 2px 0px $primary;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    thead:not(.table-light) {
+        th {
+            background-color: transparent;
+            border-bottom-color: $border-color;
+        }
+    }
+    tbody {
+        tr.even,
+        tr.odd {
+            td {
+                background-color: transparent;
+            }
+        }
+    }
+
+    tbody {
+        > tr {
+            &.selected {
+                td {
+                    background-color: $primary;
+                }
+            }
+        }
+    }
+
+    // Change icons view
+    thead {
+        .sorting,
+        .sorting_asc,
+        .sorting_desc,
+        .sorting_asc_disabled,
+        .sorting_desc_disabled {
+            &:before {
+                right: 0.5rem;
+                left: auto;
+                content: "\fb2d" !important;
+                font-family: "tabler-icons";
+                font-size: 14px !important;
+                line-height: 7px;
+            }
+            &:after {
+                right: 0.5em;
+                left: auto;
+                content: "\fb2a" !important;
+                font-family: "tabler-icons";
+                font-size: 14px !important;
+                line-height: 7px;
+            }
+        }
+        > tr {
+            > th {
+                &.sorting_asc,
+                &.sorting_desc,
+                &.sorting {
+                    padding-right: 30px;
+                    padding-left: 1rem;
+                }
+            }
+        }
+    }
+
+    tbody {
+        // Multi select table
+
+        > tr.selected,
+        > tr > .selected {
+            background-color: $primary;
+
+            td {
+                border-color: $primary;
+            }
+        }
+        td {
+            &:focus {
+                outline: none !important;
+            }
+        }
+        // Key Tables
+        th.focus,
+        td.focus {
+            outline: 2px solid $primary !important;
+            outline-offset: -1px;
+            background-color: rgba($primary-rgb, 0.15);
+        }
+    }
+}
+
+.dataTables_info {
+    font-weight: $font-weight-semibold;
+}
+
+.dtfh-floatingparent {
+    top: $topbar-height !important;
+}
+
+// Responsive data table
+table.dataTable.dtr-inline.collapsed {
+    > tbody {
+        > tr[role="row"] {
+            > td,
+            > th {
+                &:first-child {
+                    &:before {
+                        box-shadow: $box-shadow-lg;
+                        background-color: $success;
+                        top: auto;
+                        bottom: auto;
+                    }
+                }
+            }
+        }
+        > tr.parent {
+            > td,
+            > th {
+                &:first-child {
+                    &:before {
+                        background-color: $danger;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Data Table copy button
+div.dt-button-info {
+    background-color: $primary;
+    border: none;
+    color: $white;
+    box-shadow: none;
+    border-radius: 3px;
+    text-align: center;
+    z-index: 21;
+
+    h2 {
+        border-bottom: none;
+        background-color: rgba($white-rgb, 0.2);
+        color: $white;
+    }
+}
+
+@include respond-below(md) {
+    li.paginate_button.previous,
+    li.paginate_button.next {
+        display: inline-block;
+        font-size: 1.5rem;
+    }
+    .dataTables_paginate {
+        ul {
+            text-align: center;
+            display: block;
+            margin: 1.25rem 0 0 !important;
+        }
+    }
+    div.dataTables_length{
+        float: none;
+        text-align: center !important;
+    }
+    div.dt-buttons {
+        display: inline-table;
+        margin-bottom: 1.25rem;
+    }
+}
+
+// Active status
+.activate-select {
+    .sorting_1 {
+        background-color: $gray-100 !important;
+    }
+}
+
+// datatable
+div.dataTables_wrapper {
+    div.dataTables_filter {
+        text-align: right;
+
+        @media (max-width: 576px) {
+            text-align: center;
+        }
+
+        input {
+            margin-left: 0.5em;
+            margin-right: 0;
+        }
+    }
+    div.dataTables_length {
+        text-align: left;
+    }
+}
+
+div.table-responsive > div.dataTables_wrapper {
+    > div.row > div[class^="col-"]:last-child {
+        padding-right: 0;
+    }
+    > div.row > div[class^="col-"]:first-child {
+        padding-left: 0;
+    }
+}
+
+div {
+    &.dataTables_scrollBody {
+        border-left: none !important;
+        & > table {
+            margin-bottom: 15px !important;
+            & > :not(:first-child) {
+                border-top: none !important;
+            }
+        }
+    }
+}
+.table-nowrap {
+    th {
+        white-space: nowrap;
+    }
+    td {
+        white-space: nowrap;
+    }
+}
+
+[data-bs-theme="dark"] {
+    a {
+        color: $gray-900;
+    }
+    .btn-light {
+        background: $gray-300;
+        border-color: $border-color;
+        color: $gray-900;
+    }
+}
+
+table.dataTable {
+    margin: 0 !important;
+    border: 1px solid $border-color;
+    border-bottom: none;
+    width: 100% !important;
+}
+.dataTables_length {
+    padding: 20px 0 0;
+    float: left;
+}
+table.table.dataTable {
+    & > tbody {
+        > tr {
+            border-color: $border-color;
+            td {             
+                border-bottom: 1px solid $border-color;
+                padding: 20px 10px 20px 10px;
+            }
+        } 
+    }
+    & > thead > tr {
+        border-color: $border-color;
+            th {
+                color: $gray-900;
+                font-size: 13px;
+                font-weight: $font-weight-semibold;
+                padding: 8px 17px 8px 10px;
+            }
+    }
+}
+.dataTables_paginate {
+    margin-top: 20px !important;
+    .pagination{
+        gap: 8px;
+        margin: 7px 0 !important;
+        display: flex;
+        flex-wrap: wrap;
+    }   
+    .page-item{
+        .page-link{
+          width: 38px;
+          height: 38px;
+          box-shadow: $box-shadow;
+          border-radius: 5px;
+          padding: 5px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: $gray-500;
+          font-weight: $font-weight-normal;         
+        } 
+         &.active{
+            .page-link{
+               color: $darkmode-white;
+               background: $primary;
+            }           
+          }
+    }
+}
+div.dataTables_wrapper div.dataTables_info {
+    padding: 15px 0;
+    display: none;
+}
+.table-search {
+    margin-bottom: 20px;
+}
+table.dataTable>thead .sorting:after, 
+table.dataTable>thead .sorting_asc:after,
+table.dataTable>thead .sorting_desc:after,
+table.dataTable>thead .sorting_asc_disabled:after, 
+table.dataTable>thead .sorting_desc_disabled:after {
+    right: 0 !important;
+    content: "\ea1a" !important;
+    font-family: 'tabler-icons';
+    bottom: 12px !important;
+    color: $gray-900 !important;
+    font-size: 12px !important;
+    opacity: 1 !important;
+    position: absolute;
+    font-weight: $font-weight-normal;
+    line-height: 1px !important;
+}
+table.dataTable>thead .sorting:before, 
+table.dataTable>thead .sorting_asc:before, 
+table.dataTable>thead .sorting_desc:before, 
+table.dataTable>thead .sorting_asc_disabled:before, 
+table.dataTable>thead .sorting_desc_disabled:before {
+    right: 5px !important;
+    content: "\ea1d" !important;
+    font-family: 'tabler-icons';
+    top: 50% !important;
+    color: $gray-900 !important;
+    font-size: 12px !important;
+    opacity: 1 !important;
+    position: absolute;
+    font-weight: $font-weight-normal;
+    line-height: 1px !important;
+}
+table.dataTable thead>tr>th.no-sort.sorting_asc:before {
+    display: none;
+}
+table.dataTable thead>tr>th.no-sort.sorting_asc::after {
+    display: none;
+}
+table.dataTable thead>tr>th.no-sort.sorting:before {
+    display: none;
+}
+table.dataTable thead>tr>th.no-sort.sorting::after {
+    display: none;
+}
+
+.patient-form-wizard .form-wizard-content {
+    display: none;
+}
+.patient-form-wizard .form-wizard-content.active {
+    display: block;
+}
+.no-filter{
+    .dataTables_filter{
+        display: none;
+    }
+}
+.no-pagination{
+    .dataTables_paginate, .dataTables_length{
+        display: none;
+    }
+}
+
+.dataTables_length label, #dataTables_length label {
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-box-align: center;
+    -ms-flex-align: center;
+    align-items: center;
+    color: #6F6F6F;
+    font-size: 14px;
+    @media (max-width: 768px) {
+       justify-content: center;
+    }
+}
+.dataTables_length label .form-select, #dataTables_length label .form-select {
+    width: 73px;
+    border: 1px solid $border-color;
+    border-radius: 5px;
+    color: #262A2A;
+    margin: 0 8px;
+}
+.dataTables_paginate .pagination, #dataTables_paginate .pagination {
+    justify-content: end;
+    -webkit-justify-content: end;
+    -ms-flex-pack: end;
+     @media (max-width: 768px) {
+       justify-content: center;
+        -webkit-justify-content: center;
+       -ms-flex-pack: center;
+    }
+}
+
+// ── Composite items tree expand row ───────────────────────────────────────────
+.ant-table-expanded-row > .ant-table-cell {
+    padding: 0 !important;
+    background: #fff !important;
+}
+
+.composite-tree-row {
+    display: flex;
+    align-items: center;
+    height: 46px;
+    border-bottom: 1px solid $border-color;
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    // Width is set via inline style (measured at runtime by JS).
+    // The 48px here is only a fallback for the initial render before measurement fires.
+    .tree-cell-pad { flex-shrink: 0; width: 48px; } // overridden by inline style
+
+    // 28px placeholder — same width as the folder button — holds both connector lines
+    .tree-icon-col {
+        flex-shrink: 0;
+        width: 28px;
+        align-self: stretch;
+        position: relative;
+    }
+
+    .tree-vline {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        transform: translateX(-50%);
+        width: 1px;
+        background: #ced4da;
+    }
+
+    .tree-hline {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 50%;       // 14px: right half of the placeholder, reaching out to text
+        height: 1px;
+        background: #ced4da;
+    }
+
+    // Gap that matches the gap-2 (8px) in the Name cell
+    .tree-gap { flex-shrink: 0; width: 8px; }
+
+    .tree-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: #343a40;
+    }
+
+    .tree-qty {
+        font-size: 13px;
+        color: #868e96;
+        margin-left: 6px;
+    }
+}
+

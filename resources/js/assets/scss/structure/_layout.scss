@@ -1,0 +1,24 @@
+//
+// _layout.scss 
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.page-wrapper {
+    @include transition(all 0.5s ease);
+    margin: 0 0 0 $sidenav-width;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    left: 0;
+    min-height: calc(100vh - ($topbar-height + 1px));
+    @include transition(all 0.2s ease);
+    @include respond-below(lg) {
+        margin: 0;
+    }
+    .content {
+        padding: 1.25rem;
+        min-height: calc(100vh - 96px);
+    }
+}

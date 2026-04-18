@@ -1,0 +1,107 @@
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+// chat.scss 
+//
+
+.chat-users {
+  max-height: calc(-23.5rem + 100vh) !important;
+  padding-bottom: 10px !important;
+}
+
+.user-list {
+  cursor: pointer;
+
+  &.active {
+    background: var(--light-200);
+  }
+
+  &:hover {
+    background: var(--light-200);
+  }
+}
+
+.chat-user-nav {
+  flex-shrink: 0;
+  width: 350px;
+  border-right: 1px solid var(--border-color);
+
+  @include respond-below(lg){
+      border: none !important;
+      width: 100% !important;
+  }
+}
+
+.message-count {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.message-body {
+  max-height: calc(-21.5rem + 100vh) !important;
+  background-image: url(/src/assets/img/bg/chat-bg.png);
+  background-size: cover;
+}
+
+.message-box {
+  border: 1px solid var(--border-color);
+}
+
+.receive-message {
+  border-radius: 0 5px 5px 5px;
+  background: var(--light-200);
+}
+
+.sent-message {
+  border-radius: 5px 0 5px 5px;
+  background: var(--light-800);
+}
+
+.chat-list {
+  max-width: 75%;
+  @include respond-below(xl){
+    max-width: 85%;
+  }
+  @include respond-below(sm){
+    max-width: 100%;
+  }
+}
+
+.count-circle, .message-count {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+}
+
+.chat-user-nav {
+    flex-shrink: 0;
+    width: 350px;
+    border-right: 1px solid $border-color;
+}
+
+.chat-messages {
+  @include respond-below(lg){
+    display: none;
+  }
+  .custom-dot {
+    position: relative;
+    left: -3px;
+  }
+}
+.chat-messages.show {
+  @include respond-below(lg){
+    display: block;
+  }
+}
+.chat-user-nav.hide {
+  @include respond-below(lg){
+    display: none;
+  }
+}

@@ -1,0 +1,200 @@
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.settings-sidebar {
+    a {
+        @include rounded(5px);
+        color: $gray-500;
+        &.active {
+            background: $primary-transparent;
+            color: $primary;
+            border-left: 1px solid $primary;
+        }
+        &:hover {
+            color: $primary;
+        }
+    }
+}
+.profile-upload {
+    .profile-upload-img {
+        span {
+            color: $gray-400;
+            position: absolute;
+        }
+    }
+    .preview1 {
+        display: none;
+    }
+    .it {
+        width: 70px;
+        height: 70px;
+        border-radius: $border-radius-lg;
+        display: block;
+        position: relative;
+        background: $white;
+        object-fit: cover;
+    }
+    .profile-remove {
+        display: none;
+    }
+    .profile-remove-btn {
+        width: 14px;
+        height: 14px;
+        font-size: 10px;
+        color: $white;
+        background: $danger;
+        border: 1px solid $danger;
+        border-radius: $border-radius-lg;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 8px;
+        right: 8px;
+    }
+}
+.w-min-content {
+    min-width: max-content;
+}
+.theme-type-images {
+    flex-wrap: wrap;
+    .theme-image {
+        border: 1px solid $border-color;
+        img {
+            width: 150px;
+            @include respond-below(xxl) {
+               width: 130px;      
+            }
+        }
+        span {
+            color: $gray-900;
+        }
+        &.active {
+            border-color: $primary;
+            span {
+                color: $primary;
+            }
+        }
+    }
+}
+.theme-colors {
+   span {
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                background-color: $primary;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                position: relative;
+                &.active {
+                    background-color: rgba($primary-rgb, 0.1);
+                    &:after {
+                        content: "";
+                        width: 25px;
+                        height: 25px;
+                        background-color: $primary;
+                        border-radius: 50%;
+                        opacity: 1;
+                    }
+                }
+                &.theme-secondary {
+                    background-color: $secondary;
+                    &.active {
+                        background-color: rgba($secondary-rgb, 0.1);
+                        &:after {
+                            background-color: $secondary;
+                        }
+                    }
+                }
+                &.theme-violet {
+                    background-color: $indigo;
+                    &.active {
+                        background-color: rgba($indigo-rgb, 0.1);
+                        &:after {
+                            background-color: $indigo;
+                        }
+                    }
+                }
+                &.theme-blue {
+                    background-color: $info;
+                    &.active {
+                        background-color: rgba($info-rgb, 0.1);
+                        &:after {
+                            background-color: $info;
+                        }
+                    }
+                }
+                &.theme-brown {
+                    background-color: $teal;
+                    &.active {
+                        background-color: rgba($teal-rgb, 0.1);
+                        &:after {
+                            background-color: $teal;
+                        }
+                    }
+                }
+            }
+}
+.table.notification-table {
+    tbody {
+        tr {
+            td {
+                padding: 5px !important;
+            }
+        }
+    }
+}
+
+
+.bank-radio {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    z-index: 1;
+    cursor: pointer;
+
+  &:checked + .bank-box {
+    border: 2px solid $success !important;
+    background: $white !important;
+
+    .check-icon {
+      opacity:1;
+    }
+  }
+}
+.bank-box {
+    background: $light;
+    border: 2px solid $light;
+    padding: 20px;
+    border-radius: $border-radius;
+    position: relative;
+    cursor: pointer;
+    transition: border 0.2s ease;
+
+  .check-icon {
+    position: absolute;
+    top: -12px;
+    left: -8px;
+    background-color: $success;
+    color: $white;
+    font-size: 11px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    border: 3px solid $white;
+
+    &::before {
+      content: "✔";
+      opacity: 1;
+    }
+  }
+}

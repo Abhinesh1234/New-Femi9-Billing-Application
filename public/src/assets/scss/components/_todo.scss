@@ -1,0 +1,54 @@
+
+/*============================
+  36.todo
+============================*/
+@use "../variables" as *;
+
+.todo-inbox-check {
+    .checkboxs {
+        margin-bottom: 0;
+        display: flex;
+        align-items: center;
+        input ~ .checkmarks {
+            border-color: rgba(145, 158, 171, 0.30);
+            border-radius: 5px;
+            margin-top: 0;
+            width: 20px;
+            height: 20px;
+        }
+        input {
+            &:checked {
+                ~ .checkmarks{
+                    border-color: $primary;
+                    background-color: $primary;
+                }
+            }
+        }
+    }    
+}
+.cursor-pointer {
+    cursor: pointer;
+}
+.strike-info {
+    h4 {
+        margin-bottom: 0;
+        font-size: 14px;
+    }
+}
+.iti__country-list {
+    z-index: 101;
+}
+.todo-strike-content {
+    .strike-info {
+        h4 {
+            text-decoration: line-through;
+            margin-bottom: 0;
+        }
+        p {
+            text-decoration: line-through;
+        }
+    }
+}
+.fs-6 {
+    font-size: 6px !important;
+}

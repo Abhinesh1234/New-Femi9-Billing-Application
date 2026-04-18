@@ -1,0 +1,79 @@
+//
+// _contact-details.scss
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.add-details-wizard {
+    ul {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+        @include respond-below(sm) {
+            flex-direction: column;
+        }
+        li {
+            line-height: normal;
+            background: $light;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            border-radius: 5px;
+            @include respond-below(sm) {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            span {
+                margin-right: 5px;
+            }
+            .multi-step-info {
+                h6 {
+                    margin-bottom: 0;
+                    font-weight: $font-weight-medium;
+                    font-size: 14px;
+                }
+            }
+            &.active {
+                background: $primary;
+                color: $white;
+                h6 {
+                    color: $white;
+                }
+            }
+        }
+    }
+}
+
+fieldset {
+    display: none;
+    &#first-field-file {
+        display: block;
+    }
+}
+.sign-item {
+    .status-radio:checked + label:before, .status-radio:not(:checked) + label:before {
+        border: 1px solid $border-color;
+    }
+    .status-radio:checked + label:before {
+        border-color: $primary;
+    }
+}
+
+.notication-card{
+    .noti-btn{
+       opacity: 0;
+       transition: .3s;
+       @include respond-below(md) {
+          opacity: 1;
+       }
+    }
+    &:hover{
+       .noti-btn{
+        opacity: 1;
+        } 
+    }
+}
+.kanban-list-items {
+    min-width: 300px;
+}

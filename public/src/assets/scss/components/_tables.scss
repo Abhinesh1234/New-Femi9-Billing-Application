@@ -1,0 +1,203 @@
+//
+// tables.scss
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+@use "sass:map";
+
+.table{
+    background-color: $white;
+    margin-bottom: 0 !important;
+    border: 1px solid $border-color;
+    thead{
+        tr{
+            border: 1px solid $border-color;
+            th {
+                font-weight: $font-weight-semibold;
+                padding: 8px 10px;
+                color: $heading-color;
+            }
+        }
+    }
+    tbody {
+        tr{
+            border: 1px solid $border-color;
+            td{
+                padding: 20px 10px 20px 10px !important;
+                white-space: nowrap;
+            }
+            &:last-child{
+                td{
+                    border-bottom-width: 0px !important;
+                }
+            }
+        }
+        td {
+            vertical-align: middle;
+            border-bottom-color: $border-color;
+            border-bottom-width: 1px !important;
+        }
+        th {
+            vertical-align: middle;
+            padding: 20px 10px 20px 10px !important; 
+        }
+    }
+}
+
+th {
+    font-weight: $font-weight-semibold;
+    color: $gray-900;
+}
+
+.thead-sm {
+    > * > * {
+        padding: 0.5rem 0.5rem !important;
+    }
+}
+.table>:not(caption)>*>* {
+    background-color: $white;
+    color: inherit;
+}
+.table-custom {
+    tfoot > tr > th:first-child, 
+    thead > tr > th:first-child, 
+    tr th:first-child, 
+    tr td:first-child {
+        padding-left: 1.125rem !important;
+    }
+
+    tfoot > tr > th:last-child, 
+    thead > tr > th:last-child, 
+    tr th:last-child, 
+    tr td:last-child {
+        padding-right: 1.125rem !important;
+    }
+}
+
+// Tables fluid
+.table-nowrap {
+
+    th {
+        white-space: nowrap;
+        color: $gray-500;
+    }
+}
+.table-light th {
+    background: $light !important;
+}
+.ac
+.action-item > a {
+    width: 22px;
+    height: 22px;
+    border: 1px solid $border-color;
+    border-radius: 7px;
+    color: $gray-500;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: $box-shadow;
+}
+
+.table-header{
+    padding: 8px 16px;
+}
+
+.table-search {
+    margin-bottom: 20px;
+}
+.table.dataTable th {
+    padding: 8px 16px;
+}
+.search-input {
+    input {
+        font-size: 12px;
+    }
+    .btn-searchset {
+        border-radius: 50px;
+    }
+}
+
+table.dataTable>thead .sorting:before, table.dataTable>thead .sorting_asc:before, table.dataTable>thead .sorting_desc:before, table.dataTable>thead .sorting_asc_disabled:before, table.dataTable>thead .sorting_desc_disabled:before {
+    right: 5px !important;
+    content: "\ea1d" !important;
+    font-family: "tabler-icons";
+    top: 50% !important;
+    color: var(--gray-900) !important;
+    font-size: 12px !important;
+    opacity: 1 !important;
+    position: absolute;
+    font-weight: 400;
+    line-height: 1px !important;
+}
+
+table.dataTable>thead .sorting:after, table.dataTable>thead .sorting_asc:after, table.dataTable>thead .sorting_desc:after, table.dataTable>thead .sorting_asc_disabled:after, table.dataTable>thead .sorting_desc_disabled:after {
+    right: 0 !important;
+    content: "\ea1a" !important;
+    font-family: "tabler-icons";
+    bottom: 12px !important;
+    color: var(--gray-900) !important;
+    font-size: 12px !important;
+    opacity: 1 !important;
+    position: absolute;
+    font-weight: 400;
+    line-height: 1px !important;
+}
+.table-dark th {
+    color: #fff !important;
+    background-color: #0B0D0E;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.table-dark tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.table.table-dark > :not(caption) > * > * {
+    background-color: #0B0D0E;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+.table.table-success > :not(caption) > * > * {
+    background-color: $success;
+}
+@each $state in map.keys($theme-colors) {
+    .table > :not(caption) > .table-#{$state} > * {
+        background-color: var(--#{$state});
+        border-color: rgb(var(--#{$state}-rgb), 0.1);
+        color: #fff;
+    }
+    .border-#{$state} {
+        thead {
+            tr {
+            th {
+                border-color: var(--#{$state}) !important;
+            }
+            }
+        }
+        tbody {
+            td, th {
+                border-color: var(--#{$state}) !important;
+            }
+        }
+        &.table-bordered > :not(caption) > * {
+            border-color:var(--#{$state}) !important;
+        }
+    }
+}
+.table > :not(caption) > .table-light > * {
+    color: $body-color;
+}
+
+.table>:not(caption)>*>* {
+    border-bottom-width: 0px !important;
+}
+
+.set-star {
+    i {
+        color: $border-color;        
+    }
+    &.filled {
+        i{
+            color: $warning;
+        }
+    }
+}

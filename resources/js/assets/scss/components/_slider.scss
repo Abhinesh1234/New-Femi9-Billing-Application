@@ -1,0 +1,56 @@
+@use "../variables" as *;
+
+.slick-next {
+    z-index: 99;
+    background: transparent;
+    border: 1px solid $border-color;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    right: 10px;
+    top: -45px;
+    &::before {
+    font-family: "tabler-icons";
+    content: "\ea61";
+    color: $gray-900;
+    font-size: 12px;
+    font-weight: 900;
+    }
+    &:hover{
+        background-color: $light;
+    }
+}
+.slick-prev {
+    z-index: 99;
+    background: transparent;
+    border: 1px solid $border-color;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    left: auto;
+    right: 40px;
+    top: -45px;
+    &::before {
+    font-family: "tabler-icons";
+    content: "\ea60";
+    color: $gray-900;
+    font-size: 12px;
+    font-weight: 900;
+    }
+    &:hover{
+        background-color: $light;
+    }
+}
+
+.visit-slider{
+   .slick-prev{
+      left: 132px;
+      right: auto;
+      top: -51px;
+   } 
+   .slick-next{
+      left: 162px;
+      right: auto;
+      top: -51px;
+   } 
+}

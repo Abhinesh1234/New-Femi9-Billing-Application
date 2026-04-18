@@ -1,0 +1,15 @@
+//
+// chartjs.scss
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.chartjs-chart {
+    margin: auto;
+    position: relative;
+    width: 100%;
+}
+.chart-container {
+    border-color: $border-color;
+}

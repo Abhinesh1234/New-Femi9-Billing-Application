@@ -1,0 +1,140 @@
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.account-bg-01 {
+    background-image: url(/src/assets/img/authentication/login-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.account-bg-02 {
+    background-image: url(/src/assets/img/authentication/register-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.account-bg-03 {
+    background-image: url(/src/assets/img/authentication/forgot-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.account-bg-04 {
+    background-image: url(/src/assets/img/authentication/reset-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.account-bg-05 {
+    background-image: url(/src/assets/img/authentication/email-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.account-bg-06 {
+    background-image: url(/src/assets/img/authentication/verification-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.account-bg-07 {
+    background-image: url(/src/assets/img/authentication/success-bg.jpg);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    @include rounded(10px);
+    height: calc(100vh - 40px);
+}
+.link-hover {
+    position: relative;
+    &:after {
+        content:"";
+        height: 2px;
+        width: 100%;
+        background: $primary;
+        @include transform(scale(0));
+        @include transition(all 0.3s ease);
+        position: absolute;
+        bottom: -3px;
+        left: 0;
+    }
+    &:hover:after {
+        @include transform(scale(1));
+    }
+    &:hover {
+        color: $primary !important;
+    }
+}
+.bg-backdrop {
+    background: #FFFFFFF2;
+    backdrop-filter: blur(10px);
+}
+.or-login {
+    h6 {
+        &:after{
+            content: "";
+            background: $gray-100;
+            width:21px;
+            height: 1px;
+            position: absolute;
+            top: 50%;
+            left: calc(50% - 40px);
+            @include transform(translateY(-50%));
+        }
+        &:before{
+            content: "";
+            background: $gray-100;
+            width:21px;
+            height: 1px;
+            top: 50%;
+            @include transform(translateY(-50%));
+            position: absolute;
+            right: calc(50% - 40px);
+        }
+    }
+}
+.digit-group {
+	input {
+		width: 70px !important;
+		height: 70px;
+		border: 1px solid $border-color;
+		&.active {
+			border: 2px solid $primary;
+		}
+	}
+}
+.error-img {
+    max-width: 500px;
+}
+.count-box {
+    width: 85px;
+    height: 85px;
+    @include respond-below(sm) {
+        width: 50px;
+        height: 50px;
+    }
+}
+.account-page {
+    .acc-vh, .vh-100 {
+        height: calc(100vh - 20px) !important;
+    }
+}
+
+.auth-logo {
+    img {
+        width: 100%;
+        max-width: 141px;
+    }
+}

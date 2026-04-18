@@ -1,0 +1,21 @@
+//
+// _intelinput.scss 
+//
+
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.iti__country-list {
+    border-color: $border-color;
+    box-shadow: $box-shadow-lg;
+    .iti__country {
+        display: flex;
+        align-items: center;
+    }
+    .iti__divider {
+        border-color: $border-color;
+    }
+    .iti__dial-code {
+        color: $body-color;
+    }
+}

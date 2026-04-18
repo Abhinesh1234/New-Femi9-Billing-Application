@@ -1,0 +1,38 @@
+@use "../variables" as *;
+@use "../utils/mixins" as *;
+
+.offcanvas-header{
+    border-bottom: 1px solid $border-color;
+    padding: 16px 20px;
+    .btn-close{
+        background-color: $danger-transparent;
+         font-size: 8px;
+         padding: 8px;
+         border-radius: $border-radius-pill;
+         margin-right: 0;
+         color: $danger;
+        opacity: 1;
+        position: relative;
+        &::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-color: $danger; /* icon color */
+            mask: var(--bs-btn-close-bg) center/1em auto no-repeat;
+            -webkit-mask: var(--bs-btn-close-bg) center/1em auto no-repeat;
+        }
+        &:focus {
+            box-shadow: none !important;
+        }
+    }
+}
+.offcanvas-body {
+    padding: 20px;
+}
+
+.offcanvas {
+    max-width: 800px;
+    width: 100% !important;
+    background-color: $white;
+    border-left: $border-color !important;
+}

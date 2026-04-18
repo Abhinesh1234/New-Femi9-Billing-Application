@@ -1,0 +1,74 @@
+@use "../variables" as *;
+
+//
+// progress.scss
+//
+
+.progress-bar {
+    background-color: $primary;
+}
+.progress {
+    background-color: $light;
+}
+.progress-xs {
+    height: 3px;
+}
+.progress-sm {
+    height: 5px;
+}
+.progress-md {
+    height: 8px;
+}
+.progress-lg {
+    height: 12px;
+}
+.progress-xl {
+    height: 15px;
+}
+.progress-with-border {
+    .progress-bar+.progress-bar {
+        border-left: 3px solid $white;
+    }
+}
+.progress-value {
+    display: block;
+    position: absolute;
+    top: -28px;
+    right: 0px;
+}
+
+.pipeline-progress {
+    .progress {
+        background: transparent;
+        width: 70px;
+        height: 5px;
+        .progress-bar {
+            width: 70px;
+            height: 5px;
+            border-radius: 5px;
+            &.progress-bar-success {
+                background: $success;
+            }
+            &.progress-bar-violet {
+                 background: $purple;
+            }
+            &.progress-bar-info {
+                background: $info;
+            }
+            &.progress-bar-warning {
+                background: $warning;
+            }
+            &.progress-bar-green {
+                background: $teal;
+            }
+            &.progress-bar-danger {
+                background: $danger;
+            }
+        }
+    }
+    span {
+        margin-left: 10px;
+        color: $gray-900;
+        font-weight: $font-weight-medium;
+    }
+}

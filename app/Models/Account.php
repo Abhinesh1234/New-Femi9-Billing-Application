@@ -1,0 +1,20 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class Account extends Model
+{
+    use SoftDeletes;
+
+    protected $fillable = ['name', 'type'];
+
+    // ── Scopes ────────────────────────────────────────────────────────────────
+
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('type', $type);
+    }
+}
