@@ -2,32 +2,17 @@ import { Outlet, useLocation } from "react-router";
 import { useDispatch, useSelector } from "react-redux";
 import Header from "../components/header/header";
 import Sidebar from "../components/sidebar/sidebar";
-import SettingsSidebar from "../components/sidebar/settingsSidebar";
 import ThemeSettings from "../components/theme-settings/themeSettings";
 import { useEffect } from "react";
 import { resetMobileSidebar } from "../core/redux/sidebarSlice";
 import { all_routes } from "../routes/all_routes";
 
-const NO_SIDEBAR_PATHS = [all_routes.settingsHome];
-
-const SETTINGS_PREFIXES = [
-  "/app-settings",
-  "/general-settings",
-  "/financial-settings",
-  "/website-settings",
-  "/system-settings",
-  "/user-management",
-  "/locations/series",
-];
-
-const isSettingsPath = (pathname: string) =>
-  SETTINGS_PREFIXES.some(prefix => pathname.startsWith(prefix));
+const NO_SIDEBAR_PATHS: string[] = [];
 
 const Feature = () => {
   const location = useLocation();
   const dispatch = useDispatch();
-  const hideSidebar  = NO_SIDEBAR_PATHS.includes(location.pathname);
-  const showSettings = !hideSidebar && isSettingsPath(location.pathname);
+  const hideSidebar = NO_SIDEBAR_PATHS.includes(location.pathname);
 
   const themeSettings = useSelector((state: any) => state.theme.themeSettings);
   const { miniSidebar, mobileSidebar, expandMenu } = useSelector(
@@ -75,7 +60,7 @@ const Feature = () => {
       >
         <div className={`main-wrapper${hideSidebar ? " no-sidebar" : ""}`}>
           <Header />
-          {!hideSidebar && (showSettings ? <SettingsSidebar /> : <Sidebar />)}
+          {!hideSidebar && <Sidebar />}
           <Outlet />
           <ThemeSettings />
         </div>

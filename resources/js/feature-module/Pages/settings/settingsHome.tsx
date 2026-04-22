@@ -1,220 +1,289 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import PageHeader from "../../../components/page-header/pageHeader";
 import { all_routes } from "../../../routes/all_routes";
 
 const route = all_routes;
 
-interface SettingItem {
+// ── Types ────────────────────────────────────────────────────────────────────────
+
+interface CardItem {
+  icon: string;
   label: string;
+  description: string;
   to: string;
 }
 
-interface SettingCardProps {
+interface SubSection {
   icon: string;
-  iconColor: string;
-  headerGradient: string;
   title: string;
-  items: SettingItem[];
+  items: CardItem[];
 }
 
-const ITEM_HEIGHT = 41;
-const CARD_MIN_HEIGHT = 66 + 7 * ITEM_HEIGHT;
+interface Section {
+  title: string;
+  subtitle: string;
+  subSections: SubSection[];
+}
 
-const SettingCard = ({ icon, iconColor, headerGradient, title, items }: SettingCardProps) => (
-  <div className="col">
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 10,
-        boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-        overflow: "hidden",
-        minHeight: CARD_MIN_HEIGHT,
-        height: "100%",
-      }}
+// ── Data ─────────────────────────────────────────────────────────────────────────
+
+const SECTIONS: Section[] = [
+  {
+    title: "Organisation Settings",
+    subtitle: "Manage your organisation profile, branding, and preferences.",
+    subSections: [
+      {
+        icon: "ti ti-building",
+        title: "Organisation",
+        items: [
+          { icon: "ti ti-user-circle",  label: "Profile",   description: "View and update basic organisation details",   to: route.profile },
+          { icon: "ti ti-palette",      label: "Branding",  description: "Update logo, colors and brand identity",        to: route.companySettings },
+          { icon: "ti ti-map-pin",      label: "Locations", description: "Manage business locations and branches",        to: route.locations },
+        ],
+      },
+      {
+        icon: "ti ti-wand",
+        title: "Customisation",
+        items: [
+          { icon: "ti ti-list-numbers", label: "Transaction Number Series", description: "Configure number series for all transactions", to: route.transactionSeriesList },
+        ],
+      },
+    ],
+  },
+  {
+    title: "Module Settings",
+    subtitle: "Configure preferences for each module in the platform.",
+    subSections: [
+      {
+        icon: "ti ti-layout-list",
+        title: "General",
+        items: [
+          { icon: "ti ti-users", label: "Customers and Vendors", description: "Manage customer and vendor preferences",  to: "#" },
+          { icon: "ti ti-box",   label: "Items",                 description: "Configure item defaults and preferences", to: route.projectSettings },
+        ],
+      },
+      {
+        icon: "ti ti-package",
+        title: "Inventory",
+        items: [
+          { icon: "ti ti-building-factory-2", label: "Assemblies",            description: "Manage composite and assembled items",        to: route.compositeItems },
+          { icon: "ti ti-adjustments",        label: "Inventory Adjustments", description: "Configure adjustment types and reasons",       to: "#" },
+          { icon: "ti ti-package",            label: "Packages",              description: "Set packaging defaults and preferences",      to: "#" },
+          { icon: "ti ti-truck",              label: "Shipments",             description: "Manage shipment preferences and carriers",    to: "#" },
+          { icon: "ti ti-arrows-exchange",    label: "Transfer Orders",       description: "Configure inter-location transfer settings",  to: "#" },
+        ],
+      },
+      {
+        icon: "ti ti-shopping-bag",
+        title: "Sales",
+        items: [
+          { icon: "ti ti-file-invoice",   label: "Sales Orders",      description: "Configure sales order defaults and workflows", to: "#" },
+          { icon: "ti ti-truck-delivery", label: "Delivery Challans", description: "Set delivery challan preferences",              to: "#" },
+          { icon: "ti ti-receipt",        label: "Invoices",          description: "Manage invoice templates and numbering",        to: "#" },
+          { icon: "ti ti-cash",           label: "Payments Received", description: "Configure payment receipt preferences",         to: "#" },
+          { icon: "ti ti-arrow-back-up",  label: "Sales Returns",     description: "Set sales return policies and workflows",       to: "#" },
+          { icon: "ti ti-file-text",      label: "Credit Notes",      description: "Manage credit note templates and settings",     to: "#" },
+        ],
+      },
+      {
+        icon: "ti ti-receipt",
+        title: "Purchases",
+        items: [
+          { icon: "ti ti-file-invoice",   label: "Purchase Orders",   description: "Configure purchase order defaults",            to: "#" },
+          { icon: "ti ti-package-import", label: "Purchase Receives", description: "Set receiving preferences and workflows",      to: "#" },
+          { icon: "ti ti-file-dollar",    label: "Bills",             description: "Manage bill templates and preferences",        to: "#" },
+          { icon: "ti ti-wallet",         label: "Payments Made",     description: "Configure payment disbursement preferences",   to: "#" },
+          { icon: "ti ti-file-minus",     label: "Vendor Credits",    description: "Manage vendor credit note settings",           to: "#" },
+        ],
+      },
+    ],
+  },
+];
+
+// ── ItemCard ──────────────────────────────────────────────────────────────────────
+
+const ItemCard = ({ item }: { item: CardItem }) => {
+  const isDisabled = item.to === "#";
+
+  return (
+    <Link
+      to={item.to}
+      className="d-flex h-100"
+      style={{ textDecoration: "none" }}
+      onClick={isDisabled ? (e) => e.preventDefault() : undefined}
     >
-      {/* Gradient header */}
       <div
-        className="d-flex align-items-center gap-2"
+        className="w-100 d-flex flex-column"
+        onMouseEnter={e => { if (!isDisabled) e.currentTarget.style.borderColor = "var(--primary)"; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-color)"; }}
         style={{
-          background: headerGradient,
-          padding: "10px 14px",
-          margin: "10px",
+          border: "1px solid var(--border-color)",
           borderRadius: 10,
+          overflow: "hidden",
+          cursor: isDisabled ? "default" : "pointer",
+          boxShadow: "var(--box-shadow)",
+          background: "var(--white)",
         }}
       >
-        <span
-          className="d-flex align-items-center justify-content-center"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            background: "#fff",
-            flexShrink: 0,
-            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-          }}
-        >
-          <i className={`${icon} fs-15`} style={{ color: iconColor }} />
-        </span>
-        <span style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>{title}</span>
-      </div>
+        {/* Body */}
+        <div className="p-3 flex-grow-1">
+          {/* Icon */}
+          <div
+            className="d-flex align-items-center justify-content-center mb-3"
+            style={{ width: 48, height: 48, borderRadius: 10, background: "var(--light)", flexShrink: 0 }}
+          >
+            <i className={item.icon} style={{ fontSize: 20, color: "var(--gray-500)" }} />
+          </div>
 
-      {/* Links */}
-      <ul className="list-unstyled mb-0">
-        {items.map(({ label, to }) => (
-          <li key={label}>
-            <Link
-              to={to}
-              style={{ display: "block", padding: "10px 16px", fontSize: 14, color: "#374151", textDecoration: "none" }}
-              onMouseEnter={e => (e.currentTarget.style.color = "#E41F07")}
-              onMouseLeave={e => (e.currentTarget.style.color = "#374151")}
-            >
-              {label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+          {/* Title */}
+          <div className="d-flex align-items-start justify-content-between gap-2 mb-1">
+            <span className="fw-semibold fs-14" style={{ color: "var(--heading-color)", lineHeight: 1.4 }}>
+              {item.label}
+            </span>
+            {isDisabled && (
+              <span className="badge" style={{ background: "var(--warning-transparent)", color: "var(--warning)", fontSize: 10, flexShrink: 0 }}>
+                Soon
+              </span>
+            )}
+          </div>
+
+          {/* Description */}
+          <p className="text-muted small mb-0" style={{ lineHeight: 1.6 }}>
+            {item.description}
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="d-flex align-items-center justify-content-between px-3 py-2" style={{ borderTop: "1px solid var(--border-color)" }}>
+          <span className="fw-semibold" style={{ fontSize: 13, color: "var(--primary)" }}>
+            {isDisabled ? "Coming Soon" : "Configure"}
+          </span>
+          {!isDisabled && <i className="ti ti-arrow-right" style={{ fontSize: 14, color: "var(--primary)" }} />}
+        </div>
+      </div>
+    </Link>
+  );
+};
+
+// ── SubSectionBlock ───────────────────────────────────────────────────────────────
+
+const SubSectionBlock = ({ sub, isLast }: { sub: SubSection; isLast: boolean }) => (
+  <div className={isLast ? "" : "mb-4"}>
+    {/* Header */}
+    <div className="d-flex align-items-center gap-2 mb-3">
+      <span
+        className="d-flex align-items-center justify-content-center flex-shrink-0"
+        style={{ width: 28, height: 28, borderRadius: 7, background: "var(--primary-transparent)" }}
+      >
+        <i className={sub.icon} style={{ fontSize: 15, color: "var(--primary)" }} />
+      </span>
+      <h6 className="fw-semibold mb-0">{sub.title}</h6>
+    </div>
+
+    {/* Grid */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+        gap: 14,
+      }}
+    >
+      {sub.items.map((item) => (
+        <ItemCard key={item.label} item={item} />
+      ))}
     </div>
   </div>
 );
 
-const CardGrid = ({ children }: { children: React.ReactNode }) => (
-  <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5 g-4">
-    {children}
+// ── SectionBlock ──────────────────────────────────────────────────────────────────
+
+const SectionBlock = ({ section }: { section: Section }) => (
+  <div className="card mb-4">
+    <div className="card-body p-4">
+      {/* Section heading */}
+      <div className="mb-4" style={{ paddingLeft: 12, borderLeft: "3px solid var(--primary)" }}>
+        <h5 className="fw-semibold fs-17 mb-1">{section.title}</h5>
+        <p className="text-muted mb-0">{section.subtitle}</p>
+      </div>
+
+      {section.subSections.map((sub, i) => (
+        <SubSectionBlock key={sub.title} sub={sub} isLast={i === section.subSections.length - 1} />
+      ))}
+    </div>
   </div>
 );
 
+// ── Page ──────────────────────────────────────────────────────────────────────────
+
 const SettingsHome = () => {
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+
+  const filteredSections = search.trim() === ""
+    ? SECTIONS
+    : SECTIONS
+        .map((section) => ({
+          ...section,
+          subSections: section.subSections
+            .map((sub) => ({
+              ...sub,
+              items: sub.items.filter(
+                (item) =>
+                  item.label.toLowerCase().includes(search.toLowerCase()) ||
+                  item.description.toLowerCase().includes(search.toLowerCase())
+              ),
+            }))
+            .filter((sub) => sub.items.length > 0),
+        }))
+        .filter((section) => section.subSections.length > 0);
 
   return (
     <div className="page-wrapper">
-      <div className="content" style={{ padding: 0 }}>
-        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "1.5rem 2.5rem" }}>
-          <PageHeader
-            title="Settings"
-            showModuleTile={false}
-            showExport={false}
-            badgeCount={false}
-            showClose={true}
-            onClose={() => navigate(-1)}
-          />
+      <div className="content">
+        <PageHeader
+          title="Settings"
+          showModuleTile={false}
+          showExport={false}
+          badgeCount={false}
+          showClose={true}
+          onClose={() => navigate(-1)}
+        />
 
-          {/* Organisation Settings */}
-          <div className="card border-0 rounded-0">
-            <div className="card-header">
-              <h5 className="mb-0">Organisation Settings</h5>
-            </div>
-            <div className="card-body">
-              <CardGrid>
-
-                <SettingCard
-                  icon="ti ti-building"
-                  iconColor="#16a34a"
-                  headerGradient="linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)"
-                  title="Organisation"
-                  items={[
-                    { label: "Profile",   to: route.profile },
-                    { label: "Branding",  to: route.companySettings },
-                    { label: "Locations", to: route.locations },
-                  ]}
-                />
-
-                <SettingCard
-                  icon="ti ti-wand"
-                  iconColor="#d97706"
-                  headerGradient="linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)"
-                  title="Customisation"
-                  items={[
-                    { label: "Transaction Number Series", to: route.transactionSeriesList },
-                  ]}
-                />
-
-              </CardGrid>
-            </div>
+        {/* Search */}
+        <div className="mb-4" style={{ maxWidth: 380 }}>
+          <div className="position-relative">
+            <i
+              className="ti ti-search position-absolute"
+              style={{ left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--body-color)", fontSize: 15, pointerEvents: "none" }}
+            />
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search settings..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ paddingLeft: 36 }}
+            />
           </div>
-
-          {/* Module Settings */}
-          <div className="card border-0 rounded-0 mt-3">
-            <div className="card-header">
-              <h5 className="mb-0">Module Settings</h5>
-            </div>
-            <div className="card-body">
-              <CardGrid>
-
-                <SettingCard
-                  icon="ti ti-layout-list"
-                  iconColor="#16a34a"
-                  headerGradient="linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)"
-                  title="General"
-                  items={[
-                    { label: "Customers and Vendors", to: "#" },
-                    { label: "Items",                 to: route.projectSettings },
-                  ]}
-                />
-
-                <SettingCard
-                  icon="ti ti-package"
-                  iconColor="#dc2626"
-                  headerGradient="linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)"
-                  title="Inventory"
-                  items={[
-                    { label: "Assemblies",            to: route.compositeItems },
-                    { label: "Inventory Adjustments", to: "#" },
-                    { label: "Packages",              to: "#" },
-                    { label: "Shipments",             to: "#" },
-                    { label: "Transfer Orders",       to: "#" },
-                  ]}
-                />
-
-                <SettingCard
-                  icon="ti ti-shopping-bag"
-                  iconColor="#0891b2"
-                  headerGradient="linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)"
-                  title="Sales"
-                  items={[
-                    { label: "Sales Orders",      to: "#" },
-                    { label: "Delivery Challans", to: "#" },
-                    { label: "Invoices",          to: "#" },
-                    { label: "Payments Received", to: "#" },
-                    { label: "Sales Returns",     to: "#" },
-                    { label: "Credit Notes",      to: "#" },
-                  ]}
-                />
-
-                <SettingCard
-                  icon="ti ti-receipt"
-                  iconColor="#0d9488"
-                  headerGradient="linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)"
-                  title="Purchases"
-                  items={[
-                    { label: "Purchase Orders",   to: "#" },
-                    { label: "Purchase Receives", to: "#" },
-                    { label: "Bills",             to: "#" },
-                    { label: "Payments Made",     to: "#" },
-                    { label: "Vendor Credits",    to: "#" },
-                  ]}
-                />
-
-              </CardGrid>
-            </div>
-          </div>
-
         </div>
+
+        {/* Sections */}
+        {filteredSections.length === 0 ? (
+          <div className="card">
+            <div className="card-body text-center py-5">
+              <i className="ti ti-search-off fs-17" style={{ color: "var(--body-color)", opacity: 0.4 }} />
+              <p className="text-muted mt-3 mb-0">
+                No settings found for <strong>"{search}"</strong>
+              </p>
+            </div>
+          </div>
+        ) : (
+          filteredSections.map((section) => (
+            <SectionBlock key={section.title} section={section} />
+          ))
+        )}
       </div>
-
-      <footer className="footer d-block d-md-flex justify-content-between text-md-start text-center">
-        <p className="mb-md-0 mb-1">
-          Copyright &copy;{" "}
-          <Link to="#" className="link-primary text-decoration-underline">
-            Femi9
-          </Link>
-        </p>
-        <div className="d-flex align-items-center gap-2 footer-links justify-content-center justify-content-md-end">
-          <Link to="#">About</Link>
-          <Link to="#">Terms</Link>
-          <Link to="#">Contact Us</Link>
-        </div>
-      </footer>
     </div>
   );
 };
