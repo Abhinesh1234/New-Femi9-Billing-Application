@@ -8,6 +8,7 @@ import { fetchItem, fetchItems, uploadItemImage, updateItem, type ItemListRecord
 import { fetchSettings, type ProductConfiguration } from "../../../../core/services/settingApi";
 import { fetchItemAuditLogs, type AuditLogEntry } from "../../../../core/services/auditLogApi";
 import { fetchCustomFields } from "../../../../core/services/customFieldApi";
+import { fetchLocations, type LocationListItem } from "../../../../core/services/locationApi";
 import { all_routes } from "../../../../routes/all_routes";
 
 const route = all_routes;
@@ -141,6 +142,11 @@ const CompositeItemOverview = () => {
   const [auditTotal, setAuditTotal] = useState(0);
   const [cfLabels, setCfLabels] = useState<Record<string, string>>({});
 
+  // ── Locations tab ──
+  const [locations, setLocations] = useState<LocationListItem[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(false);
+  const [locationsLoaded, setLocationsLoaded] = useState(false);
+
   // ── Left panel scroll ──
   const listScrollRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
@@ -230,6 +236,18 @@ const CompositeItemOverview = () => {
       setAuditLoading(false);
     })();
   }, [activeTab, id, auditPage]);
+
+  // Load locations once when locations tab first opened
+  useEffect(() => {
+    if (activeTab !== "locations" || locationsLoaded) return;
+    (async () => {
+      setLocationsLoading(true);
+      const res = await fetchLocations({ active_only: true });
+      if (res.success) setLocations(res.data);
+      setLocationsLoaded(true);
+      setLocationsLoading(false);
+    })();
+  }, [activeTab]);
 
   // Scroll active item into view in left panel
   useEffect(() => {
@@ -333,7 +351,7 @@ const CompositeItemOverview = () => {
               >
                 {filterLabel}
               </button>
-              <div className="dropdown-menu">
+              <div className="dropdown-menu dropmenu-hover-primary">
                 <ul>
                   <li><button className="dropdown-item" onClick={() => setListFilter("all")}>All Composite Items</button></li>
                   <li><button className="dropdown-item" onClick={() => setListFilter("assembly")}>Assembly</button></li>
@@ -354,7 +372,7 @@ const CompositeItemOverview = () => {
               <button type="button" className="btn btn-icon btn-outline-light shadow" data-bs-toggle="dropdown" style={{ width: 28, height: 28, fontSize: 13 }}>
                 <i className="ti ti-dots" />
               </button>
-              <div className="dropdown-menu dropdown-menu-end">
+              <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                 <ul>
                   <li>
                     <button
@@ -480,7 +498,7 @@ const CompositeItemOverview = () => {
                   <button type="button" className="btn btn-outline-light dropdown-toggle shadow px-3" style={{ height: 36 }} data-bs-toggle="dropdown">
                     More
                   </button>
-                  <div className="dropdown-menu dropdown-menu-end">
+                  <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                     <ul>
                       <li><button className="dropdown-item"><i className="ti ti-copy me-2" />Duplicate</button></li>
                       <li><button className="dropdown-item text-danger"><i className="ti ti-trash me-2" />Delete</button></li>
@@ -776,53 +794,83 @@ const CompositeItemOverview = () => {
                 {/* ── Full-width: Associated Components ── */}
                 <div className="col-12">
                   <hr className="mt-0 mb-3" />
-                  <h6 className="fw-semibold mb-3">Associated Components</h6>
+                  <h6 className="fw-semibold fs-14 mb-3">
+                    Associated Products
+                    <span className="ms-2 badge badge-soft-secondary fs-12 fw-medium">
+                      {item.composite_type === "assembly" ? "Assembly" : item.composite_type === "kit" ? "Kit" : ""}
+                    </span>
+                  </h6>
                   {components.length === 0 ? (
                     <p className="fs-14 text-muted mb-0">No components associated.</p>
                   ) : (
-                    <div className="border rounded overflow-hidden">
-                      <div className="d-flex align-items-center px-3 py-2 border-bottom" style={{ background: "#f8f9fa", gap: 12 }}>
-                        <div style={{ flex: 3 }}>
-                          <span className="fw-semibold fs-12 text-uppercase">Item</span>
+                    <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
+                      <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
+                        <div className="d-flex align-items-center gap-2 mb-1">
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
+                          <span className="fw-semibold fs-14">{components.length} component{components.length !== 1 ? "s" : ""}</span>
                         </div>
-                        <div style={{ width: 80, flexShrink: 0 }}>
-                          <span className="fw-semibold fs-12 text-uppercase">Type</span>
-                        </div>
-                        <div style={{ width: 80, flexShrink: 0 }}>
-                          <span className="fw-semibold fs-12 text-uppercase">Unit</span>
-                        </div>
-                        <div style={{ width: 80, flexShrink: 0, textAlign: "right" }}>
-                          <span className="fw-semibold fs-12 text-uppercase">Qty</span>
-                        </div>
+                        <p className="text-muted fs-13 mb-0">Items and services that make up this composite product.</p>
                       </div>
-                      {components.map((comp: any, idx: number) => {
-                        const compName = comp.component_item?.name ?? `Item #${comp.component_item_id}`;
-                        const compType = comp.component_type === "service" ? "Service" : "Item";
-                        const qty = parseFloat(comp.quantity ?? "1");
-                        return (
-                          <div
-                            key={comp.id ?? idx}
-                            className="d-flex align-items-center px-3 py-2"
-                            style={{ borderBottom: idx < components.length - 1 ? "1px solid #f0f2f5" : undefined, gap: 12 }}
-                          >
-                            <div style={{ flex: 3 }}>
-                              <span className="fs-14">{compName}</span>
-                              {comp.component_item?.sku && (
-                                <span className="fs-12 text-muted ms-2">({comp.component_item.sku})</span>
-                              )}
-                            </div>
-                            <div style={{ width: 80, flexShrink: 0 }}>
-                              <span className="fs-13 text-muted">{compType}</span>
-                            </div>
-                            <div style={{ width: 80, flexShrink: 0 }}>
-                              <span className="fs-13 text-muted">{comp.component_item?.unit ?? "—"}</span>
-                            </div>
-                            <div style={{ width: 80, flexShrink: 0, textAlign: "right" }}>
-                              <span className="fs-14 fw-medium">{isNaN(qty) ? comp.quantity : qty}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="table mb-0" style={{ minWidth: 640, width: "100%" }}>
+                          <thead>
+                            <tr>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 56, whiteSpace: "nowrap" }} />
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", whiteSpace: "nowrap" }}>Item Name</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 100, whiteSpace: "nowrap" }}>Type</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>SKU</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Unit</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Qty</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Selling (₹)</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Cost (₹)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {components.map((comp: any) => {
+                              const ci = comp.component_item ?? {};
+                              const ciImg = ci.image ? `/storage/${ci.image}` : null;
+                              const qty = comp.quantity ? parseFloat(comp.quantity) : 0;
+                              const sp  = comp.selling_price != null ? parseFloat(comp.selling_price) : null;
+                              const cp  = comp.cost_price    != null ? parseFloat(comp.cost_price)    : null;
+                              return (
+                                <tr key={comp.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                                  <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    <div
+                                      className="rounded border d-flex align-items-center justify-content-center overflow-hidden"
+                                      style={{ width: 36, height: 36, background: "#f8f9fa", flexShrink: 0 }}
+                                    >
+                                      {ciImg
+                                        ? <img src={ciImg} alt={ci.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                        : <i className="ti ti-photo text-muted" style={{ fontSize: 14 }} />
+                                      }
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    <div className="fw-medium fs-14">{ci.name ?? "—"}</div>
+                                    {ci.sku && <div className="fs-12 text-muted">{ci.sku}</div>}
+                                  </td>
+                                  <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    <span className={`badge ${comp.component_type === "service" ? "badge-soft-primary" : "badge-soft-secondary"} fs-12`}>
+                                      {comp.component_type === "service" ? "Service" : "Item"}
+                                    </span>
+                                  </td>
+                                  <td className="fs-13 text-muted" style={{ padding: "10px 16px", verticalAlign: "middle" }}>{ci.sku ?? "—"}</td>
+                                  <td className="fs-13 text-muted" style={{ padding: "10px 16px", verticalAlign: "middle" }}>{ci.unit ?? "—"}</td>
+                                  <td className="fs-14 fw-medium text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    {isNaN(qty) ? comp.quantity : (qty % 1 === 0 ? qty : qty.toFixed(2))}
+                                  </td>
+                                  <td className="fs-13 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    {sp != null ? `₹${sp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
+                                  </td>
+                                  <td className="fs-13 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    {cp != null ? `₹${cp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -838,7 +886,7 @@ const CompositeItemOverview = () => {
                       <button type="button" className="btn btn-sm btn-outline-light shadow dropdown-toggle px-2 fs-12" data-bs-toggle="dropdown">
                         This Month
                       </button>
-                      <div className="dropdown-menu dropdown-menu-end">
+                      <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                         <ul>
                           <li><button className="dropdown-item fs-13">This Week</button></li>
                           <li><button className="dropdown-item fs-13">This Month</button></li>
@@ -864,12 +912,92 @@ const CompositeItemOverview = () => {
               </div>
             )}
 
-            {/* ── Tab: Locations / Transactions ── */}
-            {(activeTab === "locations" || activeTab === "transactions") && (
+            {/* ── Tab: Locations ── */}
+            {activeTab === "locations" && (
+              <div>
+                <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                  <div className="d-flex align-items-center gap-2">
+                    <h6 className="fw-semibold fs-15 mb-0">Stock Locations</h6>
+                    <div className="dropdown">
+                      <button
+                        type="button"
+                        className="btn btn-outline-light shadow"
+                        data-bs-toggle="dropdown"
+                        style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <i className="ti ti-settings fs-14" />
+                      </button>
+                      <div className="dropdown-menu dropdown-menu-start dropmenu-hover-primary">
+                        <ul>
+                          <li><button className="dropdown-item fs-13"><i className="ti ti-columns me-2" />Customize Columns</button></li>
+                          <li><button className="dropdown-item fs-13"><i className="ti ti-download me-2" />Export</button></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {locationsLoading ? (
+                  <div className="text-center py-5 text-muted">
+                    <span className="spinner-border spinner-border-sm text-primary me-2" />
+                    <span className="fs-14">Loading locations…</span>
+                  </div>
+                ) : locations.length === 0 ? (
+                  <div className="text-center py-5 text-muted border rounded">
+                    <i className="ti ti-building-warehouse fs-32 d-block mb-2" />
+                    <p className="fs-14 mb-0">No active locations found.</p>
+                  </div>
+                ) : (
+                  <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
+                        <span className="fw-semibold fs-14">{locations.length} location(s)</span>
+                      </div>
+                      <p className="text-muted fs-13 mb-0">Stock levels across all active locations for this item.</p>
+                    </div>
+                    <table className="table mb-0" style={{ width: "100%" }}>
+                      <thead>
+                        <tr>
+                          <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6" }}>Location Name</th>
+                          <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 150 }}>Stock on Hand</th>
+                          <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 160 }}>Committed Stock</th>
+                          <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 170 }}>Available for Sale</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {locations.map((loc) => (
+                          <tr key={loc.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                            <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                              <div className="d-flex align-items-center gap-1">
+                                <span>{loc.name}</span>
+                                {!!loc.is_primary && (
+                                  <span title="Primary location" style={{ display: "inline-flex", flexShrink: 0 }}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                    </svg>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle" }}>0.00</td>
+                            <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle" }}>0.00</td>
+                            <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle" }}>0.00</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Transactions ── */}
+            {activeTab === "transactions" && (
               <div className="card border">
                 <div className="card-body text-center py-5 text-muted">
-                  <i className="ti ti-tools fs-32 d-block mb-2" />
-                  <p className="mb-0 fs-14">{tabs.find((t) => t.key === activeTab)?.label} — coming soon</p>
+                  <i className="ti ti-receipt fs-32 d-block mb-2" />
+                  <p className="mb-0 fs-14">Transactions — coming soon</p>
                 </div>
               </div>
             )}

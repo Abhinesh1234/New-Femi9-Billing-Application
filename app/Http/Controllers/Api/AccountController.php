@@ -8,12 +8,11 @@ use App\Http\Requests\UpdateAccountRequest;
 use App\Models\Account;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class AccountController extends Controller
 {
-    private const TYPES = ['sales', 'purchase', 'inventory'];
-
     public function index(Request $request): JsonResponse
     {
         $ctx = $this->buildCtx($request, 'AccountController::index');
@@ -39,6 +38,7 @@ class AccountController extends Controller
 
         try {
             $account = Account::create($request->validated());
+            Log::info('[AccountController] Created', array_merge($ctx, ['account_id' => $account->id]));
             return $this->successResponse(['message' => 'Account created.', 'data' => $account], 201);
 
         } catch (Throwable $e) {
@@ -54,6 +54,7 @@ class AccountController extends Controller
         try {
             $record = Account::findOrFail($account);
             $record->update($request->validated());
+            Log::info('[AccountController] Updated', $ctx);
             return $this->successResponse(['message' => 'Account updated.', 'data' => $record]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -70,6 +71,7 @@ class AccountController extends Controller
 
         try {
             Account::findOrFail($account)->delete();
+            Log::info('[AccountController] Deleted', $ctx);
             return $this->successResponse(['message' => 'Account deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateBrandRequest;
 use App\Models\Brand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class BrandController extends Controller
@@ -36,6 +37,7 @@ class BrandController extends Controller
 
         try {
             $brand = Brand::create(['name' => trim($request->validated('name'))]);
+            Log::info('[BrandController] Created', array_merge($ctx, ['brand_id' => $brand->id]));
             return $this->successResponse(['message' => 'Brand created.', 'data' => $brand], 201);
 
         } catch (Throwable $e) {
@@ -51,6 +53,7 @@ class BrandController extends Controller
         try {
             $record = Brand::findOrFail($brand);
             $record->update(['name' => trim($request->validated('name'))]);
+            Log::info('[BrandController] Updated', array_merge($ctx, ['brand_id' => $brand]));
             return $this->successResponse(['message' => 'Brand updated.', 'data' => $record]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -67,6 +70,7 @@ class BrandController extends Controller
 
         try {
             Brand::findOrFail($brand)->delete();
+            Log::info('[BrandController] Deleted', $ctx);
             return $this->successResponse(['message' => 'Brand deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

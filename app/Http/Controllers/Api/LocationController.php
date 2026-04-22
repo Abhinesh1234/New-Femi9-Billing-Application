@@ -10,6 +10,7 @@ use App\Models\Location;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class LocationController extends Controller
@@ -56,6 +57,8 @@ class LocationController extends Controller
             $data['created_by'] = $request->user()->id;
 
             $location = Location::create($data);
+
+            Log::info('[LocationController] Created', array_merge($ctx, ['location_id' => $location->id]));
 
             try {
                 $this->audit($request, 'created', $location->id, null, $location->toArray());
@@ -107,6 +110,8 @@ class LocationController extends Controller
 
             $location->update($request->validated());
 
+            Log::info('[LocationController] Updated', array_merge($ctx, ['location_id' => $id]));
+
             try {
                 $this->audit($request, 'updated', $id, $old, $location->fresh()->toArray());
             } catch (Throwable) {}
@@ -138,6 +143,7 @@ class LocationController extends Controller
 
             $location->delete();
 
+            Log::info('[LocationController] Deleted', array_merge($ctx, ['location_id' => $id]));
             return $this->successResponse(['message' => 'Location deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

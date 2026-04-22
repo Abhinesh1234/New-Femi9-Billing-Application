@@ -313,6 +313,7 @@ class SettingController extends Controller
     protected function ctx(Request $request, string $file, string $function, int $line, string $module): array
     {
         return [
+            'tag'      => "SettingController::{$function}",
             'datetime' => now()->format('Y-m-d H:i:s.u'),
             'file'     => $file,
             'function' => $function,
@@ -321,6 +322,7 @@ class SettingController extends Controller
             'ip'       => $request->ip(),
             'method'   => $request->method(),
             'url'      => $request->fullUrl(),
+            'user_id'  => $request->user()?->id,
         ];
     }
 }

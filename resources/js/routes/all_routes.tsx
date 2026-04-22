@@ -190,6 +190,7 @@ export const all_routes = {
   addItem: "/items/new",
   itemOverview: "/items/:id",
   editItem: "/items/:id/edit",
+  addOpeningStock: "/items/:id/opening-stock",
   compositeItems: "/composite-items",
   addCompositeItem: "/composite-items/new",
   compositeItemOverview: "/composite-items/:id",
@@ -208,6 +209,7 @@ export const all_routes = {
   editPriceList: "/price-list/:id/edit",
 
   // settings routes
+  settingsHome: "/settings",
   productCustomField: "/app-settings/product-settings/add-custom-field",
   productCustomFieldEdit: "/app-settings/product-settings/edit-custom-field/:id",
   customFields: "/app-settings/custom-fields",

@@ -818,25 +818,6 @@ const ProjectSettings = () => {
                         </div>
                       </div>
 
-                      {/* Save Button */}
-                      <div>
-                        <button
-                          type="button"
-                          className="btn btn-primary px-4"
-                          onClick={handleSave}
-                          disabled={saving}
-                        >
-                          {saving ? (
-                            <>
-                              <span className="spinner-border spinner-border-sm me-2" role="status" />
-                              Saving…
-                            </>
-                          ) : (
-                            "Save"
-                          )}
-                        </button>
-                      </div>
-
                     </div>
                   )}
 
@@ -995,6 +976,29 @@ const ProjectSettings = () => {
             </div>
           </div>
         </div>
+
+        {/* ══ Sticky Save bar — General tab only ═══════════════════ */}
+        {activeTab === "general" && (
+          <div
+            className="bg-white border-top d-flex align-items-center gap-2 px-4"
+            style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
+          >
+            <button
+              type="button"
+              className="btn btn-danger me-2"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-1" role="status" />
+                  Saving…
+                </>
+              ) : "Save"}
+            </button>
+          </div>
+        )}
+
         <Footer />
       </div>
 

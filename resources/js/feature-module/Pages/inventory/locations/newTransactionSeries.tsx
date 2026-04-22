@@ -368,32 +368,36 @@ const NewTransactionSeries = () => {
                 </div>
               </div>
 
-              {/* ── Save / Cancel ─────────────────────────────────── */}
-              <div className="border-top pt-3 d-flex align-items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-danger me-2"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  {saving
-                    ? <><span className="spinner-border spinner-border-sm me-1" role="status" />Saving…</>
-                    : isEditMode ? "Update" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-light"
-                  onClick={goBack}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-              </div>
-
             </div>
           </div>
 
         </div>
+
+        {/* ══ Sticky Save / Cancel bar ═════════════════════════════ */}
+        <div
+          className="bg-white border-top d-flex align-items-center gap-2 px-4"
+          style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
+        >
+          <button
+            type="button"
+            className="btn btn-danger me-2"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving
+              ? <><span className="spinner-border spinner-border-sm me-1" role="status" />Saving…</>
+              : isEditMode ? "Update" : "Save"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-light"
+            onClick={goBack}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+        </div>
+
         <Footer />
       </div>
 

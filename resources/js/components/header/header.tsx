@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import HeaderSearchmodal from "../header-searchModal/headerSearchmodal";
 import ImageWithBasePath from "../imageWithBasePath";
 import { useDispatch, useSelector } from "react-redux";
@@ -7,9 +7,13 @@ import { useEffect, useState } from "react";
 import { updateTheme } from "../../core/redux/themeSlice";
 import { all_routes } from "../../routes/all_routes";
 
+const NO_SIDEBAR_PATHS = [all_routes.settingsHome];
+
 const Header = () => {
 
   const route = all_routes
+  const { pathname } = useLocation();
+  const hideSidebar = NO_SIDEBAR_PATHS.includes(pathname);
   const dispatch = useDispatch();
   const themeSettings = useSelector((state: any) => state.theme.themeSettings);
 
@@ -82,14 +86,16 @@ const Header = () => {
               </span>
             </Link>
             {/* Sidebar Mobile Button */}
-            <Link
-              id="mobile_btn"
-              className="mobile-btn"
-              to="#sidebar"
-              onClick={toggleMobileSidebar}
-            >
-              <i className="ti ti-menu-deep fs-24" />
-            </Link>
+            {!hideSidebar && (
+              <Link
+                id="mobile_btn"
+                className="mobile-btn"
+                to="#sidebar"
+                onClick={toggleMobileSidebar}
+              >
+                <i className="ti ti-menu-deep fs-24" />
+              </Link>
+            )}
             <button
               className="sidenav-toggle-btn btn border-0 p-0"
               id="toggle_btn2"
@@ -246,12 +252,11 @@ const Header = () => {
               </div>
             </div>
             <div className="header-line" />
-            {/* message */}
+            {/* Settings */}
             <div className="header-item">
               <div className="dropdown me-2">
-                <Link to={route.chat} className="btn topbar-link">
-                  <i className="ti ti-message-circle-exclamation" />
-                  <span className="badge rounded-pill">14</span>
+                <Link to={route.settingsHome} className="btn topbar-link">
+                  <i className="ti ti-settings fs-16" />
                 </Link>
               </div>
             </div>

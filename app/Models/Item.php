@@ -21,6 +21,7 @@ class Item extends Model
         'is_returnable', 'dimensions', 'weight', 'identifiers',
         'variation_config', 'custom_fields',
         'is_composite', 'composite_type',
+        'admin_only',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class Item extends Model
         'track_inventory'  => 'boolean',
         'is_returnable'    => 'boolean',
         'is_composite'     => 'boolean',
+        'admin_only'       => 'boolean',
         'selling_price'    => 'decimal:4',
         'cost_price'       => 'decimal:4',
         'reorder_point'    => 'integer',

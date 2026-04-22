@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class CategoryController extends Controller
@@ -37,6 +38,7 @@ class CategoryController extends Controller
 
         try {
             $category = Category::create($request->validated());
+            Log::info('[CategoryController] Created', array_merge($ctx, ['category_id' => $category->id]));
             return $this->successResponse([
                 'message' => 'Category created.',
                 'data'    => $category->load('parent:id,name'),
@@ -55,6 +57,7 @@ class CategoryController extends Controller
         try {
             $record = Category::findOrFail($category);
             $record->update($request->validated());
+            Log::info('[CategoryController] Updated', array_merge($ctx, ['category_id' => $category]));
             return $this->successResponse([
                 'message' => 'Category updated.',
                 'data'    => $record->load('parent:id,name'),
@@ -74,6 +77,7 @@ class CategoryController extends Controller
 
         try {
             Category::findOrFail($category)->delete();
+            Log::info('[CategoryController] Deleted', $ctx);
             return $this->successResponse(['message' => 'Category deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

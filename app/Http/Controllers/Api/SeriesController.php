@@ -12,6 +12,7 @@ use App\Models\TransactionSeriesModule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class SeriesController extends Controller
@@ -57,6 +58,8 @@ class SeriesController extends Controller
             ]);
 
             DB::commit();
+
+            Log::info('[SeriesController] Created', array_merge($ctx, ['series_id' => $series->id]));
 
             return $this->successResponse([
                 'message' => 'Transaction series created.',
@@ -112,6 +115,8 @@ class SeriesController extends Controller
 
             DB::commit();
 
+            Log::info('[SeriesController] Updated', array_merge($ctx, ['series_id' => $id]));
+
             return $this->successResponse([
                 'message' => 'Transaction series updated.',
                 'data'    => $series->fresh('modulesConfig'),
@@ -135,6 +140,7 @@ class SeriesController extends Controller
             $series = TransactionSeries::findOrFail($id);
             $series->delete();
 
+            Log::info('[SeriesController] Deleted', array_merge($ctx, ['series_id' => $id]));
             return $this->successResponse(['message' => 'Transaction series deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -169,6 +175,10 @@ class SeriesController extends Controller
 
             DB::commit();
 
+            Log::info('[SeriesController] Locations assigned', array_merge($ctx, [
+                'series_id'    => $id,
+                'location_ids' => $locationIds,
+            ]));
             return $this->successResponse(['message' => 'Locations assigned successfully.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

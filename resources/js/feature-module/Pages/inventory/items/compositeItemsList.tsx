@@ -535,7 +535,7 @@ const CompositeItemsList = () => {
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
                       {typeFilter === "all" ? "All Types" : typeFilter === "assembly" ? "Assembly" : "Kit"}
                     </Link>
-                    <div className="dropdown-menu">
+                    <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
                         <li><button className="dropdown-item" onClick={() => setTypeFilter("all")}><i className="ti ti-dots-vertical me-1" /> All Types</button></li>
                         <li><button className="dropdown-item" onClick={() => setTypeFilter("assembly")}><i className="ti ti-dots-vertical me-1" /> Assembly</button></li>
@@ -551,7 +551,7 @@ const CompositeItemsList = () => {
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
                       <i className="ti ti-sort-ascending-2 me-2" />Sort By
                     </Link>
-                    <div className="dropdown-menu">
+                    <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
                         <li><Link to="#" className="dropdown-item">Newest</Link></li>
                         <li><Link to="#" className="dropdown-item">Oldest</Link></li>

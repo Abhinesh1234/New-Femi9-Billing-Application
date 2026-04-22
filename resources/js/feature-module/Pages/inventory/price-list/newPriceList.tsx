@@ -630,187 +630,225 @@ const NewPriceList = () => {
                     </div>
 
                     {/* Table */}
-                    <div className="table-responsive">
-                      <table
-                        className="table table-borderless align-middle mb-0"
-                        style={{ minWidth: 600, tableLayout: "fixed", width: "100%" }}
-                      >
-                        <thead>
-                          <tr style={{
-                            fontSize: 11, fontWeight: 600, textTransform: "uppercase",
-                            color: "#888", letterSpacing: "0.05em", borderBottom: "1px solid #f0f0f0",
-                          }}>
-                            <th style={{ paddingBottom: 10 }}>Item Details</th>
-                            <th style={{ paddingBottom: 10, width: 150, textAlign: "right" }}>Sales Rate</th>
-                            {pricingScheme === "volume" && (
-                              <th style={{ paddingBottom: 10, width: 120 }}>Start Qty</th>
-                            )}
-                            {pricingScheme === "volume" && (
-                              <th style={{ paddingBottom: 10, width: 120 }}>End Qty</th>
-                            )}
-                            <th style={{ paddingBottom: 10, width: 160 }}>Custom Rate</th>
-                            {includeDiscount && (
-                              <th style={{ paddingBottom: 10, width: 140 }}>
-                                Discount (%)
-                                <OverlayTrigger placement="top" overlay={<Tooltip>Discount % to apply for this item in this price list</Tooltip>}>
-                                  <i className="ti ti-info-circle text-muted fs-14 ms-1" />
-                                </OverlayTrigger>
-                              </th>
-                            )}
-                          </tr>
-                        </thead>
+                    <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
 
-                        <tbody>
-                          {pricingScheme === "unit"
-                            ? items.map((item) => (
-                              <tr key={item.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
-                                <td className="fs-14" style={{ paddingTop: 8, paddingBottom: 8 }}>{item.code}</td>
-                                <td className="fs-14 text-end" style={{ paddingTop: 8, paddingBottom: 8 }}>
-                                  ₹{item.salesRate.toFixed(2)}
-                                </td>
-                                <td style={{ paddingTop: 8, paddingBottom: 8 }}>
-                                  <div className="input-group">
-                                    <span className="input-group-text bg-white fs-14">₹</span>
-                                    <input
-                                      type="number"
-                                      className="form-control fs-14"
-                                      placeholder="0.00"
-                                      value={item.customRate}
-                                      onChange={(e) => updateItem(item.id, "customRate", e.target.value)}
-                                    />
-                                  </div>
-                                </td>
-                                {includeDiscount && (
-                                  <td style={{ paddingTop: 8, paddingBottom: 8 }}>
-                                    <input
-                                      type="number"
-                                      className="form-control fs-14"
-                                      placeholder="0.00"
-                                      value={item.discount}
-                                      onChange={(e) => updateItem(item.id, "discount", e.target.value)}
-                                    />
+                      {/* Header */}
+                      <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
+                        <div className="d-flex align-items-center gap-2 mb-1">
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
+                          <span className="fw-semibold fs-14">{items.length} item(s) selected</span>
+                        </div>
+                        <p className="text-muted fs-13 mb-0">Customise the rate for each item in this price list.</p>
+                      </div>
+
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="table mb-0" style={{ minWidth: 600, width: "100%" }}>
+                          <thead>
+                            <tr>
+                              <th
+                                className="text-uppercase fs-12 fw-semibold text-muted"
+                                style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6" }}
+                              >
+                                Item Details
+                              </th>
+                              <th
+                                className="text-uppercase fs-12 fw-semibold text-muted"
+                                style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 150, textAlign: "right" }}
+                              >
+                                Sales Rate
+                              </th>
+                              {pricingScheme === "volume" && (
+                                <th
+                                  className="text-uppercase fs-12 fw-semibold text-muted"
+                                  style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}
+                                >
+                                  Start Qty
+                                </th>
+                              )}
+                              {pricingScheme === "volume" && (
+                                <th
+                                  className="text-uppercase fs-12 fw-semibold text-muted"
+                                  style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}
+                                >
+                                  End Qty
+                                </th>
+                              )}
+                              <th
+                                className="text-uppercase fs-12 fw-semibold text-muted"
+                                style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 160 }}
+                              >
+                                Custom Rate
+                              </th>
+                              {includeDiscount && (
+                                <th
+                                  className="text-uppercase fs-12 fw-semibold text-muted"
+                                  style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 140 }}
+                                >
+                                  Discount (%)
+                                  <OverlayTrigger placement="top" overlay={<Tooltip>Discount % to apply for this item in this price list</Tooltip>}>
+                                    <i className="ti ti-info-circle text-muted fs-14 ms-1" />
+                                  </OverlayTrigger>
+                                </th>
+                              )}
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {pricingScheme === "unit"
+                              ? items.map((item) => (
+                                <tr key={item.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                                  <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>{item.code}</td>
+                                  <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                    ₹{item.salesRate.toFixed(2)}
                                   </td>
-                                )}
-                              </tr>
-                            ))
-                            : items.flatMap((item) => [
-                              ...item.ranges.map((range, ri) => (
-                                <tr key={`${item.id}-${range.id}`} style={{ borderBottom: "1px solid #f5f5f5" }}>
-                                  {ri === 0 && (
-                                    <>
-                                      <td className="fs-14" rowSpan={item.ranges.length + 1} style={{ verticalAlign: "top", paddingTop: 10 }}>
-                                        {item.code}
-                                      </td>
-                                      <td className="fs-14 text-end" rowSpan={item.ranges.length + 1} style={{ verticalAlign: "top", paddingTop: 10 }}>
-                                        ₹{item.salesRate.toFixed(2)}
-                                      </td>
-                                    </>
-                                  )}
-                                  <td style={{ paddingTop: 6, paddingBottom: 6 }}>
-                                    <input
-                                      type="number"
-                                      className="form-control fs-14"
-                                      placeholder="Qty"
-                                      value={range.startQty}
-                                      onChange={(e) => updateRange(item.id, range.id, "startQty", e.target.value)}
-                                    />
-                                  </td>
-                                  <td style={{ paddingTop: 6, paddingBottom: 6 }}>
-                                    <input
-                                      type="number"
-                                      className="form-control fs-14"
-                                      placeholder="Qty"
-                                      value={range.endQty}
-                                      onChange={(e) => updateRange(item.id, range.id, "endQty", e.target.value)}
-                                    />
-                                  </td>
-                                  <td style={{ paddingTop: 6, paddingBottom: 6 }}>
+                                  <td style={{ padding: "12px 16px", verticalAlign: "middle" }}>
                                     <div className="input-group">
                                       <span className="input-group-text bg-white fs-14">₹</span>
                                       <input
                                         type="number"
                                         className="form-control fs-14"
                                         placeholder="0.00"
-                                        value={range.customRate}
-                                        onChange={(e) => updateRange(item.id, range.id, "customRate", e.target.value)}
+                                        value={item.customRate}
+                                        onChange={(e) => updateItem(item.id, "customRate", e.target.value)}
                                       />
-                                      {item.ranges.length > 1 && (
-                                        <button
-                                          type="button"
-                                          className="btn btn-danger px-2"
-                                          onClick={() => removeRange(item.id, range.id)}
-                                          tabIndex={-1}
-                                          title="Remove range"
-                                        >
-                                          <i className="ti ti-x fs-14" />
-                                        </button>
-                                      )}
                                     </div>
                                   </td>
                                   {includeDiscount && (
-                                    <td style={{ paddingTop: 6, paddingBottom: 6 }}>
+                                    <td style={{ padding: "12px 16px", verticalAlign: "middle" }}>
                                       <input
                                         type="number"
                                         className="form-control fs-14"
                                         placeholder="0.00"
-                                        value={range.discount}
-                                        onChange={(e) => updateRange(item.id, range.id, "discount", e.target.value)}
+                                        value={item.discount}
+                                        onChange={(e) => updateItem(item.id, "discount", e.target.value)}
                                       />
                                     </td>
                                   )}
                                 </tr>
-                              )),
-                              <tr key={`add-${item.id}`} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                                <td colSpan={includeDiscount ? 4 : 3} style={{ paddingTop: 6, paddingBottom: 10 }}>
-                                  <button
-                                    type="button"
-                                    className="btn btn-link p-0 fs-14 text-danger d-flex align-items-center gap-1"
-                                    style={{ textDecoration: "none" }}
-                                    onClick={() => addRange(item.id)}
-                                  >
-                                    <i className="ti ti-circle-plus fs-14" />
-                                    Add New Range
-                                  </button>
-                                </td>
-                              </tr>,
-                            ])
-                          }
-                        </tbody>
-                      </table>
+                              ))
+                              : items.flatMap((item) => [
+                                ...item.ranges.map((range, ri) => (
+                                  <tr key={`${item.id}-${range.id}`} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                                    {ri === 0 && (
+                                      <>
+                                        <td className="fs-14" rowSpan={item.ranges.length + 1} style={{ padding: "12px 16px", verticalAlign: "top" }}>
+                                          {item.code}
+                                        </td>
+                                        <td className="fs-14 text-end" rowSpan={item.ranges.length + 1} style={{ padding: "12px 16px", verticalAlign: "top" }}>
+                                          ₹{item.salesRate.toFixed(2)}
+                                        </td>
+                                      </>
+                                    )}
+                                    <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
+                                      <input
+                                        type="number"
+                                        className="form-control fs-14"
+                                        placeholder="Qty"
+                                        value={range.startQty}
+                                        onChange={(e) => updateRange(item.id, range.id, "startQty", e.target.value)}
+                                      />
+                                    </td>
+                                    <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
+                                      <input
+                                        type="number"
+                                        className="form-control fs-14"
+                                        placeholder="Qty"
+                                        value={range.endQty}
+                                        onChange={(e) => updateRange(item.id, range.id, "endQty", e.target.value)}
+                                      />
+                                    </td>
+                                    <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
+                                      <div className="input-group">
+                                        <span className="input-group-text bg-white fs-14">₹</span>
+                                        <input
+                                          type="number"
+                                          className="form-control fs-14"
+                                          placeholder="0.00"
+                                          value={range.customRate}
+                                          onChange={(e) => updateRange(item.id, range.id, "customRate", e.target.value)}
+                                        />
+                                        {item.ranges.length > 1 && (
+                                          <button
+                                            type="button"
+                                            className="btn btn-danger px-2"
+                                            onClick={() => removeRange(item.id, range.id)}
+                                            tabIndex={-1}
+                                            title="Remove range"
+                                          >
+                                            <i className="ti ti-x fs-14" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                    {includeDiscount && (
+                                      <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
+                                        <input
+                                          type="number"
+                                          className="form-control fs-14"
+                                          placeholder="0.00"
+                                          value={range.discount}
+                                          onChange={(e) => updateRange(item.id, range.id, "discount", e.target.value)}
+                                        />
+                                      </td>
+                                    )}
+                                  </tr>
+                                )),
+                                <tr key={`add-${item.id}`} style={{ borderBottom: "1px solid #dee2e6" }}>
+                                  <td colSpan={includeDiscount ? 4 : 3} style={{ padding: "8px 16px" }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-link p-0 fs-14 text-danger d-flex align-items-center gap-1"
+                                      style={{ textDecoration: "none" }}
+                                      onClick={() => addRange(item.id)}
+                                    >
+                                      <i className="ti ti-circle-plus fs-14" />
+                                      Add New Range
+                                    </button>
+                                  </td>
+                                </tr>,
+                              ])
+                            }
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </>
               )}
 
-              {/* ── Save / Cancel ────────────────────────────────────── */}
-              <div className="border-top pt-3 mt-4 d-flex align-items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-danger me-2"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-1" role="status" />
-                      Saving…
-                    </>
-                  ) : (isEditMode ? "Update" : "Save")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-light"
-                  onClick={goBack}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-              </div>
-
             </div>
           </div>
 
         </div>
+
+        {/* ══ Sticky Save / Cancel bar ═════════════════════════════ */}
+        <div
+          className="bg-white border-top d-flex align-items-center gap-2 px-4"
+          style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
+        >
+          <button
+            type="button"
+            className="btn btn-danger me-2"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-1" role="status" />
+                Saving…
+              </>
+            ) : (isEditMode ? "Update" : "Save")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-light"
+            onClick={goBack}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+        </div>
+
         <Footer />
       </div>
 
@@ -872,7 +910,7 @@ const NewPriceList = () => {
             <div className="table-responsive">
               <table
                 className="table table-borderless mb-0"
-                style={{ tableLayout: "fixed", width: "100%" }}
+                style={{ width: "100%" }}
               >
                 <colgroup>
                   <col style={{ width: "40%" }} />

@@ -365,18 +365,25 @@ const EntityField = ({ label, value, onChange, items, onManage }: EntityFieldPro
             {filtered.length === 0 ? (
               <p className="text-muted fs-13 text-center py-2 mb-0">No results</p>
             ) : (
-              filtered.map((item) => (
-                <div
-                  key={item.id}
-                  className="px-3 py-2 fs-15"
-                  style={{ cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f5f5f5")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                  onClick={() => select(item)}
-                >
-                  {item.name}
-                </div>
-              ))
+              filtered.map((item) => {
+                const isActive = item.name === value;
+                return (
+                  <div
+                    key={item.id}
+                    className="px-3 py-2 fs-15"
+                    style={{
+                      cursor: "pointer",
+                      background: isActive ? "#E41F07" : "transparent",
+                      color: isActive ? "#fff" : "#707070",
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "#E41F07"; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "#707070"; }}
+                    onClick={() => select(item)}
+                  >
+                    {item.name}
+                  </div>
+                );
+              })
             )}
           </div>
 
@@ -906,6 +913,7 @@ const CompositeItem = () => {
   const [reorderPoint, setReorderPoint]         = useState("");
 
   const [isReturnable, setIsReturnable] = useState(true);
+  const [adminOnly, setAdminOnly]       = useState(false);
 
   // ── Composite-specific state ──────────────────────────────────────────────
   const [compositeType, setCompositeType]       = useState<CompositeType>("assembly");
@@ -1241,6 +1249,7 @@ const CompositeItem = () => {
           setDescription(d.description ?? "");
           setProductTag(d.product_tag ?? "None");
           setIsReturnable(d.is_returnable ?? true);
+          setAdminOnly(d.admin_only ?? false);
 
           if (d.image) {
             setExistingImagePath(d.image as string);
@@ -2366,6 +2375,7 @@ const CompositeItem = () => {
         : null,
       reorder_point:        reorderPoint ? parseFloat(reorderPoint) : null,
       is_returnable:        isReturnable,
+      admin_only:           adminOnly,
       dimensions:           itemType === "goods" && (dimLength || dimWidth || dimHeight)
         ? { length: dimLength ? parseFloat(dimLength) : null, width: dimWidth ? parseFloat(dimWidth) : null, height: dimHeight ? parseFloat(dimHeight) : null, unit: dimUnit }
         : null,
@@ -2530,7 +2540,7 @@ const CompositeItem = () => {
                   </div>
 
                   {/* Unit */}
-                  <div className="row mb-3 align-items-center">
+                  <div className="row mb-3 align-items-center" style={{ position: "relative", zIndex: 100 }}>
                     <label className="col-sm-4 col-form-label text-danger fw-medium fs-14 d-flex align-items-center gap-1">
                       Unit{"\u00A0"}<span>*</span>
                       <OverlayTrigger placement="right" overlay={<Tooltip>The unit of measurement for this item</Tooltip>}>
@@ -2558,6 +2568,22 @@ const CompositeItem = () => {
                         onChange={(n, id) => { setCategory(n); setCategoryId(id); }}
                         items={categories.map((c) => ({ id: c.id, name: getCategoryPath(c, categories) }))}
                         onManage={() => setShowCategoryModal(true)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Admin Only */}
+                  <div className="row mb-3 align-items-center">
+                    <label className="col-sm-4 col-form-label fw-medium fs-14" htmlFor="admin_only_check">
+                      Admin Only
+                    </label>
+                    <div className="col-sm-8 d-flex align-items-center" style={{ minHeight: 38 }}>
+                      <input
+                        className="form-check-input mt-0"
+                        type="checkbox"
+                        id="admin_only_check"
+                        checked={adminOnly}
+                        onChange={() => setAdminOnly((v) => !v)}
                       />
                     </div>
                   </div>
@@ -2609,6 +2635,7 @@ const CompositeItem = () => {
                   />
                 </div>}
               </div>
+
 
               {/* ══ Associate Items ════════════════════════════════════ */}
               <div className="border-top pt-4 mb-4">
@@ -3518,7 +3545,7 @@ const CompositeItem = () => {
               )}
 
               {/* ══ Associated Tags ═══════════════════════════════════ */}
-              <div className="border-top pt-4 mb-4">
+              <div className="border-top pt-4 mb-4" style={{ position: "relative", zIndex: 100 }}>
                 <h6 className="fw-semibold fs-15 mb-3">Associated Tags</h6>
                 <div className="row mb-3 align-items-center">
                   <label className="col-sm-2 col-form-label text-danger fw-medium fs-14">
@@ -3639,35 +3666,39 @@ const CompositeItem = () => {
                 })()}
               </div>
 
-              {/* ══ Save / Cancel ════════════════════════════════════ */}
-              <div className="border-top pt-3 d-flex align-items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-danger me-2"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-1" role="status" />
-                      Saving…
-                    </>
-                  ) : isEditMode ? "Update" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-light"
-                  onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-              </div>
-
             </div>{/* card-body */}
           </div>{/* card */}
 
         </div>{/* content */}
+
+        {/* ══ Sticky Save / Cancel bar ═════════════════════════════ */}
+        <div
+          className="bg-white border-top d-flex align-items-center gap-2 px-4"
+          style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
+        >
+          <button
+            type="button"
+            className="btn btn-danger me-2"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-1" role="status" />
+                Saving…
+              </>
+            ) : isEditMode ? "Update" : "Save"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-light"
+            onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+        </div>
+
         <Footer />
       </div>
 
@@ -3859,9 +3890,9 @@ const CompositeItem = () => {
                 <div
                   key={item.id}
                   className="px-3 py-2 fs-15"
-                  style={{ cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f5f5f5")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                  style={{ cursor: "pointer", color: "#707070" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#E41F07"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "#707070"; }}
                   onClick={() => {
                     const rowId = assocOpenId as number;
                     updateAssocRow(rowId, "item_id", item.id);
@@ -3943,9 +3974,9 @@ const CompositeItem = () => {
                 <div
                   key={item.id}
                   className="px-3 py-2 fs-15"
-                  style={{ cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f5f5f5")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                  style={{ cursor: "pointer", color: "#707070" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#E41F07"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "#707070"; }}
                   onClick={() => {
                     const rowId = svcOpenId as number;
                     updateServiceRow(rowId, "item_id", item.id);

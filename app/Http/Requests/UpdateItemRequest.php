@@ -73,6 +73,9 @@ class UpdateItemRequest extends FormRequest
             'variants.*.selling_price'     => 'nullable|numeric|min:0',
             'variants.*.image'             => 'nullable|string|max:500',
 
+            // ── Access ───────────────────────────────────────────────────────
+            'admin_only'                             => 'boolean',
+
             // ── Composite ─────────────────────────────────────────────────────
             'is_composite'                           => 'boolean',
             'composite_type'                         => 'nullable|in:assembly,kit',

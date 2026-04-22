@@ -12,6 +12,7 @@ use App\Models\PriceListItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class PriceListController extends Controller
@@ -39,7 +40,7 @@ class PriceListController extends Controller
                 })
                 ->latest();
 
-            $perPage = min((int) $request->query('per_page', 20), 100);
+            $perPage = max(1, min((int) $request->query('per_page', 20), 100));
             $lists   = $query->paginate($perPage);
 
             return $this->successResponse(['data' => $lists]);
@@ -79,6 +80,11 @@ class PriceListController extends Controller
 
             DB::commit();
 
+            Log::info('[PriceListController] Created', array_merge($ctx, [
+                'price_list_id' => $priceList->id,
+                'item_count'    => count($rows),
+            ]));
+
             return $this->successResponse(
                 [
                     'message' => 'Price list created successfully.',
@@ -104,9 +110,11 @@ class PriceListController extends Controller
         try {
             $record = PriceList::with('items')->findOrFail($priceList);
             return $this->successResponse(['data' => $record]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return $this->errorResponse('Price list not found.', 404);
         } catch (Throwable $e) {
             $this->logException('PriceListController::show', $e, $ctx);
-            return $this->errorResponse('Price list not found.', 404);
+            return $this->errorResponse('Failed to fetch price list.', 500);
         }
     }
 
@@ -162,6 +170,8 @@ class PriceListController extends Controller
 
             DB::commit();
 
+            Log::info('[PriceListController] Updated', $ctx);
+
             return $this->successResponse([
                 'message' => 'Price list updated successfully.',
                 'data'    => $record->load('items'),
@@ -184,7 +194,10 @@ class PriceListController extends Controller
         try {
             $record = PriceList::findOrFail($priceList);
             $record->delete();
+            Log::info('[PriceListController] Deleted', $ctx);
             return $this->successResponse(['message' => 'Price list deleted successfully.']);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return $this->errorResponse('Price list not found.', 404);
         } catch (Throwable $e) {
             $this->logException('PriceListController::destroy', $e, $ctx);
             return $this->errorResponse('Failed to delete price list.', 500);

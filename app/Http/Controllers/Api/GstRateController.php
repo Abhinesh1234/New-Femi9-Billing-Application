@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateGstRateRequest;
 use App\Models\GstRate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class GstRateController extends Controller
@@ -36,6 +37,7 @@ class GstRateController extends Controller
 
         try {
             $rate = GstRate::create($request->validated());
+            Log::info('[GstRateController] Created', array_merge($ctx, ['gst_rate_id' => $rate->id]));
             return $this->successResponse(['message' => 'GST rate created.', 'data' => $rate], 201);
 
         } catch (Throwable $e) {
@@ -51,6 +53,7 @@ class GstRateController extends Controller
         try {
             $record = GstRate::findOrFail($gstRate);
             $record->update($request->validated());
+            Log::info('[GstRateController] Updated', $ctx);
             return $this->successResponse(['message' => 'GST rate updated.', 'data' => $record]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -67,6 +70,7 @@ class GstRateController extends Controller
 
         try {
             GstRate::findOrFail($gstRate)->delete();
+            Log::info('[GstRateController] Deleted', $ctx);
             return $this->successResponse(['message' => 'GST rate deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

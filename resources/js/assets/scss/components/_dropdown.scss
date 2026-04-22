@@ -18,6 +18,7 @@
     font-size: 14px;
     border-radius: 5px;
     background-color: $white;
+    margin-top: 6px;
     &[data-popper-placement="top-start"],
     &[data-popper-placement="top"] {
         animation-name: DropDownSlideDown;
@@ -25,14 +26,15 @@
     .dropdown-item {
         border-radius: $border-radius;
 		font-size: 14px;
-    	color: var(--body-color);
+    	color: #707070;
     	padding: 0.4rem 0.9375rem;
 		background-color: transparent;
 		&:hover,
 		&:focus,
 		&:active,
 		&.active {
-			background: $light;
+			background-color: $primary;
+			color: $white;
 		}
     }
 }
@@ -52,10 +54,10 @@
 }
 @keyframes DropDownSlideUp {
     100% {
-        margin-top: -1px;
+        margin-top: 6px;
     }
     0% {
-        margin-top: 5px;
+        margin-top: 12px;
     }
 }
 @keyframes DropDownSlideDown {
@@ -272,6 +274,22 @@ $dropdown-menu-md-width: 250px;
 		}
 	}
 }
+// Matches CommonSelect react-select menu: solid primary bg + white text on hover
+.dropdown-menu {
+	&.dropmenu-hover-primary {
+		.dropdown-item {
+			color: #707070;
+			&:hover,
+			&:focus,
+			&:active,
+			&.active {
+				background-color: $primary !important;
+				color: $white !important;
+			}
+		}
+	}
+}
+
 .dropdown-menu {
 	@mixin dropmenu-light-color($color) {
 		backdrop-filter: blur(2rem);

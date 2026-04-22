@@ -12,7 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        $middleware->prependToGroup('api', \App\Http\Middleware\LogApiActivity::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

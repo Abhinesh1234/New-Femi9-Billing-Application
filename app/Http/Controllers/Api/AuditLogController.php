@@ -19,8 +19,20 @@ class AuditLogController extends Controller
      * GET /api/audit-logs
      * Global feed — filterable by type, id, user, event.
      */
+    private const ALLOWED_TYPES = [
+        'items', 'location', 'price_lists', 'composite_items',
+        'brands', 'categories', 'gst_rates', 'hsn_codes', 'accounts',
+        'transaction_series', 'settings', 'custom_fields',
+    ];
+
     public function index(Request $request): JsonResponse
     {
+        $request->validate([
+            'from' => 'nullable|date',
+            'to'   => 'nullable|date',
+            'type' => 'nullable|string|in:' . implode(',', self::ALLOWED_TYPES),
+        ]);
+
         $ctx = $this->buildCtx($request, 'AuditLogController::index');
 
         try {
@@ -33,7 +45,7 @@ class AuditLogController extends Controller
                 ->when($request->query('to'),      fn($q, $v) => $q->whereDate('created_at', '<=', $v))
                 ->latest('created_at');
 
-            $perPage = min((int) $request->query('per_page', 25), 100);
+            $perPage = max(1, min((int) $request->query('per_page', 25), 100));
 
             return $this->successResponse(['data' => $query->paginate($perPage)]);
 
@@ -49,17 +61,23 @@ class AuditLogController extends Controller
      */
     public function forRecord(Request $request, string $type, int $id): JsonResponse
     {
+        if (!in_array($type, self::ALLOWED_TYPES, true)) {
+            return $this->errorResponse("Unknown audit type: [{$type}].", 404);
+        }
+
         $ctx = $this->buildCtx($request, 'AuditLogController::forRecord', [
             'auditable_type' => $type,
             'auditable_id'   => $id,
         ]);
 
         try {
+            $perPage = max(1, min((int) $request->query('per_page', 25), 100));
+
             $logs = AuditLog::with('user:id,name,phone')
                 ->forModel($type, $id)
                 ->when($request->query('event'), fn($q, $v) => $q->event($v))
                 ->latest('created_at')
-                ->paginate(min((int) $request->query('per_page', 25), 100));
+                ->paginate($perPage);
 
             if ($type === 'items') {
                 $this->resolveItemRefs($logs->items());

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class AuthController extends Controller
@@ -25,16 +26,35 @@ class AuthController extends Controller
                 ->first();
 
             if (!$user || !Hash::check($request->password, $user->password)) {
+                Log::warning('[AuthController] Login failed — invalid credentials', [
+                    'phone'      => $request->phone,
+                    'ip'         => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                    'datetime'   => now()->format('Y-m-d H:i:s.u'),
+                ]);
                 return $this->errorResponse('Invalid phone number or password.', 401);
             }
 
             if (!$user->is_active) {
+                Log::warning('[AuthController] Login blocked — account deactivated', [
+                    'user_id'    => $user->id,
+                    'ip'         => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                    'datetime'   => now()->format('Y-m-d H:i:s.u'),
+                ]);
                 return $this->errorResponse('Your account has been deactivated. Please contact an administrator.', 403);
             }
 
             // Revoke all previous tokens and issue a fresh one
             $user->tokens()->delete();
             $token = $user->createToken('auth_token')->plainTextToken;
+
+            Log::info('[AuthController] Login success', [
+                'user_id'    => $user->id,
+                'ip'         => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'datetime'   => now()->format('Y-m-d H:i:s.u'),
+            ]);
 
             return $this->successResponse([
                 'token'      => $token,
@@ -59,9 +79,16 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         try {
-            $request->user()?->currentAccessToken()?->delete();
+            $user = $request->user();
+            $user?->currentAccessToken()?->delete();
+            Log::info('[AuthController] Logout', [
+                'user_id'  => $user?->id,
+                'ip'       => $request->ip(),
+                'datetime' => now()->format('Y-m-d H:i:s.u'),
+            ]);
             return $this->successResponse(['message' => 'Logged out successfully.']);
         } catch (Throwable $e) {
+            Log::error('[AuthController] Logout failed', ['error' => $e->getMessage()]);
             return $this->errorResponse('Logout failed.', 500);
         }
     }
@@ -99,11 +126,23 @@ class AuthController extends Controller
 
         try {
             $user->update(['password' => Hash::make($request->new_password)]);
-            // Revoke all other tokens
+            // Revoke all other tokens (keep current session alive)
             $user->tokens()->where('id', '!=', $request->user()->currentAccessToken()->id)->delete();
+
+            Log::info('[AuthController] Password changed', [
+                'user_id'    => $user->id,
+                'ip'         => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'datetime'   => now()->format('Y-m-d H:i:s.u'),
+            ]);
 
             return $this->successResponse(['message' => 'Password changed successfully.']);
         } catch (Throwable $e) {
+            Log::error('[AuthController] Password change failed', [
+                'user_id' => $user->id,
+                'error'   => $e->getMessage(),
+                'datetime'=> now()->format('Y-m-d H:i:s.u'),
+            ]);
             return $this->errorResponse('Failed to change password.', 500);
         }
     }

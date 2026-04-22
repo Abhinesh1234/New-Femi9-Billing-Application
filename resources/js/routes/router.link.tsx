@@ -177,6 +177,7 @@ import PrefixesSettings from "../feature-module/Pages/settings/website-settings/
 import PreferenceSettings from "../feature-module/Pages/settings/website-settings/preferenceSettings";
 import AppearanceSettings from "../feature-module/Pages/settings/website-settings/appearanceSettings";
 import LanguageSettings from "../feature-module/Pages/settings/website-settings/languageSettings";
+import SettingsHome from "../feature-module/Pages/settings/settingsHome";
 import InvoiceSettings from "../feature-module/Pages/settings/app-settings/invoiceSettings";
 import PrintersSettings from "../feature-module/Pages/settings/app-settings/printersSettings";
 import CustomFieldsSetting from "../feature-module/Pages/settings/app-settings/customFieldsSetting";
@@ -185,6 +186,7 @@ import AddCustomField from "../feature-module/Pages/settings/app-settings/addCus
 import NewItem from "../feature-module/Pages/inventory/items/newItem";
 import ItemsList from "../feature-module/Pages/inventory/items/itemsList";
 import ItemOverview from "../feature-module/Pages/inventory/items/itemOverview";
+import AddOpeningStock from "../feature-module/Pages/inventory/items/addOpeningStock";
 import CompositeItem from "../feature-module/Pages/inventory/items/compositeItem";
 import CompositeItemsList from "../feature-module/Pages/inventory/items/compositeItemsList";
 import CompositeItemOverview from "../feature-module/Pages/inventory/items/compositeItemOverview";
@@ -1422,6 +1424,13 @@ export const publicRoutes = [
     meta_title: "Settings - Custom Fields",
   },
   {
+    id: "settings-home",
+    path: route.settingsHome,
+    element: <SettingsHome />,
+    route: Route,
+    meta_title: "Settings",
+  },
+  {
     id: "168a",
     path: route.projectSettings,
     element: <ProjectSettings />,
@@ -1455,6 +1464,13 @@ export const publicRoutes = [
     element: <NewItem />,
     route: Route,
     meta_title: "Edit Item",
+  },
+  {
+    id: "inv-4",
+    path: route.addOpeningStock,
+    element: <AddOpeningStock />,
+    route: Route,
+    meta_title: "Add Opening Stock",
   },
   {
     id: "comp-0",

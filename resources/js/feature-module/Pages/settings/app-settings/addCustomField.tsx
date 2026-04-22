@@ -1782,27 +1782,31 @@ const AddCustomField = () => {
                     </div>
                   )}
 
-                  {/* Save / Cancel */}
-                  <div className="d-flex align-items-center justify-content-start gap-2 pt-2">
-                    <button type="button" className="btn btn-sm btn-primary" onClick={handleSave} disabled={saving}>
-                      {saving ? (
-                        <>
-                          <span className="spinner-border spinner-border-sm me-1" role="status" />
-                          Saving…
-                        </>
-                      ) : "Save"}
-                    </button>
-                    <button type="button" className="btn btn-cancel btn-sm" onClick={goBack} disabled={saving}>
-                      Cancel
-                    </button>
-                  </div>
-
                 </div>
               </div>
             </div>
           </div>
 
         </div>
+
+        {/* ══ Sticky Save / Cancel bar ═════════════════════════════ */}
+        <div
+          className="bg-white border-top d-flex align-items-center gap-2 px-4"
+          style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
+        >
+          <button type="button" className="btn btn-danger me-2" onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-1" role="status" />
+                Saving…
+              </>
+            ) : "Save"}
+          </button>
+          <button type="button" className="btn btn-outline-light" onClick={goBack} disabled={saving}>
+            Cancel
+          </button>
+        </div>
+
         <Footer />
       </div>
 

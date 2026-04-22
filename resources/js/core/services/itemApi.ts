@@ -51,6 +51,7 @@ export interface ItemPayload {
   is_composite?:         boolean;
   composite_type?:       "assembly" | "kit" | null;
   components?:           ComponentPayload[];
+  admin_only?:           boolean;
 }
 
 export interface ComponentPayload {

@@ -93,45 +93,43 @@ const PageHeader = ({ title = "", badgeCount = null, showExport = false, moduleT
           </div>
         )}
 
-        {showClose ? (
           <Link
             to="#"
             className="btn btn-icon btn-outline-light shadow"
             data-bs-toggle="tooltip"
             data-bs-placement="top"
-            data-bs-title="Close"
-            aria-label="Close"
-            onClick={(e) => { e.preventDefault(); onClose?.(); }}
+            data-bs-title="Refresh"
+            aria-label="Refresh"
           >
-            <i className="ti ti-x" />
+            <i className="ti ti-refresh" />
           </Link>
-        ) : (
-          <>
+
+          <Link
+            to="#"
+            id='collapse-header'
+            onClick={handleCollapseToggle}
+            className={`btn btn-icon btn-outline-light shadow ${isCollapsed === true ? 'active' : ''}`}
+            data-bs-toggle="tooltip"
+            data-bs-placement="top"
+            data-bs-title={isCollapsed ? "Expand" : "Collapse"}
+            aria-label="Collapse"
+          >
+            <i className="ti ti-transition-top" />
+          </Link>
+
+          {showClose && (
             <Link
               to="#"
               className="btn btn-icon btn-outline-light shadow"
               data-bs-toggle="tooltip"
               data-bs-placement="top"
-              data-bs-title="Refresh"
-              aria-label="Refresh"
+              data-bs-title="Close"
+              aria-label="Close"
+              onClick={(e) => { e.preventDefault(); onClose?.(); }}
             >
-              <i className="ti ti-refresh" />
+              <i className="ti ti-x" />
             </Link>
-
-            <Link
-              to="#"
-              id='collapse-header'
-              onClick={handleCollapseToggle}
-              className={`btn btn-icon btn-outline-light shadow ${isCollapsed === true ? 'active' : ''}`}
-              data-bs-toggle="tooltip"
-              data-bs-placement="top"
-              data-bs-title={isCollapsed ? "Expand" : "Collapse"}
-              aria-label="Collapse"
-            >
-              <i className="ti ti-transition-top" />
-            </Link>
-          </>
-        )}
+          )}
       </div>
     </div>
   );

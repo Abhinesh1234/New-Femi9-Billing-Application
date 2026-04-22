@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\GstRateController;
 use App\Http\Controllers\Api\HsnCodeController;
 use App\Http\Controllers\Api\ItemController;
+use App\Http\Controllers\Api\OpeningStockController;
 use App\Http\Controllers\Api\PriceListController;
 use App\Http\Controllers\Api\SettingController;
 use Illuminate\Support\Facades\Route;
@@ -53,6 +54,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/{item}',              [ItemController::class, 'update'])->middleware('throttle:30,1');
         Route::delete('/{item}',           [ItemController::class, 'destroy']);
         Route::post('/{item}/restore',     [ItemController::class, 'restore']);
+
+        // Opening stock
+        Route::get('/{item}/opening-stock',  [OpeningStockController::class, 'show']);
+        Route::post('/{item}/opening-stock', [OpeningStockController::class, 'save'])->middleware('throttle:30,1');
+
+        // Current stock snapshot
+        Route::get('/{item}/stock', [OpeningStockController::class, 'stock']);
     });
 
     // ── Composite Items ───────────────────────────────────────────────────────

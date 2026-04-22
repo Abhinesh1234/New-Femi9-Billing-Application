@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateHsnCodeRequest;
 use App\Models\HsnCode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class HsnCodeController extends Controller
@@ -37,6 +38,7 @@ class HsnCodeController extends Controller
 
         try {
             $code = HsnCode::create($request->validated());
+            Log::info('[HsnCodeController] Created', array_merge($ctx, ['hsn_code_id' => $code->id]));
             return $this->successResponse(['message' => 'HSN code created.', 'data' => $code], 201);
 
         } catch (Throwable $e) {
@@ -52,6 +54,7 @@ class HsnCodeController extends Controller
         try {
             $record = HsnCode::findOrFail($hsnCode);
             $record->update($request->validated());
+            Log::info('[HsnCodeController] Updated', $ctx);
             return $this->successResponse(['message' => 'HSN code updated.', 'data' => $record]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -68,6 +71,7 @@ class HsnCodeController extends Controller
 
         try {
             HsnCode::findOrFail($hsnCode)->delete();
+            Log::info('[HsnCodeController] Deleted', $ctx);
             return $this->successResponse(['message' => 'HSN code deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

@@ -64,7 +64,7 @@ class CompositeItemController extends Controller
                 )
                 ->latest();
 
-            $perPage = min((int) $request->query('per_page', 20), 100);
+            $perPage = max(1, min((int) $request->query('per_page', 20), 100));
             $items   = $query->paginate($perPage);
 
             return $this->successResponse(['data' => $items]);
@@ -299,7 +299,7 @@ class CompositeItemController extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return $this->errorResponse('Image upload failed: ' . $e->getMessage(), 500);
+            return $this->errorResponse('Image upload failed. Please try again.', 500);
         }
     }
 

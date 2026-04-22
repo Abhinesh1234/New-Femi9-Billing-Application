@@ -1108,12 +1108,12 @@
     "src": "resources/js/assets/img/bg/chat-bg.png"
   },
   "resources/js/main.tsx": {
-    "file": "assets/main-N5YSWDzb.js",
+    "file": "assets/main-BmLNFfkL.js",
     "name": "main",
     "src": "resources/js/main.tsx",
     "isEntry": true,
     "css": [
-      "assets/main-Dk2ef8np.css"
+      "assets/main-DI0zqpWb.css"
     ],
     "assets": [
       "assets/bootstrap-icons-BtvjY1KL.woff2",

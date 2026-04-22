@@ -559,7 +559,7 @@ const ItemsList = () => {
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
                       {itemTypeFilter === "all" ? "All Items" : itemTypeFilter === "goods" ? "Goods" : "Services"}
                     </Link>
-                    <div className="dropdown-menu">
+                    <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
                         <li><button className="dropdown-item" onClick={() => setItemTypeFilter("all")}><i className="ti ti-dots-vertical me-1" /> All Items</button></li>
                         <li><button className="dropdown-item" onClick={() => setItemTypeFilter("goods")}><i className="ti ti-dots-vertical me-1" /> Goods</button></li>
@@ -576,7 +576,7 @@ const ItemsList = () => {
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
                       <i className="ti ti-sort-ascending-2 me-2" />Sort By
                     </Link>
-                    <div className="dropdown-menu">
+                    <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
                         <li><Link to="#" className="dropdown-item">Newest</Link></li>
                         <li><Link to="#" className="dropdown-item">Oldest</Link></li>

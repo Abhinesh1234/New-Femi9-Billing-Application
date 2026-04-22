@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useLocation } from "react-router";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Toast } from "react-bootstrap";
@@ -9,6 +9,7 @@ import { fetchSettings, type ProductConfiguration } from "../../../../core/servi
 import { fetchItemAuditLogs, type AuditLogEntry } from "../../../../core/services/auditLogApi";
 import { fetchCustomFields } from "../../../../core/services/customFieldApi";
 import { fetchLocations, type LocationListItem } from "../../../../core/services/locationApi";
+import { fetchItemStock, type ItemStockRow } from "../../../../core/services/openingStockApi";
 import { all_routes } from "../../../../routes/all_routes";
 
 const route = all_routes;
@@ -135,10 +136,11 @@ function UploadBox({ label, icon = "ti-upload", img }: { label: string; icon?: s
 const ItemOverview = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const navState = useLocation().state as { tab?: Tab } | null;
   const [item, setItem] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [activeTab, setActiveTab] = useState<Tab>(navState?.tab ?? "overview");
 
   // ── Items list (left panel) ──
   const [allItems, setAllItems] = useState<ItemListRecord[]>([]);
@@ -171,6 +173,7 @@ const ItemOverview = () => {
 
   // ── Locations tab ──
   const [locations, setLocations] = useState<LocationListItem[]>([]);
+  const [stockMap, setStockMap] = useState<Record<number, ItemStockRow>>({});
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationsLoaded, setLocationsLoaded] = useState(false);
 
@@ -261,13 +264,21 @@ const ItemOverview = () => {
     })();
   }, [activeTab, id, auditPage]);
 
-  // Load locations once when locations tab first opened
+  // Load locations + current stock when locations tab first opened
   useEffect(() => {
     if (activeTab !== "locations" || locationsLoaded) return;
     (async () => {
       setLocationsLoading(true);
-      const res = await fetchLocations({ active_only: true });
-      if (res.success) setLocations(res.data);
+      const [locRes, stockRes] = await Promise.all([
+        fetchLocations({ active_only: true }),
+        fetchItemStock(Number(id)),
+      ]);
+      if (locRes.success) setLocations(locRes.data);
+      if (stockRes.success) {
+        const map: Record<number, ItemStockRow> = {};
+        stockRes.data.forEach((r) => { map[r.location_id] = r; });
+        setStockMap(map);
+      }
       setLocationsLoaded(true);
       setLocationsLoading(false);
     })();
@@ -368,7 +379,7 @@ const ItemOverview = () => {
               >
                 {filterLabel}
               </button>
-              <div className="dropdown-menu">
+              <div className="dropdown-menu dropmenu-hover-primary">
                 <ul>
                   <li><button className="dropdown-item" onClick={() => setListFilter("all")}>All Items</button></li>
                   <li><button className="dropdown-item" onClick={() => setListFilter("goods")}>Goods</button></li>
@@ -389,7 +400,7 @@ const ItemOverview = () => {
               <button type="button" className="btn btn-icon btn-outline-light shadow" data-bs-toggle="dropdown" style={{ width: 28, height: 28, fontSize: 13 }}>
                 <i className="ti ti-dots" />
               </button>
-              <div className="dropdown-menu dropdown-menu-end">
+              <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                 <ul>
                   <li>
                     <button
@@ -509,7 +520,7 @@ const ItemOverview = () => {
                   className="btn btn-outline-light shadow"
                   title="Edit"
                   style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={(e) => { e.preventDefault(); navigate(`/items/${id}/edit`); }}
+                  onClick={(e) => { e.preventDefault(); navigate(item.is_composite ? `/composite-items/${id}/edit` : `/items/${id}/edit`); }}
                 >
                   <i className="ti ti-pencil" />
                 </Link>
@@ -521,7 +532,7 @@ const ItemOverview = () => {
                   <button type="button" className="btn btn-outline-light dropdown-toggle shadow px-3" style={{ height: 36 }} data-bs-toggle="dropdown">
                     More
                   </button>
-                  <div className="dropdown-menu dropdown-menu-end">
+                  <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                     <ul>
                       <li><button className="dropdown-item"><i className="ti ti-copy me-2" />Duplicate</button></li>
                       <li><button className="dropdown-item text-danger"><i className="ti ti-trash me-2" />Delete</button></li>
@@ -827,6 +838,101 @@ const ItemOverview = () => {
 
                 </div>
 
+                {/* ── Full-width: Associated Components (composite items only) ── */}
+                {item.is_composite && Array.isArray(item.components) && (item.components as any[]).length > 0 && (
+                  <div className="col-12">
+                    <hr className="mt-0 mb-3" />
+                    <h6 className="fw-semibold fs-14 mb-3">
+                      Associated Products
+                      <span className="ms-2 badge badge-soft-secondary fs-12 fw-medium">
+                        {item.composite_type === "assembly" ? "Assembly" : item.composite_type === "kit" ? "Kit" : ""}
+                      </span>
+                    </h6>
+
+                    <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
+
+                      {/* Header */}
+                      <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
+                        <div className="d-flex align-items-center gap-2 mb-1">
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
+                          <span className="fw-semibold fs-14">{(item.components as any[]).length} component{(item.components as any[]).length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <p className="text-muted fs-13 mb-0">Items and services that make up this composite product.</p>
+                      </div>
+
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="table mb-0" style={{ minWidth: 640, width: "100%" }}>
+                          <thead>
+                            <tr>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 56, whiteSpace: "nowrap" }} />
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", whiteSpace: "nowrap" }}>Item Name</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 100, whiteSpace: "nowrap" }}>Type</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>SKU</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Unit</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Qty</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Selling (₹)</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Cost (₹)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(item.components as any[]).map((comp: any) => {
+                              const ci = comp.component_item ?? {};
+                              const ciImg = ci.image ? `/storage/${ci.image}` : null;
+                              const qty = comp.quantity ? parseFloat(comp.quantity) : 0;
+                              const sp  = comp.selling_price != null ? parseFloat(comp.selling_price) : null;
+                              const cp  = comp.cost_price    != null ? parseFloat(comp.cost_price)    : null;
+                              return (
+                                <tr key={comp.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                                  {/* Thumbnail */}
+                                  <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    <div
+                                      className="rounded border d-flex align-items-center justify-content-center overflow-hidden"
+                                      style={{ width: 36, height: 36, background: "#f8f9fa", flexShrink: 0 }}
+                                    >
+                                      {ciImg
+                                        ? <img src={ciImg} alt={ci.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                        : <i className="ti ti-photo text-muted" style={{ fontSize: 14 }} />
+                                      }
+                                    </div>
+                                  </td>
+                                  {/* Name */}
+                                  <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    <div className="fw-medium fs-14">{ci.name ?? "—"}</div>
+                                    {ci.sku && <div className="fs-12 text-muted">{ci.sku}</div>}
+                                  </td>
+                                  {/* Type */}
+                                  <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    <span className={`badge ${comp.component_type === "service" ? "badge-soft-primary" : "badge-soft-secondary"} fs-12`}>
+                                      {comp.component_type === "service" ? "Service" : "Item"}
+                                    </span>
+                                  </td>
+                                  {/* SKU */}
+                                  <td className="fs-13 text-muted" style={{ padding: "10px 16px", verticalAlign: "middle" }}>{ci.sku ?? "—"}</td>
+                                  {/* Unit */}
+                                  <td className="fs-13 text-muted" style={{ padding: "10px 16px", verticalAlign: "middle" }}>{ci.unit ?? "—"}</td>
+                                  {/* Qty */}
+                                  <td className="fs-14 fw-medium text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    {qty % 1 === 0 ? qty : qty.toFixed(2)}
+                                  </td>
+                                  {/* Selling Price */}
+                                  <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    {sp != null ? `₹${sp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
+                                  </td>
+                                  {/* Cost Price */}
+                                  <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                    {cp != null ? `₹${cp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Full-width: Sales Order Summary chart ── */}
                 <div className="col-12">
                   <hr className="mt-0 mb-3" />
@@ -838,7 +944,7 @@ const ItemOverview = () => {
                       <button type="button" className="btn btn-sm btn-outline-light shadow dropdown-toggle px-2 fs-12" data-bs-toggle="dropdown">
                         This Month
                       </button>
-                      <div className="dropdown-menu dropdown-menu-end">
+                      <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                         <ul>
                           <li><button className="dropdown-item fs-13">This Week</button></li>
                           <li><button className="dropdown-item fs-13">This Month</button></li>
@@ -874,23 +980,17 @@ const ItemOverview = () => {
                     <div className="dropdown">
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline-light shadow d-flex align-items-center gap-1 px-2"
+                        className="btn btn-outline-light shadow"
                         data-bs-toggle="dropdown"
-                        style={{ height: 28 }}
+                        style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
                       >
-                        <i className="ti ti-settings fs-13" />
-                        <i className="ti ti-chevron-down fs-11 text-muted" />
+                        <i className="ti ti-settings fs-14" />
                       </button>
-                      <div className="dropdown-menu dropdown-menu-start">
+                      <div className="dropdown-menu dropdown-menu-start dropmenu-hover-primary">
                         <ul>
                           <li>
-                            <button className="dropdown-item fs-13">
-                              <i className="ti ti-columns me-2" />Customize Columns
-                            </button>
-                          </li>
-                          <li>
-                            <button className="dropdown-item fs-13">
-                              <i className="ti ti-download me-2" />Export
+                            <button className="dropdown-item fs-13" onClick={() => navigate(`/items/${id}/opening-stock`)}>
+                              <i className="ti ti-plus me-2" />Add Opening Stock
                             </button>
                           </li>
                         </ul>
@@ -912,67 +1012,79 @@ const ItemOverview = () => {
                     <p className="fs-14 mb-0">No active locations found.</p>
                   </div>
                 ) : (
-                  <div className="border rounded overflow-hidden">
-                    <table className="table mb-0" style={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
-                      <colgroup>
-                        <col style={{ width: "34%" }} />
-                        <col style={{ width: "22%" }} />
-                        <col style={{ width: "22%" }} />
-                        <col style={{ width: "22%" }} />
-                      </colgroup>
+                  <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
+
+                    {/* Header */}
+                    <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
+                        <span className="fw-semibold fs-14">{locations.length} location(s)</span>
+                      </div>
+                      <p className="text-muted fs-13 mb-0">Stock levels across all active locations for this item.</p>
+                    </div>
+
+                    <table className="table mb-0" style={{ width: "100%" }}>
                       <thead>
-                        <tr style={{ background: "#f8f9fa", borderBottom: "1px solid #dee2e6" }}>
+                        <tr>
                           <th
-                            rowSpan={2}
-                            className="fw-semibold fs-12 text-uppercase align-middle"
-                            style={{ padding: "8px 12px", verticalAlign: "middle", borderBottom: "1px solid #dee2e6", borderRight: "none" }}
+                            className="text-uppercase fs-12 fw-semibold text-muted"
+                            style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6" }}
                           >
                             Location Name
                           </th>
                           <th
-                            colSpan={3}
-                            className="fw-semibold fs-12 text-uppercase text-center"
-                            style={{ padding: "8px 12px", borderBottom: "1px solid #dee2e6" }}
+                            className="text-uppercase fs-12 fw-semibold text-muted text-end"
+                            style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 150 }}
                           >
-                            Stock
-                          </th>
-                        </tr>
-                        <tr style={{ background: "#f8f9fa", borderBottom: "1px solid #dee2e6" }}>
-                          <th className="fw-semibold fs-12 text-uppercase text-end" style={{ padding: "8px 12px" }}>
                             Stock on Hand
                           </th>
-                          <th className="fw-semibold fs-12 text-uppercase text-end" style={{ padding: "8px 12px" }}>
+                          <th
+                            className="text-uppercase fs-12 fw-semibold text-muted text-end"
+                            style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 160 }}
+                          >
                             Committed Stock
                           </th>
-                          <th className="fw-semibold fs-12 text-uppercase text-end" style={{ padding: "8px 12px" }}>
+                          <th
+                            className="text-uppercase fs-12 fw-semibold text-muted text-end"
+                            style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 170 }}
+                          >
                             Available for Sale
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {locations.map((loc) => (
-                          <tr key={loc.id} style={{ borderBottom: "1px solid #f0f2f5" }}>
-                            <td className="fs-14" style={{ padding: "11px 12px", verticalAlign: "middle" }}>
-                              <div className="d-flex align-items-center gap-1">
-                                <span>{loc.name}</span>
-                                {loc.is_primary && (
-                                  <i className="ti ti-star-filled fs-13" style={{ color: "#f59e0b" }} title="Primary location" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="fs-14 text-end" style={{ padding: "11px 12px", verticalAlign: "middle" }}>
-                              0.00
-                            </td>
-                            <td className="fs-14 text-end" style={{ padding: "11px 12px", verticalAlign: "middle" }}>
-                              0.00
-                            </td>
-                            <td className="fs-14 text-end" style={{ padding: "11px 12px", verticalAlign: "middle" }}>
-                              0.00
-                            </td>
-                          </tr>
-                        ))}
+                        {locations.map((loc) => {
+                          const s = stockMap[loc.id];
+                          const fmt = (v?: number) => v != null ? Number(v).toFixed(2) : "—";
+                          return (
+                            <tr key={loc.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                              <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                <div className="d-flex align-items-center gap-1">
+                                  <span>{loc.name}</span>
+                                  {!!loc.is_primary && (
+                                    <span title="Primary location" style={{ display: "inline-flex", flexShrink: 0 }}>
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                      </svg>
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle", color: s ? "inherit" : "#bbb" }}>
+                                {fmt(s?.stock_on_hand)}
+                              </td>
+                              <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle", color: s ? "inherit" : "#bbb" }}>
+                                {fmt(s?.committed_stock)}
+                              </td>
+                              <td className="fs-14 text-end" style={{ padding: "12px 16px", verticalAlign: "middle", color: s ? "inherit" : "#bbb" }}>
+                                {fmt(s?.available_for_sale)}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+
                   </div>
                 )}
               </div>
@@ -1018,26 +1130,29 @@ const ItemOverview = () => {
                     {auditLogs.map((log, idx) => {
                       const isLast = idx === auditLogs.length - 1;
                       const eventColor: Record<string, string> = {
-                        created:  "bg-success",
-                        updated:  "bg-primary",
-                        deleted:  "bg-danger",
-                        restored: "bg-warning",
+                        created:              "bg-success",
+                        updated:              "bg-primary",
+                        deleted:              "bg-danger",
+                        restored:             "bg-warning",
+                        opening_stock_saved:  "bg-info",
                       };
                       const eventIcon: Record<string, string> = {
-                        created:  "ti-plus",
-                        updated:  "ti-pencil",
-                        deleted:  "ti-trash",
-                        restored: "ti-refresh",
+                        created:              "ti-plus",
+                        updated:              "ti-pencil",
+                        deleted:              "ti-trash",
+                        restored:             "ti-refresh",
+                        opening_stock_saved:  "ti-building-warehouse",
                       };
                       const eventLabel: Record<string, string> = {
-                        created:  "Created",
-                        updated:  "Updated",
-                        deleted:  "Deleted",
-                        restored: "Restored",
+                        created:              "Created",
+                        updated:              "Updated",
+                        deleted:              "Deleted",
+                        restored:             "Restored",
+                        opening_stock_saved:  "Opening Stock Saved",
                       };
-                      const bgClass  = eventColor[log.event]  ?? "bg-secondary";
+                      const bgClass   = eventColor[log.event] ?? "bg-secondary";
                       const iconClass = eventIcon[log.event]  ?? "ti-activity";
-                      const label    = eventLabel[log.event]  ?? log.event;
+                      const label     = eventLabel[log.event] ?? log.event.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
                       const changedFields = log.new_values ? Object.keys(log.new_values) : [];
                       const actor = log.user?.name ?? log.user?.email ?? "System";
@@ -1254,6 +1369,12 @@ const ItemOverview = () => {
                       // Skip phantom "updated" entries where nothing visible changed
                       if (log.event === "updated" && diffRows.length === 0) return null;
 
+                      // Opening stock entries for rendering
+                      const openingEntries: { location_name: string; opening_stock: number; opening_stock_value: number }[] =
+                        log.event === "opening_stock_saved" && Array.isArray(log.new_values?.entries)
+                          ? log.new_values.entries
+                          : [];
+
                       return (
                         <div key={log.id} className={`d-flex gap-3 align-items-center position-relative ${isLast ? "" : "mb-4"}`}>
                           {/* Icon dot — sits on top of the spine line */}
@@ -1275,9 +1396,10 @@ const ItemOverview = () => {
                                   <div className="d-flex align-items-center gap-2">
                                     <span className={`badge ${bgClass} fs-12`}>{label}</span>
                                     <span className="fs-14 fw-medium text-dark">
-                                      {log.event === "created"  ? "Item was created"  :
-                                       log.event === "deleted"  ? "Item was deleted"  :
-                                       log.event === "restored" ? "Item was restored" :
+                                      {log.event === "created"             ? "Item was created"  :
+                                       log.event === "deleted"             ? "Item was deleted"  :
+                                       log.event === "restored"            ? "Item was restored" :
+                                       log.event === "opening_stock_saved" ? `Opening stock set for ${openingEntries.length} location${openingEntries.length !== 1 ? "s" : ""}` :
                                        diffRows.length === 1
                                          ? `${diffRows[0].label} was changed`
                                          : `${diffRows.length} field${diffRows.length !== 1 ? "s" : ""} updated`}
@@ -1302,6 +1424,30 @@ const ItemOverview = () => {
                                     <span className="fs-12 text-muted ms-1">· {log.ip_address}</span>
                                   )}
                                 </div>
+
+                                {/* Opening stock entries */}
+                                {log.event === "opening_stock_saved" && openingEntries.length > 0 && (
+                                  <div className="mt-2 border-top pt-2">
+                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                      <thead>
+                                        <tr>
+                                          {["Location", "Opening Stock", "Value / Unit"].map((h) => (
+                                            <th key={h} className="fs-12 text-uppercase text-muted fw-semibold" style={{ padding: "4px 8px", borderBottom: "1px solid #f0f0f0" }}>{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {openingEntries.map((e, i) => (
+                                          <tr key={i}>
+                                            <td className="fs-13" style={{ padding: "4px 8px" }}>{e.location_name}</td>
+                                            <td className="fs-13 fw-medium" style={{ padding: "4px 8px" }}>{Number(e.opening_stock).toFixed(2)}</td>
+                                            <td className="fs-13 fw-medium" style={{ padding: "4px 8px" }}>₹{Number(e.opening_stock_value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
 
                                 {/* Changed fields (updated event) */}
                                 {log.event === "updated" && diffRows.length > 0 && (
