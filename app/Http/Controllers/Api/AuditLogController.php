@@ -19,10 +19,21 @@ class AuditLogController extends Controller
      * GET /api/audit-logs
      * Global feed — filterable by type, id, user, event.
      */
+    // Types match the value stored in auditable_type:
+    //   - Model-backed (Auditable trait): uses $model->getTable() → lowercase plural
+    //   - Manual writes in controllers: use whichever string that controller supplies
     private const ALLOWED_TYPES = [
-        'items', 'location', 'price_lists', 'composite_items',
-        'brands', 'categories', 'gst_rates', 'hsn_codes', 'accounts',
-        'transaction_series', 'settings', 'custom_fields',
+        'items',              // Item + composite items (same table) + opening stock
+        'location',           // LocationController (manual)
+        'price_lists',        // PriceList model (Auditable) + PriceListController (manual)
+        'brands',             // Brand model (Auditable)
+        'categories',         // Category model (Auditable)
+        'gst_rates',          // GstRate model (Auditable)
+        'hsn_codes',          // HsnCode model (Auditable)
+        'accounts',           // Account model (Auditable)
+        'transaction_series', // SeriesController (manual)
+        'Setting',            // SettingController (manual)
+        'CustomField',        // SettingController (manual)
     ];
 
     public function index(Request $request): JsonResponse

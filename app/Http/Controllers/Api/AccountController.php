@@ -88,6 +88,7 @@ class AccountController extends Controller
 
         try {
             Account::onlyTrashed()->findOrFail($account)->restore();
+            Log::info('[AccountController] Restored', array_merge($ctx, ['account_id' => $account]));
             return $this->successResponse(['message' => 'Account restored.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

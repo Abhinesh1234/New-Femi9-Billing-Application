@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
 import { Link, useNavigate } from "react-router";
-import { Modal } from "react-bootstrap";
+import { Modal, Toast } from "react-bootstrap";
 import {
   DndContext,
   closestCenter,
@@ -23,7 +23,10 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import Datatable from "../../../../components/dataTable";
 import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
-import { fetchItems, type ItemListRecord } from "../../../../core/services/itemApi";
+import { type ItemListRecord } from "../../../../core/services/itemApi";
+import { readItemList, getItemList } from "../../../../core/cache/itemCache";
+import { onMutation } from "../../../../core/cache/mutationEvents";
+import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
 
 const route = all_routes;
 
@@ -69,8 +72,10 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   track_inventory: 200,
   reorder_point:   200,
 };
-const COL_WIDTHS_LS_KEY = "femi9_items_col_widths";
-const VIEW_LS_KEY       = "femi9_items_view";
+const COL_WIDTHS_LS_KEY  = "femi9_items_col_widths";
+const COL_ORDER_LS_KEY   = "femi9_items_col_order";
+const COL_VISIBLE_LS_KEY = "femi9_items_col_visible";
+const VIEW_LS_KEY        = "femi9_items_view";
 
 interface ResizableTitleProps extends ThHTMLAttributes<HTMLTableCellElement> {
   onResize?: (key: string, width: number) => void;
@@ -211,6 +216,8 @@ function SortableColRow({ col, checked, onToggle }: { col: ColDef; checked: bool
   );
 }
 
+type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
+
 // ─── Main component ───────────────────────────────────────────────────────────
 const ItemsList = () => {
   const navigate = useNavigate();
@@ -223,15 +230,49 @@ const ItemsList = () => {
   const [items, setItems]                   = useState<ItemListRecord[]>([]);
   const [total, setTotal]                   = useState(0);
   const [loading, setLoading]               = useState(true);
-  const [itemTypeFilter, setItemTypeFilter] = useState<"all" | "goods" | "service">("all");
+  const [itemTypeFilter, setItemTypeFilter] = useState<"all" | "goods" | "service" | "deleted">("all");
+  const [sortBy, setSortBy]                 = useState<SortOption>("newest");
+  const [deletedItems, setDeletedItems]     = useState<ItemListRecord[]>([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
   const [expandedRowKeys, setExpandedRowKeys] = useState<number[]>([]);
   const [folderBtnLeft, setFolderBtnLeft]     = useState(48);
+
+  // ── Toast ──
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ show: false, message: "", type: "success" });
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
+  };
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   // ── Customize Columns modal ──
   const [showColsModal, setShowColsModal] = useState(false);
   const [colSearch, setColSearch]         = useState("");
-  const [colOrder, setColOrder]           = useState<ColDef[]>(INITIAL_COLS);
-  const [visibleCols, setVisibleCols]     = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
+  const [colOrder, setColOrder] = useState<ColDef[]>(() => {
+    try {
+      const saved = localStorage.getItem(COL_ORDER_LS_KEY);
+      if (saved) {
+        const savedKeys: string[] = JSON.parse(saved);
+        const ordered = savedKeys.map(k => INITIAL_COLS.find(c => c.key === k)).filter(Boolean) as ColDef[];
+        const savedSet = new Set(savedKeys);
+        return [...ordered, ...INITIAL_COLS.filter(c => !savedSet.has(c.key))];
+      }
+    } catch {}
+    return INITIAL_COLS;
+  });
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COL_VISIBLE_LS_KEY);
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const validKeys = new Set(INITIAL_COLS.map(c => c.key));
+        return new Set<string>(parsed.filter(k => validKeys.has(k)));
+      }
+    } catch {}
+    return new Set(DEFAULT_VISIBLE);
+  });
   const [draftOrder, setDraftOrder]       = useState<ColDef[]>(INITIAL_COLS);
   const [draftVisible, setDraftVisible]   = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
 
@@ -261,8 +302,14 @@ const ItemsList = () => {
   };
   const closeColsModal = () => setShowColsModal(false);
   const saveColsModal  = () => {
-    setColOrder([...draftOrder]);
-    setVisibleCols(new Set(draftVisible));
+    const newOrder = [...draftOrder];
+    const newVisible = new Set(draftVisible);
+    setColOrder(newOrder);
+    setVisibleCols(newVisible);
+    try {
+      localStorage.setItem(COL_ORDER_LS_KEY, JSON.stringify(newOrder.map(c => c.key)));
+      localStorage.setItem(COL_VISIBLE_LS_KEY, JSON.stringify([...newVisible]));
+    } catch {}
     setShowColsModal(false);
   };
 
@@ -297,21 +344,53 @@ const ItemsList = () => {
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = async () => {
+  const loadFresh = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    const res = await fetchItems({ per_page: 100 });
-    if (res.success) {
-      setItems(res.data.data);
-      setTotal(res.data.total);
-    } else {
-      setLoadError((res as any).message ?? "Failed to load items.");
+    try {
+      const data = await getItemList();
+      setItems(data);
+      setTotal(data.length);
+    } catch (e: any) {
+      setLoadError(e.message ?? "Failed to load items.");
     }
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const cached = readItemList();
+    if (cached) { setItems(cached); setTotal(cached.length); setLoading(false); return; }
+    loadFresh();
+  }, []);
   useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
+
+  // Reset grid page when filter changes
+  useEffect(() => { setGridPage(12); }, [itemTypeFilter]);
+
+  // Reload when any page mutates item data (cache already busted by the mutating page)
+  useEffect(() => onMutation("items:mutated", loadFresh), [loadFresh]);
+
+  // Reload on window focus — cache-first so no network hit if data is still fresh
+  useEffect(() => {
+    const onFocus = () => {
+      getItemList()
+        .then(data => { setItems(data); setTotal(data.length); })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  // Lazy-fetch deleted items when filter switches to "deleted" (cache-first)
+  useEffect(() => {
+    if (itemTypeFilter !== "deleted") return;
+    const cached = readItemList(true);
+    if (cached) { setDeletedItems(cached); return; }
+    setDeletedLoading(true);
+    getItemList(true)
+      .then(data => { setDeletedItems(data); setDeletedLoading(false); })
+      .catch(() => setDeletedLoading(false));
+  }, [itemTypeFilter]);
 
   // Measure folder button position so tree lines align exactly under it at runtime.
   useEffect(() => {
@@ -327,9 +406,21 @@ const ItemsList = () => {
     return () => cancelAnimationFrame(raf);
   }, [items]);
 
-  const filtered = itemTypeFilter === "all"
-    ? items
-    : items.filter((i) => i.item_type === itemTypeFilter);
+  const filtered = useMemo(() => {
+    const base = itemTypeFilter === "deleted"
+      ? deletedItems
+      : itemTypeFilter === "all"
+        ? items
+        : items.filter(i => i.item_type === itemTypeFilter);
+    return [...base].sort((a, b) => {
+      switch (sortBy) {
+        case "oldest":   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "name_asc": return a.name.localeCompare(b.name);
+        case "name_desc":return b.name.localeCompare(a.name);
+        default:         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+  }, [items, deletedItems, itemTypeFilter, sortBy]);
 
   // ── Build table columns in the saved order ──
   const columns = useMemo(() => {
@@ -397,7 +488,7 @@ const ItemsList = () => {
                     />
                   )}
                 </div>
-                <Link to="#" className="title-name fw-medium">{record.name}</Link>
+                <Link to={`/items/${record.id}`} className="title-name fw-medium">{record.name}</Link>
               </div>
             );
           }
@@ -415,7 +506,7 @@ const ItemsList = () => {
                   : <i className="ti ti-photo text-muted fs-16" />
                 }
               </div>
-              <Link to="#" className="title-name fw-medium">{record.name}</Link>
+              <Link to={`/items/${record.id}`} className="title-name fw-medium">{record.name}</Link>
             </div>
           );
         },
@@ -529,12 +620,61 @@ const ItemsList = () => {
     );
   }, [filtered, searchText]);
 
+  // ── Export handlers ──
+  const exportHeaders = ["Name", "SKU", "Type", "Selling Price", "Stock Tracked", "Reorder Level", "Added On"];
+  const buildExportRows = () => filtered.map(item => {
+    const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+    return [
+      item.name,
+      item.sku || "—",
+      item.item_type === "goods" ? "Goods" : "Service",
+      item.selling_price ? `₹${parseFloat(item.selling_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—",
+      item.track_inventory ? "Yes" : "No",
+      item.reorder_point != null ? String(item.reorder_point) : "—",
+      fmt(item.created_at),
+    ];
+  });
+
+  const handleExportPdf = () => {
+    try { exportToPdfPrint("Items", exportHeaders, buildExportRows()); }
+    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+  };
+
+  const handleExportExcel = () => {
+    const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+    const rows = filtered.map(item => ({
+      name:          item.name,
+      sku:           item.sku || "—",
+      type:          item.item_type === "goods" ? "Goods" : "Service",
+      selling_price: item.selling_price ? `₹${parseFloat(item.selling_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—",
+      stock_tracked: item.track_inventory ? "Yes" : "No",
+      reorder_level: item.reorder_point != null ? String(item.reorder_point) : "—",
+      added_on:      fmt(item.created_at),
+    }));
+    exportToExcelFile("Items", [
+      { header: "Name",          key: "name",          width: 30 },
+      { header: "SKU",           key: "sku",           width: 16 },
+      { header: "Type",          key: "type",          width: 12 },
+      { header: "Selling Price", key: "selling_price", width: 18 },
+      { header: "Stock Tracked", key: "stock_tracked", width: 14 },
+      { header: "Reorder Level", key: "reorder_level", width: 16 },
+      { header: "Added On",      key: "added_on",      width: 16 },
+    ], rows).catch(() => showToast("Excel export failed.", "error"));
+  };
+
+  const sortLabel: Record<SortOption, string> = {
+    newest:    "Newest",
+    oldest:    "Oldest",
+    name_asc:  "Name A–Z",
+    name_desc: "Name Z–A",
+  };
+
   return (
     <>
       <div className="page-wrapper">
         <div className="content">
 
-          <PageHeader title="Items" badgeCount={total} showModuleTile={false} showExport={true} />
+          <PageHeader title="Items" badgeCount={total} showModuleTile={false} showExport={true} onRefresh={loadFresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
 
           <div className="card border-0 rounded-0">
             <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -557,13 +697,14 @@ const ItemsList = () => {
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="dropdown">
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
-                      {itemTypeFilter === "all" ? "All Items" : itemTypeFilter === "goods" ? "Goods" : "Services"}
+                      {itemTypeFilter === "all" ? "All Items" : itemTypeFilter === "goods" ? "Goods" : itemTypeFilter === "service" ? "Services" : "Deleted Items"}
                     </Link>
                     <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
-                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("all")}><i className="ti ti-dots-vertical me-1" /> All Items</button></li>
-                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("goods")}><i className="ti ti-dots-vertical me-1" /> Goods</button></li>
-                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("service")}><i className="ti ti-dots-vertical me-1" /> Services</button></li>
+                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("all")}><i className="ti ti-layout-list me-1" />All Items</button></li>
+                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("goods")}><i className="ti ti-box me-1" />Goods</button></li>
+                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("service")}><i className="ti ti-settings me-1" />Services</button></li>
+                        <li><button className="dropdown-item" onClick={() => setItemTypeFilter("deleted")}><i className="ti ti-trash me-1" />Deleted Items</button></li>
                       </ul>
                     </div>
                   </div>
@@ -573,15 +714,15 @@ const ItemsList = () => {
                 {/* Right */}
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="dropdown">
-                    <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
-                      <i className="ti ti-sort-ascending-2 me-2" />Sort By
-                    </Link>
+                    <button type="button" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
+                      <i className="ti ti-sort-ascending-2 me-2" />{sortLabel[sortBy]}
+                    </button>
                     <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
-                        <li><Link to="#" className="dropdown-item">Newest</Link></li>
-                        <li><Link to="#" className="dropdown-item">Oldest</Link></li>
-                        <li><Link to="#" className="dropdown-item">Name A–Z</Link></li>
-                        <li><Link to="#" className="dropdown-item">Name Z–A</Link></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "newest" ? " active" : ""}`} onClick={() => setSortBy("newest")}><i className="ti ti-clock-hour-3 fs-15" />Newest</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "oldest" ? " active" : ""}`} onClick={() => setSortBy("oldest")}><i className="ti ti-history fs-15" />Oldest</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "name_asc" ? " active" : ""}`} onClick={() => setSortBy("name_asc")}><i className="ti ti-sort-ascending-letters fs-15" />Name A–Z</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "name_desc" ? " active" : ""}`} onClick={() => setSortBy("name_desc")}><i className="ti ti-sort-descending-letters fs-15" />Name Z–A</button></li>
                       </ul>
                     </div>
                   </div>
@@ -617,26 +758,26 @@ const ItemsList = () => {
                 <div className="alert alert-danger mx-3 mt-3 mb-0 d-flex align-items-center gap-2">
                   <i className="ti ti-alert-circle" />
                   {loadError}
-                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={load}>Retry</button>
+                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={loadFresh}>Retry</button>
                 </div>
               )}
-              {loading ? (
+              {(loading || (itemTypeFilter === "deleted" && deletedLoading)) ? (
                 <div className="text-center py-5 text-muted">
                   <span className="spinner-border spinner-border-sm me-2" />
-                  Loading items…
+                  {itemTypeFilter === "deleted" ? "Loading deleted items…" : "Loading items…"}
                 </div>
               ) : view === "list" ? (
                 <div className="items-custom-table custom-table table-nowrap">
                   <Datatable
                     columns={columns}
                     dataSource={filtered}
-                    Selection={true}
+                    Selection={false}
                     searchText={searchText}
                     components={TABLE_COMPONENTS}
                     scroll={{ x: "max-content" }}
                     rowKey="id"
                     onRow={(record: ItemListRecord) => ({
-                      onClick: () => navigate(`/items/${record.id}`),
+                      onClick: () => navigate(`/items/${record.id}`, { state: itemTypeFilter === "deleted" ? { listFilter: "deleted" } : undefined }),
                       style: { cursor: "pointer" },
                     })}
                     expandable={{
@@ -700,7 +841,7 @@ const ItemsList = () => {
                             <div
                               className="card border shadow"
                               style={{ cursor: "pointer" }}
-                              onClick={() => navigate(`/items/${item.id}`)}
+                              onClick={() => navigate(`/items/${item.id}`, { state: itemTypeFilter === "deleted" ? { listFilter: "deleted" } : undefined })}
                             >
                               <div className="card-body">
 
@@ -873,6 +1014,25 @@ const ItemsList = () => {
           <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
         </Modal.Footer>
       </Modal>
+
+      {/* ── Toast notification ───────────────────────────────────────────────── */}
+      <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1090 }}>
+        <Toast
+          show={toast.show}
+          onClose={() => setToast(t => ({ ...t, show: false }))}
+          delay={4000}
+          autohide
+          style={{ minWidth: 320, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.13)" }}
+        >
+          <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
+            <span style={{ width: 36, height: 36, borderRadius: "50%", background: toast.type === "success" ? "#e6f9ee" : "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <i className={`ti ${toast.type === "success" ? "ti-check text-success" : "ti-x"} fs-18`} style={toast.type === "error" ? { color: "#e03131" } : {}} />
+            </span>
+            <span className="fs-14 fw-medium text-dark">{toast.message}</span>
+            <button type="button" className="btn-close ms-auto" style={{ fontSize: 11 }} onClick={() => setToast(t => ({ ...t, show: false }))} />
+          </Toast.Body>
+        </Toast>
+      </div>
     </>
   );
 };

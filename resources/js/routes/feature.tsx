@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import Header from "../components/header/header";
 import Sidebar from "../components/sidebar/sidebar";
 import ThemeSettings from "../components/theme-settings/themeSettings";
+import GlobalToast from "../components/global-toast/GlobalToast";
 import { useEffect } from "react";
 import { resetMobileSidebar } from "../core/redux/sidebarSlice";
 import { all_routes } from "../routes/all_routes";
@@ -63,6 +64,7 @@ const Feature = () => {
           {!hideSidebar && <Sidebar />}
           <Outlet />
           <ThemeSettings />
+          <GlobalToast />
         </div>
         {!hideSidebar && (
           <div className={`sidebar-overlay${mobileSidebar ? " opened" : ""}`} />

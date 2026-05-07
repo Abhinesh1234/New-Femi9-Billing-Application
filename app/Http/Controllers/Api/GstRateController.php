@@ -87,6 +87,7 @@ class GstRateController extends Controller
 
         try {
             GstRate::onlyTrashed()->findOrFail($gstRate)->restore();
+            Log::info('[GstRateController] Restored', array_merge($ctx, ['gst_rate_id' => $gstRate]));
             return $this->successResponse(['message' => 'GST rate restored.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

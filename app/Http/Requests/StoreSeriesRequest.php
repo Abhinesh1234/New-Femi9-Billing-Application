@@ -17,6 +17,7 @@ class StoreSeriesRequest extends FormRequest
                 'required', 'string', 'min:1', 'max:255',
                 Rule::unique('transaction_series', 'name'),
             ],
+            'customer_category' => 'nullable|string|in:retail,wholesale,vip,corporate,distributor',
             'modules'                       => 'required|array|min:1',
             'modules.*.module'              => 'required|string|max:100',
             'modules.*.prefix'              => 'nullable|string|max:100',

@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreCustomFieldRequest;
+use App\Http\Requests\UpdateCustomFieldRequest;
 use App\Http\Requests\UpdateSettingRequest;
+use App\Models\AuditLog;
 use App\Models\CustomField;
+use App\Models\Setting;
 use App\Services\CustomFieldService;
 use App\Services\SettingService;
 use App\Support\CustomFieldSupport;
@@ -72,11 +76,24 @@ class SettingController extends Controller
 
         Log::info('[SettingController] Update started', array_merge($ctx, [
             'validated_keys' => array_keys($request->validated()),
-            'validated'      => $request->validated(),
         ]));
 
         try {
-            $configuration = $this->service->update($module, $request->validated());
+            $oldConfiguration = $this->service->get($module);
+            $configuration    = $this->service->update($module, $request->validated());
+
+            try {
+                AuditLog::create([
+                    'auditable_type' => 'Setting',
+                    'auditable_id'   => Setting::where('module', $module)->value('id') ?? 0,
+                    'event'          => 'updated',
+                    'user_id'        => $request->user()?->id,
+                    'ip_address'     => $request->ip(),
+                    'user_agent'     => $request->userAgent(),
+                    'old_values'     => $oldConfiguration,
+                    'new_values'     => $configuration,
+                ]);
+            } catch (Throwable) {}
 
             Log::info('[SettingController] Update success', array_merge($ctx, [
                 'saved_keys' => array_keys($configuration),
@@ -108,16 +125,35 @@ class SettingController extends Controller
      */
     public function showCustomField(Request $request, int $id): JsonResponse
     {
-        $field = CustomField::find($id);
+        $ctx = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, 'custom_field');
 
-        if (!$field) {
-            return $this->errorResponse("Custom field [{$id}] not found.", 404);
+        Log::info('[SettingController] CustomField show started', array_merge($ctx, ['id' => $id]));
+
+        try {
+            $field = CustomField::find($id);
+
+            if (!$field) {
+                Log::warning('[SettingController] CustomField show — not found', array_merge($ctx, ['id' => $id]));
+                return $this->errorResponse("Custom field [{$id}] not found.", 404);
+            }
+
+            Log::info('[SettingController] CustomField show success', array_merge($ctx, ['id' => $id]));
+
+            return $this->successResponse([
+                'message' => 'Custom field fetched successfully.',
+                'data'    => $field,
+            ]);
+        } catch (Throwable $e) {
+            Log::error('[SettingController] CustomField show failed', array_merge($ctx, [
+                'id'         => $id,
+                'error'      => $e->getMessage(),
+                'error_file' => $e->getFile(),
+                'error_line' => $e->getLine(),
+                'trace'      => $e->getTraceAsString(),
+            ]));
+
+            return $this->errorResponse('Failed to fetch custom field. Please try again.', 500);
         }
-
-        return $this->successResponse([
-            'message' => 'Custom field fetched successfully.',
-            'data'    => $field,
-        ]);
     }
 
     /**
@@ -157,24 +193,14 @@ class SettingController extends Controller
 
     /**
      * POST /api/custom-fields
+     * Uses StoreCustomFieldRequest — single validated pass, no double-validate.
      */
-    public function storeCustomField(Request $request): JsonResponse
+    public function storeCustomField(StoreCustomFieldRequest $request): JsonResponse
     {
-        // Validate module first so we can use data_type for type_config rules.
-        $request->validate(['module' => 'required|string|in:' . implode(',', CustomFieldSupport::MODULES)]);
-
-        $dataType  = $request->input('config.data_type', '');
-        $validated = $request->validate(
-            array_merge(
-                ['module' => 'required|string|in:' . implode(',', CustomFieldSupport::MODULES)],
-                CustomFieldSupport::baseRules(),
-                CustomFieldSupport::typeConfigRules($dataType)
-            )
-        );
-
-        $module   = $validated['module'];
-        $fieldKey = $validated['config']['field_key'];
-        $ctx      = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, $module);
+        $validated = $request->validated();
+        $module    = $validated['module'];
+        $fieldKey  = $validated['config']['field_key'];
+        $ctx       = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, $module);
 
         if ($this->customFieldService->fieldKeyExists($module, $fieldKey)) {
             Log::warning('[SettingController] CustomField store — duplicate field_key', array_merge($ctx, [
@@ -191,6 +217,19 @@ class SettingController extends Controller
 
         try {
             $field = $this->customFieldService->create($module, $validated['config']);
+
+            try {
+                AuditLog::create([
+                    'auditable_type' => 'CustomField',
+                    'auditable_id'   => $field->id,
+                    'event'          => 'created',
+                    'user_id'        => $request->user()?->id,
+                    'ip_address'     => $request->ip(),
+                    'user_agent'     => $request->userAgent(),
+                    'old_values'     => null,
+                    'new_values'     => ['module' => $module, 'config' => $field->config],
+                ]);
+            } catch (Throwable) {}
 
             Log::info('[SettingController] CustomField store success', array_merge($ctx, [
                 'id' => $field->id,
@@ -214,8 +253,9 @@ class SettingController extends Controller
 
     /**
      * PUT /api/custom-fields/{id}
+     * Uses UpdateCustomFieldRequest — system fields cannot have data_type/field_key/label changed.
      */
-    public function updateCustomField(Request $request, int $id): JsonResponse
+    public function updateCustomField(UpdateCustomFieldRequest $request, int $id): JsonResponse
     {
         $field = CustomField::find($id);
 
@@ -223,15 +263,8 @@ class SettingController extends Controller
             return $this->errorResponse("Custom field [{$id}] not found.", 404);
         }
 
-        $ctx = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, $field->module);
-
-        $dataType  = $request->input('config.data_type', $field->config['data_type'] ?? '');
-        $validated = $request->validate(
-            array_merge(
-                CustomFieldSupport::baseRules(),
-                CustomFieldSupport::typeConfigRules($dataType)
-            )
-        );
+        $ctx       = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, $field->module);
+        $validated = $request->validated();
 
         $newFieldKey = $validated['config']['field_key'];
         $oldFieldKey = $field->config['field_key'] ?? '';
@@ -249,8 +282,23 @@ class SettingController extends Controller
 
         Log::info('[SettingController] CustomField update started', array_merge($ctx, ['id' => $id]));
 
+        $oldConfig = $field->config;
+
         try {
             $updated = $this->customFieldService->update($field, $validated['config']);
+
+            try {
+                AuditLog::create([
+                    'auditable_type' => 'CustomField',
+                    'auditable_id'   => $id,
+                    'event'          => 'updated',
+                    'user_id'        => $request->user()?->id,
+                    'ip_address'     => $request->ip(),
+                    'user_agent'     => $request->userAgent(),
+                    'old_values'     => $oldConfig,
+                    'new_values'     => $updated->config,
+                ]);
+            } catch (Throwable) {}
 
             Log::info('[SettingController] CustomField update success', array_merge($ctx, ['id' => $id]));
 
@@ -272,6 +320,7 @@ class SettingController extends Controller
 
     /**
      * DELETE /api/custom-fields/{id}
+     * System fields cannot be deleted.
      */
     public function destroyCustomField(Request $request, int $id): JsonResponse
     {
@@ -281,12 +330,35 @@ class SettingController extends Controller
             return $this->errorResponse("Custom field [{$id}] not found.", 404);
         }
 
-        $ctx = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, $field->module);
+        // B1 — guard: system fields are immutable
+        if ($field->config['is_system'] ?? false) {
+            Log::warning('[SettingController] CustomField delete blocked — is_system', [
+                'id'     => $id,
+                'module' => $field->module,
+            ]);
+            return $this->errorResponse('System-defined fields cannot be deleted.', 403);
+        }
+
+        $ctx      = $this->ctx($request, __FILE__, __FUNCTION__, __LINE__, $field->module);
+        $snapshot = $field->config;
 
         Log::info('[SettingController] CustomField delete started', array_merge($ctx, ['id' => $id]));
 
         try {
             $this->customFieldService->delete($field);
+
+            try {
+                AuditLog::create([
+                    'auditable_type' => 'CustomField',
+                    'auditable_id'   => $id,
+                    'event'          => 'deleted',
+                    'user_id'        => $request->user()?->id,
+                    'ip_address'     => $request->ip(),
+                    'user_agent'     => $request->userAgent(),
+                    'old_values'     => $snapshot,
+                    'new_values'     => null,
+                ]);
+            } catch (Throwable) {}
 
             Log::info('[SettingController] CustomField delete success', array_merge($ctx, ['id' => $id]));
 
@@ -307,9 +379,6 @@ class SettingController extends Controller
 
     // -------------------------------------------------------------------------
 
-    /**
-     * Build a rich logging context with datetime, file, function, line.
-     */
     protected function ctx(Request $request, string $file, string $function, int $line, string $module): array
     {
         return [

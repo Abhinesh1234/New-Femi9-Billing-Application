@@ -88,4 +88,22 @@ class UpdateItemRequest extends FormRequest
             'components.*.sort_order'                => 'nullable|integer|min:0',
         ];
     }
+
+    public function withValidator(\Illuminate\Validation\Validator $validator): void
+    {
+        $validator->after(function (\Illuminate\Validation\Validator $v) {
+            // If is_composite is being set to true, composite_type must be provided
+            if ($this->has('is_composite') && $this->boolean('is_composite') && !$this->filled('composite_type')) {
+                $v->errors()->add('composite_type', 'Composite type (assembly or kit) is required for composite items.');
+            }
+
+            // If form_type is being changed to variants, variation_config must be supplied
+            if ($this->input('form_type') === 'variants') {
+                $config = $this->input('variation_config', []);
+                if (empty($config) || !is_array($config)) {
+                    $v->errors()->add('variation_config', 'At least one variation attribute with options is required for variant items.');
+                }
+            }
+        });
+    }
 }

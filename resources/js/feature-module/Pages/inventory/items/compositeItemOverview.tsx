@@ -1,20 +1,39 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
-import { fetchItem, fetchItems, uploadItemImage, updateItem, type ItemListRecord } from "../../../../core/services/itemApi";
+import {
+  uploadItemImage,
+  updateCompositeItem,
+  restoreCompositeItem,
+  destroyCompositeItem,
+  type CompositeItemRecord,
+} from "../../../../core/services/compositeItemApi";
 import { fetchSettings, type ProductConfiguration } from "../../../../core/services/settingApi";
-import { fetchItemAuditLogs, type AuditLogEntry } from "../../../../core/services/auditLogApi";
+import { type AuditLogEntry } from "../../../../core/services/auditLogApi";
 import { fetchCustomFields } from "../../../../core/services/customFieldApi";
-import { fetchLocations, type LocationListItem } from "../../../../core/services/locationApi";
+import type { LocationListItem } from "../../../../core/services/locationApi";
+import {
+  readCompositeItemList,
+  readCompositeItemDetail,
+  readCompositeItemAuditLogs,
+  getCompositeItemList,
+  getCompositeItemDetail,
+  getCompositeItemAuditLogs,
+  bustCompositeItem,
+  bustAllCompositeItemCache,
+  hydrateCompositeItemList,
+} from "../../../../core/cache/compositeItemCache";
+import { getLocationList } from "../../../../core/cache/locationCache";
+import { emitMutation, onMutation } from "../../../../core/cache/mutationEvents";
 import { all_routes } from "../../../../routes/all_routes";
 
 const route = all_routes;
 
 type Tab = "overview" | "locations" | "transactions" | "history";
-type CompositeFilter = "all" | "assembly" | "kit";
+type ListFilter = "all" | "assembly" | "kit" | "deleted";
 
 const VALUATION_LABELS: Record<string, string> = {
   fifo: "FIFO (First In First Out)",
@@ -28,25 +47,12 @@ const xLabels = Array.from({ length: 15 }, (_, i) => {
 });
 
 const chartOptions: ApexOptions = {
-  chart: {
-    type: "area",
-    height: 200,
-    toolbar: { show: false },
-    zoom: { enabled: false },
-    sparkline: { enabled: false },
-  },
+  chart: { type: "area", height: 200, toolbar: { show: false }, zoom: { enabled: false } },
   dataLabels: { enabled: false },
   stroke: { curve: "smooth", width: 2 },
-  fill: {
-    type: "gradient",
-    gradient: { shadeIntensity: 1, opacityFrom: 0.25, opacityTo: 0.02 },
-  },
+  fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.25, opacityTo: 0.02 } },
   colors: ["#0d6efd"],
-  grid: {
-    borderColor: "#f0f0f0",
-    strokeDashArray: 4,
-    padding: { left: 4, right: 4 },
-  },
+  grid: { borderColor: "#f0f0f0", strokeDashArray: 4, padding: { left: 4, right: 4 } },
   xaxis: {
     categories: xLabels,
     labels: { style: { fontSize: "10px", colors: "#9aa0ac" } },
@@ -58,9 +64,7 @@ const chartOptions: ApexOptions = {
       style: { fontSize: "10px", colors: "#9aa0ac" },
       formatter: (v: number) => (v >= 1000 ? `${v / 1000}K` : String(v)),
     },
-    min: 0,
-    max: 5000,
-    tickAmount: 5,
+    min: 0, max: 5000, tickAmount: 5,
   },
   tooltip: { y: { formatter: (v: number) => `₹${v.toLocaleString("en-IN")}` } },
   legend: { show: false },
@@ -68,38 +72,50 @@ const chartOptions: ApexOptions = {
 
 const chartSeries = [{ name: "Direct Sales", data: Array(15).fill(0) }];
 
-// ── Stock row helper ───────────────────────────────────────────────────────────
-function StockRow({ label, value = "0.00" }: { label: string; value?: string }) {
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function ItemInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="d-flex align-items-center justify-content-between py-1">
-      <span className="fs-14 text-muted" style={{ textDecorationLine: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
-        {label}
-      </span>
-      <span className="fs-14 fw-medium">: {value}</span>
+    <div className="d-flex align-items-center px-4 py-2">
+      <span className="text-muted fs-14 flex-shrink-0" style={{ width: "45%" }}>{label}</span>
+      <span className="fs-14 fw-medium">{value}</span>
     </div>
   );
 }
 
-// ── Qty tile helper ────────────────────────────────────────────────────────────
-function QtyTile({ qty = 0, label }: { qty?: number; label: string }) {
-  return (
-    <div className="p-3 border rounded text-center" style={{ flex: "1 1 calc(50% - 6px)" }}>
-      <div className="fw-bold fs-20 lh-1">{qty}</div>
-      <div className="fs-11 text-muted mt-1">Qty</div>
-      <div className="fs-12 text-muted mt-1">{label}</div>
-    </div>
-  );
+// ── Confirmation dialog ────────────────────────────────────────────────────────
+interface ConfirmConfig {
+  icon: string; iconColor: string; iconBg: string;
+  title: string; message: string;
+  confirmLabel: string; confirmColor: string;
+  onConfirm: () => Promise<void>;
 }
 
-// ── Detail row (label : value) ─────────────────────────────────────────────────
-function DetailRow({ label, value, valueClass = "" }: { label: string; value: React.ReactNode; valueClass?: string }) {
+function ConfirmDialog({ config, onClose }: { config: ConfirmConfig | null; onClose: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { setBusy(false); }, [config]);
+  if (!config) return null;
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await config.onConfirm(); } finally { setBusy(false); }
+    onClose();
+  };
   return (
-    <div className="row g-0 py-2">
-      <div className="col-5">
-        <span className="fs-14 text-muted">{label}</span>
-      </div>
-      <div className="col-7">
-        <span className={`fs-14 fw-medium ${valueClass}`}>{value}</span>
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: config.iconBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
+        </div>
+        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>{config.title}</p>
+        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>{config.message}</p>
+        <div style={{ display: "flex", gap: 10, width: "100%" }}>
+          <button className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn flex-grow-1" style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }} onClick={handleConfirm} disabled={busy}>
+            {busy ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</> : config.confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -109,47 +125,57 @@ function DetailRow({ label, value, valueClass = "" }: { label: string; value: Re
 const CompositeItemOverview = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [item, setItem] = useState<Record<string, any> | null>(null);
+  const navState = useRouterLocation().state as { tab?: Tab; listFilter?: ListFilter } | null;
+
+  const [item, setItem]       = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [error, setError]     = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>(navState?.tab ?? "overview");
 
-  // ── Items list (left panel) ──
-  const [allItems, setAllItems] = useState<ItemListRecord[]>([]);
-  const [listFilter, setListFilter] = useState<CompositeFilter>("all");
-  const [listSearch, setListSearch] = useState("");
-  const [showListSearch, setShowListSearch] = useState(false);
+  // ── Left panel ──
+  const [allItems, setAllItems]         = useState<CompositeItemRecord[]>([]);
+  const [listFilter, setListFilter]     = useState<ListFilter>(navState?.listFilter ?? "all");
+  const [deletedItems, setDeletedItems] = useState<CompositeItemRecord[]>([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [listSearch, setListSearch]     = useState("");
 
-  // ── Image upload ──
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  // ── Image ──
+  const [imagePreview, setImagePreview]   = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
 
   // ── Product settings ──
   const [notifyReorderEnabled, setNotifyReorderEnabled] = useState(false);
 
   // ── Reorder point inline edit ──
-  const [reorderPoint, setReorderPoint] = useState<number | null>(null);
+  const [reorderPoint, setReorderPoint]       = useState<number | null>(null);
   const [reorderPopoverOpen, setReorderPopoverOpen] = useState(false);
-  const [reorderInput, setReorderInput] = useState("");
-  const [reorderSaving, setReorderSaving] = useState(false);
+  const [reorderInput, setReorderInput]       = useState("");
+  const [reorderSaving, setReorderSaving]     = useState(false);
 
-  // ── Audit log (history tab) ──
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditPage, setAuditPage] = useState(1);
+  // ── Confirm dialog ──
+  const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
+
+  // ── Left panel folder expand ──
+  const [expandedIds, setExpandedIds] = useState<number[]>([]);
+
+  // ── Audit log ──
+  const [auditLogs, setAuditLogs]         = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading]   = useState(false);
+  const [auditPage, setAuditPage]         = useState(1);
   const [auditLastPage, setAuditLastPage] = useState(1);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [cfLabels, setCfLabels] = useState<Record<string, string>>({});
+  const [auditTotal, setAuditTotal]       = useState(0);
+  const [cfLabels, setCfLabels]           = useState<Record<string, string>>({});
 
   // ── Locations tab ──
-  const [locations, setLocations] = useState<LocationListItem[]>([]);
+  const [locations, setLocations]           = useState<LocationListItem[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
-  const [locationsLoaded, setLocationsLoaded] = useState(false);
+  const [locationsLoaded, setLocationsLoaded]   = useState(false);
 
-  // ── Left panel scroll ──
-  const listScrollRef = useRef<HTMLDivElement>(null);
-  const activeItemRef = useRef<HTMLDivElement>(null);
+  // ── Refs ──
+  const activeItemRef  = useRef<HTMLDivElement>(null);
+  const detailFetchRef = useRef(0);
+  const refreshingRef  = useRef(false);
+  const pendingDeletedNav = useRef(false);
 
   // ── Toast ──
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
@@ -157,39 +183,111 @@ const CompositeItemOverview = () => {
   const showToast = (type: "success" | "danger", message: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ show: true, type, message });
-    toastTimerRef.current = setTimeout(() => setToast((t) => ({ ...t, show: false })), 4000);
+    toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
-  // Fetch current item detail
+  // ── Refresh state ──
+  const [refreshing, setRefreshing] = useState(false);
+
+  // ── handleRefresh ──
+  const handleRefresh = useCallback(async () => {
+    if (!id || refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    try {
+      const numId = Number(id);
+      bustAllCompositeItemCache();
+
+      const fetches: Promise<void>[] = [
+        getCompositeItemList()
+          .then(data => setAllItems(data))
+          .catch(() => showToast("danger", "Failed to reload composite items list.")),
+        getCompositeItemDetail(numId)
+          .then(data => {
+            setItem(data as any);
+            setImagePreview(data?.image ? `/storage/${data.image}` : null);
+            setError(null);
+          })
+          .catch(() => showToast("danger", "Failed to reload composite item.")),
+      ];
+
+      if (listFilter === "deleted") {
+        fetches.push(
+          getCompositeItemList(true)
+            .then(data => setDeletedItems(data))
+            .catch(() => {})
+        );
+      }
+
+      if (activeTab === "history") {
+        fetches.push(
+          getCompositeItemAuditLogs(numId, auditPage)
+            .then(entry => {
+              setAuditLogs(entry.logs);
+              setAuditLastPage(entry.lastPage);
+              setAuditTotal(entry.total);
+            })
+            .catch(() => showToast("danger", "Failed to reload history."))
+        );
+      }
+
+      await Promise.all(fetches);
+    } catch {
+      showToast("danger", "Network error during refresh. Please try again.");
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }, [id, listFilter, activeTab, auditPage]);
+
+  // ── Cache-first detail fetch (stale-response guarded) ──
   useEffect(() => {
     if (!id) return;
-    (async () => {
-      setLoading(true);
-      const res = await fetchItem(Number(id));
-      if (res.success) {
-        const data = (res as any).data;
-        setItem(data);
-        setImagePreview(data?.image ? `/storage/${data.image}` : null);
-      } else {
-        setError((res as any).message);
-      }
+    const numId = Number(id);
+    const token = ++detailFetchRef.current;
+
+    const cached = readCompositeItemDetail(numId);
+    if (cached) {
+      if (token !== detailFetchRef.current) return;
+      setItem(cached as any);
+      setImagePreview(cached?.image ? `/storage/${cached.image}` : null);
       setLoading(false);
-    })();
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    getCompositeItemDetail(numId)
+      .then(data => {
+        if (token !== detailFetchRef.current) return;
+        setItem(data as any);
+        setImagePreview(data?.image ? `/storage/${data.image}` : null);
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        if (token !== detailFetchRef.current) return;
+        setError(e.message ?? "Failed to load composite item.");
+        setLoading(false);
+      });
   }, [id]);
 
-  // Fetch composite items for the left panel
+  // Reset audit page when item changes
+  useEffect(() => { setAuditPage(1); }, [id]);
+
+  // ── Cache-first list fetch for left panel ──
   useEffect(() => {
-    (async () => {
-      const res = await fetchItems({ per_page: 200 });
-      if (res.success) {
-        const all = (res as any).data.data as ItemListRecord[];
-        setAllItems(all.filter((i) => i.is_composite));
-      }
-    })();
+    const cached = readCompositeItemList();
+    if (cached) { setAllItems(cached); return; }
+    getCompositeItemList()
+      .then(data => setAllItems(data))
+      .catch(() => showToast("danger", "Network error loading composite items list."));
   }, []);
 
-  // Fetch product settings
+  // ── onMutation listener ──
+  useEffect(() => onMutation("composite-items:mutated", handleRefresh), [handleRefresh]);
+
+  // ── Product settings ──
   useEffect(() => {
     (async () => {
       const res = await fetchSettings<ProductConfiguration>("products");
@@ -199,12 +297,12 @@ const CompositeItemOverview = () => {
     })();
   }, []);
 
-  // Sync reorder point from item data
+  // Sync reorder point from item
   useEffect(() => {
     if (item) setReorderPoint(item.reorder_point ?? null);
   }, [item]);
 
-  // Load custom field definitions once when history tab is first opened
+  // ── Custom field definitions (history tab) ──
   useEffect(() => {
     if (activeTab !== "history") return;
     if (Object.keys(cfLabels).length > 0) return;
@@ -212,44 +310,51 @@ const CompositeItemOverview = () => {
       const res = await fetchCustomFields("products");
       if (res.success) {
         const map: Record<string, string> = {};
-        res.data.forEach((cf) => {
-          if (cf.config?.field_key && cf.config?.label) {
-            map[cf.config.field_key] = cf.config.label;
-          }
+        res.data.forEach(cf => {
+          if (cf.config?.field_key && cf.config?.label) map[cf.config.field_key] = cf.config.label;
         });
         setCfLabels(map);
       }
     })();
   }, [activeTab]);
 
-  // Load audit logs when history tab is opened or page changes
+  // ── Audit logs (cache-first) ──
   useEffect(() => {
     if (activeTab !== "history" || !id) return;
-    (async () => {
-      setAuditLoading(true);
-      const res = await fetchItemAuditLogs(Number(id), auditPage);
-      if (res.success) {
-        setAuditLogs(res.data.data);
-        setAuditLastPage(res.data.last_page);
-        setAuditTotal(res.data.total);
-      }
-      setAuditLoading(false);
-    })();
+    const numId = Number(id);
+
+    const cached = readCompositeItemAuditLogs(numId, auditPage);
+    if (cached) {
+      setAuditLogs(cached.logs);
+      setAuditLastPage(cached.lastPage);
+      setAuditTotal(cached.total);
+      return;
+    }
+
+    setAuditLoading(true);
+    getCompositeItemAuditLogs(numId, auditPage)
+      .then(entry => {
+        setAuditLogs(entry.logs);
+        setAuditLastPage(entry.lastPage);
+        setAuditTotal(entry.total);
+        setAuditLoading(false);
+      })
+      .catch(() => {
+        setAuditLoading(false);
+        showToast("danger", "Network error loading activity history.");
+      });
   }, [activeTab, id, auditPage]);
 
-  // Load locations once when locations tab first opened
+  // ── Locations tab ──
   useEffect(() => {
     if (activeTab !== "locations" || locationsLoaded) return;
-    (async () => {
-      setLocationsLoading(true);
-      const res = await fetchLocations({ active_only: true });
-      if (res.success) setLocations(res.data);
-      setLocationsLoaded(true);
-      setLocationsLoading(false);
-    })();
+    setLocationsLoading(true);
+    getLocationList()
+      .then(data => { setLocations(data); setLocationsLoaded(true); setLocationsLoading(false); })
+      .catch(() => { setLocationsLoaded(true); setLocationsLoading(false); });
   }, [activeTab]);
 
-  // Scroll active item into view in left panel
+  // Scroll active item into view
   useEffect(() => {
     const timer = setTimeout(() => {
       activeItemRef.current?.scrollIntoView({ block: "center", behavior: "instant" });
@@ -257,16 +362,164 @@ const CompositeItemOverview = () => {
     return () => clearTimeout(timer);
   }, [id, allItems]);
 
+  // ── Lazy-fetch deleted items ──
+  useEffect(() => {
+    if (listFilter !== "deleted") return;
+    const cached = readCompositeItemList(true);
+    if (cached) { setDeletedItems(cached); return; }
+    setDeletedLoading(true);
+    getCompositeItemList(true)
+      .then(data => { setDeletedItems(data); setDeletedLoading(false); })
+      .catch(() => setDeletedLoading(false));
+  }, [listFilter]);
+
+  // Navigate to first item in new filter view
+  useEffect(() => {
+    if (listFilter === "deleted") {
+      if (deletedItems.length > 0) {
+        navigate(`/composite-items/${deletedItems[0].id}`, { state: { listFilter: "deleted" } });
+      } else {
+        pendingDeletedNav.current = true;
+      }
+    } else {
+      const base = listFilter === "all" ? allItems : allItems.filter(i => i.composite_type === listFilter);
+      if (base.length > 0) navigate(`/composite-items/${base[0].id}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listFilter]);
+
+  // Once deleted items finish loading, navigate to first
+  useEffect(() => {
+    if (!pendingDeletedNav.current) return;
+    if (listFilter === "deleted" && !deletedLoading && deletedItems.length > 0) {
+      pendingDeletedNav.current = false;
+      navigate(`/composite-items/${deletedItems[0].id}`, { state: { listFilter: "deleted" } });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deletedItems, deletedLoading]);
+
+  // ── Panel restore (left panel button) ──
+  const handleRestoreItem = (itemId: number) => {
+    const li = deletedItems.find(i => i.id === itemId);
+    setConfirmConfig({
+      icon: "ti-refresh", iconColor: "#2f9e44", iconBg: "#ebfbee",
+      title: "Restore Composite Item?",
+      message: `"${li?.name ?? "This item"}" will be restored and made active again.`,
+      confirmLabel: "Restore", confirmColor: "#2f9e44",
+      onConfirm: async () => {
+        const res = await restoreCompositeItem(itemId);
+        if (res.success) {
+          bustCompositeItem(itemId);
+          emitMutation("composite-items:mutated");
+          const remainingDeleted = deletedItems.filter(i => i.id !== itemId);
+          setDeletedItems(remainingDeleted);
+          showToast("success", "Composite item restored.");
+          if (listFilter === "deleted" && remainingDeleted.length === 0) {
+            setListFilter("all");
+          } else if (String(itemId) === id) {
+            navigate(`/composite-items/${remainingDeleted[0].id}`, { state: { listFilter: "deleted" } });
+          }
+        } else {
+          showToast("danger", (res as any).message ?? "Failed to restore composite item.");
+        }
+      },
+    });
+  };
+
+  // ── Delete current item ──
+  const handleDeleteCurrentItem = () => {
+    if (!item) return;
+    setConfirmConfig({
+      icon: "ti-trash", iconColor: "#e03131", iconBg: "#fff0f0",
+      title: "Delete Composite Item?",
+      message: `"${item.name}" will be soft-deleted and can be restored later.`,
+      confirmLabel: "Delete", confirmColor: "#e03131",
+      onConfirm: async () => {
+        const numId = Number(id);
+        const res = await destroyCompositeItem(numId);
+        if (!res.success) { showToast("danger", (res as any).message ?? "Failed to delete composite item."); return; }
+        bustCompositeItem(numId);
+        emitMutation("composite-items:mutated");
+        setAllItems(prev => prev.filter(i => i.id !== numId));
+        showToast("success", "Composite item deleted.");
+        const remaining = allItems.filter(i => i.id !== numId);
+        if (remaining.length > 0) navigate(`/composite-items/${remaining[0].id}`);
+        else navigate(route.compositeItems);
+      },
+    });
+  };
+
+  // ── Restore current item ──
+  const handleRestoreCurrentItem = () => {
+    if (!item) return;
+    setConfirmConfig({
+      icon: "ti-refresh", iconColor: "#2f9e44", iconBg: "#ebfbee",
+      title: "Restore Composite Item?",
+      message: `"${item.name}" will be restored and made active again.`,
+      confirmLabel: "Restore", confirmColor: "#2f9e44",
+      onConfirm: async () => {
+        const numId = Number(id);
+        const res = await restoreCompositeItem(numId);
+        if (!res.success) { showToast("danger", (res as any).message ?? "Failed to restore composite item."); return; }
+
+        const remainingDeleted = deletedItems.filter(i => i.id !== numId);
+        setDeletedItems(remainingDeleted);
+
+        const restoredRecord: CompositeItemRecord = {
+          id:              numId,
+          name:            item.name,
+          composite_type:  item.composite_type,
+          item_type:       item.item_type,
+          sku:             item.sku ?? null,
+          selling_price:   item.selling_price ?? null,
+          cost_price:      item.cost_price ?? null,
+          image:           item.image ?? null,
+          refs:            item.refs ?? null,
+          track_inventory: !!item.track_inventory,
+          reorder_point:   item.reorder_point ?? null,
+          created_at:      item.created_at,
+          updated_at:      item.updated_at ?? item.created_at,
+          deleted_at:      null,
+          components:      item.components ?? [],
+        };
+        setAllItems(prev =>
+          prev.some(i => i.id === numId)
+            ? prev.map(i => i.id === numId ? restoredRecord : i)
+            : [...prev, restoredRecord]
+        );
+
+        const restoredDetail = { ...item, deleted_at: null };
+        setItem(restoredDetail);
+        bustCompositeItem(numId);
+        hydrateCompositeItemList([...allItems.filter(i => i.id !== numId), restoredRecord]);
+        hydrateCompositeItemList(remainingDeleted, true);
+        emitMutation("composite-items:mutated");
+
+        showToast("success", "Composite item restored.");
+
+        if (listFilter === "deleted" && remainingDeleted.length === 0) {
+          setListFilter("all");
+        } else {
+          navigate(`/composite-items/${numId}`);
+        }
+      },
+    });
+  };
+
+  // ── Filtered left panel list ──
   const filteredListItems = useMemo(() => {
-    let base = listFilter === "all"
-      ? allItems
-      : allItems.filter((i) => i.composite_type === listFilter);
+    if (listFilter === "deleted") {
+      if (!listSearch.trim()) return deletedItems;
+      const q = listSearch.toLowerCase();
+      return deletedItems.filter(i => i.name.toLowerCase().includes(q));
+    }
+    let base = listFilter === "all" ? allItems : allItems.filter(i => i.composite_type === listFilter);
     if (listSearch.trim()) {
       const q = listSearch.toLowerCase();
-      base = base.filter((i) => i.name.toLowerCase().includes(q));
+      base = base.filter(i => i.name.toLowerCase().includes(q));
     }
     return base;
-  }, [allItems, listFilter, listSearch]);
+  }, [allItems, deletedItems, listFilter, listSearch]);
 
   const fmtPrice = (val: any) =>
     val ? `₹${parseFloat(val).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—";
@@ -280,7 +533,7 @@ const CompositeItemOverview = () => {
       <div className="page-wrapper">
         <div className="content d-flex align-items-center justify-content-center" style={{ minHeight: 300 }}>
           <span className="spinner-border spinner-border-sm me-2 text-primary" />
-          <span className="text-muted">Loading item…</span>
+          <span className="text-muted">Loading composite item…</span>
         </div>
         <Footer />
       </div>
@@ -291,7 +544,7 @@ const CompositeItemOverview = () => {
     return (
       <div className="page-wrapper">
         <div className="content">
-          <div className="alert alert-danger">{error ?? "Item not found."}</div>
+          <div className="alert alert-danger">{error ?? "Composite item not found."}</div>
           <Link to={route.compositeItems} className="btn btn-outline-light">
             <i className="ti ti-arrow-left me-1" /> Back to Composite Items
           </Link>
@@ -302,21 +555,19 @@ const CompositeItemOverview = () => {
   }
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: "Overview" },
-    { key: "locations", label: "Locations" },
+    { key: "overview",     label: "Overview" },
+    { key: "locations",    label: "Locations" },
     { key: "transactions", label: "Transactions" },
-    { key: "history", label: "History" },
+    { key: "history",      label: "History" },
   ];
-
-  const filterLabel =
-    listFilter === "all" ? "All Composite Items" :
-    listFilter === "assembly" ? "Assembly" : "Kit";
 
   const compositeTypeLabel =
     item.composite_type === "assembly" ? "Assembly Item" :
-    item.composite_type === "kit" ? "Kit Item" : "—";
+    item.composite_type === "kit"      ? "Kit Item"      : "—";
 
   const components: any[] = Array.isArray(item.components) ? item.components : [];
+
+  const thumbImg = item.image ? `/storage/${item.image}` : null;
 
   return (
     <div
@@ -328,74 +579,13 @@ const CompositeItemOverview = () => {
 
         {/* ── Left: Composite items list panel ─────────────────────────────── */}
         <div
-          className="d-none d-md-flex"
-          style={{
-            width: 300,
-            minWidth: 300,
-            flexDirection: "column",
-            borderRight: "1px solid #dee2e6",
-            background: "#fff",
-            overflow: "hidden",
-          }}
+          className="d-none d-xl-flex"
+          style={{ width: 340, minWidth: 340, flexDirection: "column", borderRight: "1px solid #dee2e6", background: "#fff", overflow: "hidden" }}
         >
-          {/* Panel header */}
-          <div
-            className="d-flex align-items-center gap-2 px-3 py-2"
-            style={{ borderBottom: "1px solid #dee2e6", flexShrink: 0, minHeight: 48 }}
-          >
-            <div className="dropdown flex-grow-1">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-light border-0 fw-semibold fs-14 px-1 dropdown-toggle"
-                data-bs-toggle="dropdown"
-              >
-                {filterLabel}
-              </button>
-              <div className="dropdown-menu dropmenu-hover-primary">
-                <ul>
-                  <li><button className="dropdown-item" onClick={() => setListFilter("all")}>All Composite Items</button></li>
-                  <li><button className="dropdown-item" onClick={() => setListFilter("assembly")}>Assembly</button></li>
-                  <li><button className="dropdown-item" onClick={() => setListFilter("kit")}>Kit</button></li>
-                </ul>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary px-2"
-              style={{ width: 28, height: 28, padding: 0, fontSize: 13 }}
-              title="New Composite Item"
-              onClick={() => navigate(route.addCompositeItem)}
-            >
-              <i className="ti ti-plus" />
-            </button>
-            <div className="dropdown">
-              <button type="button" className="btn btn-icon btn-outline-light shadow" data-bs-toggle="dropdown" style={{ width: 28, height: 28, fontSize: 13 }}>
-                <i className="ti ti-dots" />
-              </button>
-              <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
-                <ul>
-                  <li>
-                    <button
-                      className="dropdown-item fs-13"
-                      onClick={() => setShowListSearch((v) => !v)}
-                    >
-                      <i className="ti ti-search me-2" />Search
-                    </button>
-                  </li>
-                  <li>
-                    <button className="dropdown-item fs-13" onClick={() => navigate(route.compositeItems)}>
-                      <i className="ti ti-list me-2" />Full List View
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* Search box (toggle) */}
-          {showListSearch && (
-            <div className="px-3 py-2" style={{ borderBottom: "1px solid #dee2e6", flexShrink: 0 }}>
-              <div className="input-group input-group-sm">
+          {/* Search + filter */}
+          <div className="px-3 py-3" style={{ borderBottom: "1px solid #dee2e6", flexShrink: 0 }}>
+            <div className="d-flex align-items-center gap-2">
+              <div className="input-group flex-grow-1">
                 <span className="input-group-text border-end-0 bg-white">
                   <i className="ti ti-search text-muted fs-13" />
                 </span>
@@ -404,63 +594,162 @@ const CompositeItemOverview = () => {
                   className="form-control border-start-0 ps-0"
                   placeholder="Search composite items…"
                   value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
+                  onChange={e => setListSearch(e.target.value)}
                 />
+                {listSearch && (
+                  <button type="button" className="btn btn-sm btn-outline-light border-start-0" onClick={() => setListSearch("")}>
+                    <i className="ti ti-x fs-12 text-muted" />
+                  </button>
+                )}
+              </div>
+              {/* Filter dropdown */}
+              <div className="dropdown flex-shrink-0">
+                <button
+                  type="button"
+                  className="btn btn-outline-light d-flex align-items-center justify-content-center"
+                  style={{ width: 38, height: 38, position: "relative" }}
+                  data-bs-toggle="dropdown"
+                  title="Filter"
+                >
+                  <i className="ti ti-filter fs-14 text-muted" />
+                  {listFilter !== "all" && (
+                    <span style={{ position: "absolute", top: 5, right: 5, width: 7, height: 7, borderRadius: "50%", background: "#e03131", border: "1.5px solid #fff" }} />
+                  )}
+                </button>
+                <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary" style={{ minWidth: 190 }}>
+                  {(["all", "assembly", "kit", "deleted"] as const).map(f => (
+                    <button
+                      key={f}
+                      className="dropdown-item d-flex align-items-center gap-2 fs-13"
+                      style={{ fontWeight: listFilter === f ? 600 : 400, color: listFilter === f ? "#e03131" : undefined }}
+                      onClick={() => setListFilter(f)}
+                    >
+                      <i className={`ti ${f === "all" ? "ti-layout-list" : f === "assembly" ? "ti-tools" : f === "kit" ? "ti-package" : "ti-trash"} fs-13`} />
+                      {f === "all" ? "All Types" : f === "assembly" ? "Assembly" : f === "kit" ? "Kit" : "Deleted Items"}
+                      {listFilter === f && <i className="ti ti-check ms-auto fs-12" style={{ color: "#e03131" }} />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Items list */}
-          <div ref={listScrollRef} style={{ overflowY: "auto", flex: 1 }}>
-            {filteredListItems.length === 0 ? (
-              <div className="text-center py-4 text-muted fs-13">
-                <i className="ti ti-mood-empty d-block fs-24 mb-1" />
-                No items found
-              </div>
-            ) : (
-              filteredListItems.map((li) => {
-                const isActive = String(li.id) === id;
-                const liImg = li.image ? `/storage/${li.image}` : null;
-                return (
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {listFilter === "deleted" ? (
+              deletedLoading ? (
+                <div className="text-center py-4 text-muted fs-13">
+                  <span className="spinner-border spinner-border-sm me-2" />Loading…
+                </div>
+              ) : filteredListItems.length === 0 ? (
+                <div className="text-center py-4 text-muted fs-13">
+                  <i className="ti ti-trash d-block fs-24 mb-1" />No deleted items
+                </div>
+              ) : (
+                filteredListItems.map(li => (
                   <div
                     key={li.id}
-                    ref={isActive ? activeItemRef : undefined}
-                    onClick={() => navigate(`/composite-items/${li.id}`)}
-                    className="d-flex align-items-center gap-2 px-3 py-2"
-                    style={{
-                      cursor: "pointer",
-                      background: isActive ? "#fff1f0" : "transparent",
-                      borderBottom: "1px solid #f0f2f5",
-                      transition: "background 0.12s",
-                    }}
-                    onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = isActive ? "#fff1f0" : "transparent"; }}
+                    className="d-flex align-items-center gap-2 px-3"
+                    style={{ paddingTop: 11, paddingBottom: 11, cursor: "pointer", borderBottom: "1px solid #f0f2f5" }}
+                    onClick={() => navigate(`/composite-items/${li.id}`, { state: { listFilter: "deleted" } })}
+                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"}
+                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = "transparent"}
                   >
-                    {/* Icon */}
-                    <div
-                      className="rounded border d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden"
-                      style={{ width: 28, height: 28, background: "#f5f5f5" }}
-                    >
-                      {liImg
-                        ? <img src={liImg} alt={li.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        : <i className="ti ti-box text-muted" style={{ fontSize: 12 }} />
-                      }
+                    <div className="rounded border d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden"
+                      style={{ width: 28, height: 28, background: "#f5f5f5", opacity: 0.6 }}>
+                      <i className="ti ti-box text-muted" style={{ fontSize: 12 }} />
                     </div>
-                    {/* Name */}
-                    <span
-                      className="flex-grow-1 text-truncate"
-                      style={{
-                        fontSize: 14,
-                        fontWeight: isActive ? 600 : 400,
-                        color: isActive ? "#e03131" : "#212529",
-                      }}
+                    <span className="flex-grow-1 text-truncate fs-14 text-muted">{li.name}</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm d-flex align-items-center gap-1 flex-shrink-0"
+                      style={{ fontSize: 11, padding: "2px 8px", background: "#fff4f4", color: "#e03131", border: "1px solid #fde8e8", borderRadius: 6 }}
+                      onClick={e => { e.stopPropagation(); handleRestoreItem(li.id); }}
+                      title="Restore"
                     >
-                      {li.name}
-                    </span>
-                    {/* Type badge */}
-                    {li.composite_type && (
-                      <span className="fs-11 text-muted flex-shrink-0 text-capitalize">{li.composite_type}</span>
+                      <i className="ti ti-refresh" style={{ fontSize: 11 }} />Restore
+                    </button>
+                  </div>
+                ))
+              )
+            ) : filteredListItems.length === 0 ? (
+              <div className="text-center py-4 text-muted fs-13">
+                <i className="ti ti-mood-empty d-block fs-24 mb-1" />No items found
+              </div>
+            ) : (
+              filteredListItems.map(li => {
+                const isActive      = String(li.id) === id;
+                const isExpanded    = expandedIds.includes(li.id);
+                const hasComponents = (li.components?.length ?? 0) > 0;
+                const comps         = li.components ?? [];
+                // Vertical line: from slightly inside button bottom to midpoint of last comp row
+                // top=28, height=36+(n-1)*36; zIndex:0 so button bg masks overlap
+                const vLineHeight   = 36 + (comps.length - 1) * 36;
+                return (
+                  <div key={li.id} ref={isActive ? activeItemRef : undefined} style={{ borderBottom: "1px solid #f5f5f5", position: "relative" }}>
+
+                    {/* Single continuous vertical connector — overlaps into button bottom edge */}
+                    {isExpanded && comps.length > 0 && (
+                      <div style={{
+                        position: "absolute",
+                        left: 25,       // paddingLeft(12) + center of 26px button(13)
+                        top: 28,        // 8px inside button bottom (paddingTop:10 + button:26 - 8)
+                        width: 1,
+                        height: vLineHeight,
+                        background: "#ced4da",
+                        pointerEvents: "none",
+                        zIndex: 0,
+                      }} />
                     )}
+
+                    {/* Folder row */}
+                    <div
+                      className="d-flex align-items-center gap-2 px-3"
+                      style={{ paddingTop: 10, paddingBottom: 10, cursor: "pointer", background: isActive ? "#fff1f0" : "transparent" }}
+                      onClick={() => navigate(`/composite-items/${li.id}`)}
+                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isActive ? "#fff1f0" : "transparent"; }}
+                    >
+                      <button
+                        type="button"
+                        className="btn btn-sm border-0 p-0 d-flex align-items-center justify-content-center flex-shrink-0"
+                        style={{ width: 26, height: 26, background: isExpanded ? "#fff1f0" : "#f5f5f5", borderRadius: 6, cursor: hasComponents ? "pointer" : "default", opacity: hasComponents ? 1 : 0.4 }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (!hasComponents) return;
+                          setExpandedIds(prev => prev.includes(li.id) ? prev.filter(k => k !== li.id) : [...prev, li.id]);
+                        }}
+                        title={hasComponents ? (isExpanded ? "Collapse" : "Expand components") : "No components"}
+                      >
+                        <i className={`ti ${isExpanded ? "ti-folder-open" : "ti-folder"} fs-14`} style={{ color: isExpanded ? "#e03131" : "#6c757d" }} />
+                      </button>
+                      <span className="flex-grow-1 text-truncate" style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, color: isActive ? "#e03131" : "#212529" }}>
+                        {li.name}
+                      </span>
+                      {li.composite_type && (
+                        <span className="fs-11 text-muted flex-shrink-0 text-capitalize">{li.composite_type}</span>
+                      )}
+                    </div>
+
+                    {/* Component rows — horizontal branch only; vertical supplied by single line above */}
+                    {isExpanded && comps.map(comp => {
+                      const name = comp.component_item?.name ?? `Item #${comp.component_item_id}`;
+                      const qty  = parseFloat(String(comp.quantity));
+                      const unit = comp.component_item?.unit
+                        ? comp.component_item.unit
+                        : comp.component_type === "service" ? "service" : "unit";
+                      return (
+                        <div key={comp.id} style={{ paddingLeft: 12, paddingRight: 12, height: 36, display: "flex", alignItems: "center", background: "#fafafa" }}>
+                          {/* 26px spacer — horizontal branch from the vertical line */}
+                          <div style={{ width: 26, flexShrink: 0, position: "relative", alignSelf: "stretch" }}>
+                            <div style={{ position: "absolute", left: "50%", top: "50%", width: "50%", height: 1, background: "#ced4da" }} />
+                          </div>
+                          <div style={{ width: 8, flexShrink: 0 }} />
+                          <span className="fs-13 flex-grow-1 text-truncate" style={{ color: "#343a40", fontWeight: 500 }}>{name}</span>
+                          <span className="fs-12 flex-shrink-0 ms-1" style={{ color: "#868e96" }}>({isNaN(qty) ? comp.quantity : qty} {unit})</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })
@@ -469,330 +758,355 @@ const CompositeItemOverview = () => {
         </div>
 
         {/* ── Right: Composite item detail ──────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", background: "#fff" }}>
-          <div style={{ padding: "1.25rem", flex: 1 }}>
+        <div style={{ flex: 1, overflowY: "auto", background: "#fff" }}>
+          <div style={{ padding: "1.25rem" }}>
 
-            {/* ── Top action bar ── */}
-            <div className="d-flex align-items-start justify-content-between mb-2 flex-wrap gap-2">
-              <div>
-                <h4 className="fw-semibold mb-2 lh-sm">{item.name}</h4>
-                <span className="badge bg-light text-dark border fs-12 fw-normal text-capitalize">
-                  {compositeTypeLabel}
-                </span>
-              </div>
-              <div className="d-flex align-items-center gap-2">
-                <Link
-                  to="#"
-                  className="btn btn-outline-light shadow"
-                  title="Edit"
-                  style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={(e) => { e.preventDefault(); navigate(`/composite-items/${id}/edit`); }}
-                >
-                  <i className="ti ti-pencil" />
-                </Link>
-                <button type="button" className="btn btn-primary" style={{ height: 36 }}>
-                  <i className="ti ti-adjustments-horizontal me-1" />
-                  Adjust Stock
-                </button>
-                <div className="dropdown">
-                  <button type="button" className="btn btn-outline-light dropdown-toggle shadow px-3" style={{ height: 36 }} data-bs-toggle="dropdown">
-                    More
-                  </button>
-                  <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
-                    <ul>
-                      <li><button className="dropdown-item"><i className="ti ti-copy me-2" />Duplicate</button></li>
-                      <li><button className="dropdown-item text-danger"><i className="ti ti-trash me-2" />Delete</button></li>
-                    </ul>
+            {/* ── Header ── */}
+            <div className="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+              <div className="d-flex align-items-start gap-3">
+                <div className="rounded border d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden"
+                  style={{ width: 56, height: 56, background: "#f5f5f5" }}>
+                  {thumbImg
+                    ? <img src={thumbImg} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }} />
+                    : <i className="ti ti-layers-intersect fs-24 text-muted" />
+                  }
+                </div>
+                <div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
+                    <h4 className="fw-bold mb-0 lh-sm">{item.name}</h4>
+                    {item.deleted_at ? (
+                      <span className="badge badge-soft-danger d-inline-flex align-items-center gap-1 fs-12">
+                        <i className="ti ti-trash" style={{ fontSize: 10 }} />Deleted
+                      </span>
+                    ) : (
+                      <span className="badge badge-soft-success d-inline-flex align-items-center gap-1 fs-12">
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: "#12b76a", display: "inline-block" }} />
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <span className="badge fs-12" style={{ background: "#f1f3f5", color: "#6c757d" }}>
+                      {compositeTypeLabel}
+                    </span>
+                    {item.unit && (
+                      <span className="badge fs-12" style={{ background: "#f1f3f5", color: "#6c757d" }}>
+                        Unit: {item.unit}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <Link to={route.compositeItems} className="btn btn-outline-light shadow" title="Close"
-                  style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <i className="ti ti-x" />
-                </Link>
+              </div>
+
+              <div className="d-flex align-items-center gap-2">
+                {item.deleted_at ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline-light shadow d-flex align-items-center gap-1"
+                    style={{ height: 36 }}
+                    onClick={handleRestoreCurrentItem}
+                  >
+                    <i className="ti ti-refresh" style={{ fontSize: 14 }} />Restore
+                  </button>
+                ) : (
+                  <div className="dropdown">
+                    <button type="button" className="btn btn-outline-light dropdown-toggle shadow d-flex align-items-center gap-1"
+                      style={{ height: 36 }} data-bs-toggle="dropdown">
+                      Actions
+                    </button>
+                    <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
+                      <ul>
+                        <li>
+                          <button className="dropdown-item" onClick={() => navigate(`/composite-items/${id}/edit`)}>
+                            <i className="ti ti-pencil me-2" />Edit
+                          </button>
+                        </li>
+                        <li>
+                          <button className="dropdown-item text-danger" onClick={handleDeleteCurrentItem}>
+                            <i className="ti ti-trash me-2" />Delete
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+                <button type="button" className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
+                  style={{ height: 36, width: 36 }} onClick={handleRefresh} disabled={refreshing} title="Refresh">
+                  <i className={`ti ti-refresh${refreshing ? " spin-animation" : ""}`} style={{ fontSize: 16 }} />
+                </button>
+                <button type="button" className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
+                  style={{ height: 36, width: 36 }} onClick={() => navigate(route.compositeItems)} title="Close">
+                  <i className="ti ti-x" style={{ fontSize: 16 }} />
+                </button>
               </div>
             </div>
 
-            {/* ── Tab nav ── */}
-            <div className="border-bottom mb-3 mt-5 mt-md-4">
-              <ul className="nav" style={{ gap: 0, marginLeft: -10 }}>
-                {tabs.map((t) => (
-                  <li key={t.key} className="nav-item">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab(t.key)}
-                      className="nav-link border-0 bg-transparent"
+            {/* ── Tab nav (pill) ── */}
+            <div className="mb-4">
+              <div className="d-inline-flex rounded" style={{ background: "#f1f3f5", padding: 4, gap: 2 }}>
+                {tabs.map(t => {
+                  const isActiveTab = activeTab === t.key;
+                  return (
+                    <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
                       style={{
-                        color: activeTab === t.key ? "#e03131" : "#6c757d",
-                        fontWeight: activeTab === t.key ? 600 : 400,
+                        padding: "6px 20px", borderRadius: 6, border: "none",
+                        background: isActiveTab ? "#fff" : "transparent",
+                        color: isActiveTab ? "#e03131" : "#6c757d",
+                        fontWeight: isActiveTab ? 600 : 400,
                         fontSize: 14,
-                        lineHeight: "1.5",
-                        padding: "5px 10px",
-                        borderBottom: activeTab === t.key ? "2px solid #e03131" : "2px solid transparent",
-                        borderRadius: 0,
-                        marginBottom: -1,
-                        transition: "color 0.15s, border-color 0.15s",
-                      }}
-                    >
+                        boxShadow: isActiveTab ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
+                        transition: "all 0.15s", cursor: "pointer", whiteSpace: "nowrap",
+                      }}>
                       {t.label}
                     </button>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             </div>
 
             {/* ── Tab: Overview ── */}
             {activeTab === "overview" && (
-              <div className="row g-3">
-
-                {/* ── Left column ── */}
-                <div className="col-lg-6">
-
-                  {/* Primary Details */}
-                  <h6 className="fw-semibold mb-3">Primary Details</h6>
-                  <DetailRow label="Item Name" value={<span className="text-primary">{item.name}</span>} />
-                  <DetailRow label="Composite Type" value={compositeTypeLabel} />
-                  <DetailRow label="Unit" value={fmt(item.unit)} />
-                  <DetailRow label="SKU" value={fmt(item.sku)} />
-                  <DetailRow label="Created Source" value="User" />
-                  {item.track_inventory && item.valuation_method && (
-                    <DetailRow
-                      label="Inventory Valuation Method"
-                      value={VALUATION_LABELS[item.valuation_method] ?? item.valuation_method}
-                    />
-                  )}
-
-                  {/* Purchase Information */}
-                  {(item.cost_price || item.purchase_account) && (
-                    <>
-                      <h6 className="fw-semibold mt-4 mb-3">Purchase Information</h6>
-                      <DetailRow label="Cost Price" value={fmtPrice(item.cost_price)} />
-                      <DetailRow label="Purchase Account" value={fmt(item.purchase_account ?? "Cost of Goods Sold")} />
-                    </>
-                  )}
-
-                  {/* Sales Information */}
-                  {(item.selling_price || item.sales_account) && (
-                    <>
-                      <h6 className="fw-semibold mt-4 mb-3">Sales Information</h6>
-                      <DetailRow label="Selling Price" value={fmtPrice(item.selling_price)} />
-                      <DetailRow label="Sales Account" value={fmt(item.sales_account ?? "Sales")} />
-                    </>
-                  )}
-
-                  {/* Reporting Tags */}
-                  <h6 className="fw-semibold mt-4 mb-3">Reporting Tags</h6>
-                  <p className="fs-14 text-muted mb-0">No reporting tag has been associated with this item.</p>
-
-                  {/* Associated Price Lists */}
-                  <div className="mt-4">
-                    <Link to="#" className="fs-14 text-primary d-flex align-items-center gap-1">
-                      Associated Price Lists
-                      <i className="ti ti-chevron-right fs-14" />
-                    </Link>
+              <div>
+                {/* Item Information card */}
+                <div className="card border mb-3">
+                  <div className="card-body p-0">
+                    <div className="px-4 py-3 border-bottom">
+                      <h6 className="fw-semibold fs-15 mb-0">Item Information</h6>
+                    </div>
+                    <div className="row g-0 pt-2 pb-1">
+                      <div className="col-md-6">
+                        <ItemInfoRow label="Item Name" value={<span className="text-primary">{item.name}</span>} />
+                        <ItemInfoRow label="Composite Type" value={
+                          <span className={`badge fs-12 ${item.composite_type === "assembly" ? "badge-soft-info" : "badge-soft-purple"}`}>
+                            {item.composite_type === "assembly" ? "Assembly" : "Kit"}
+                          </span>
+                        } />
+                        <ItemInfoRow label="Unit" value={fmt(item.unit)} />
+                        <ItemInfoRow label="SKU" value={fmt(item.sku)} />
+                        {item.track_inventory && item.valuation_method && (
+                          <ItemInfoRow label="Valuation Method" value={VALUATION_LABELS[item.valuation_method] ?? item.valuation_method} />
+                        )}
+                      </div>
+                      <div className="col-md-6">
+                        <ItemInfoRow label="Selling Price" value={fmtPrice(item.selling_price)} />
+                        <ItemInfoRow label="Cost Price" value={fmtPrice(item.cost_price)} />
+                        <ItemInfoRow label="Track Inventory" value={item.track_inventory ? "Yes" : "No"} />
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center px-4 py-3 border-top" style={{ background: "#fafafa", borderRadius: "0 0 8px 8px" }}>
+                      <span className="text-muted fs-14 flex-shrink-0" style={{ width: "22.5%" }}>Created On</span>
+                      <span className="fs-14 fw-medium">
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) + ", " +
+                            new Date(item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+                          : "—"}
+                      </span>
+                    </div>
                   </div>
-
                 </div>
 
-                {/* ── Right column ── */}
-                <div className="col-lg-6">
+                {/* Bottom cards */}
+                <div className="row g-3">
 
                   {/* Image */}
-                  <label
-                    htmlFor="overview_image_input"
-                    className="border rounded d-flex flex-column align-items-center justify-content-center text-center mb-4 overflow-hidden position-relative"
-                    style={{ cursor: imageUploading ? "wait" : "pointer", background: "#fafafa", height: 280 }}
-                  >
-                    {imagePreview ? (
-                      <img
-                        src={imagePreview}
-                        alt={item.name}
-                        style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }}
-                      />
-                    ) : (
-                      <>
-                        <i className="ti ti-photo-up text-primary fs-32 mb-2" />
-                        <span className="fw-semibold fs-14">Item Image</span>
-                        <small className="text-muted mt-1">Click to upload — PNG, JPG up to 10 MB</small>
-                      </>
-                    )}
-                    {imageUploading && (
-                      <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: "rgba(255,255,255,0.7)" }}>
-                        <span className="spinner-border spinner-border-sm text-primary" />
-                      </div>
-                    )}
-                    {imagePreview && !imageUploading && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 p-1 lh-1"
-                        style={{ fontSize: 12, zIndex: 1 }}
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          const prevPreview = imagePreview;
-                          setImagePreview(null);
-                          setImageFile(null);
-                          const res = await updateItem(Number(id), { image: null } as any);
-                          if (!res.success) {
-                            setImagePreview(prevPreview);
-                            showToast("danger", res.message || "Failed to remove image.");
-                          } else {
-                            showToast("success", "Image removed successfully.");
-                          }
-                        }}
-                      >
-                        <i className="ti ti-x" />
-                      </button>
-                    )}
-                  </label>
-                  <input
-                    id="overview_image_input"
-                    type="file"
-                    accept="image/*"
-                    className="d-none"
-                    onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const prevPreview = imagePreview;
-                      setImagePreview(URL.createObjectURL(file));
-                      setImageFile(file);
-                      setImageUploading(true);
-                      const uploadRes = await uploadItemImage(file);
-                      if (!uploadRes.success) {
-                        setImageUploading(false);
-                        setImagePreview(prevPreview);
-                        setImageFile(null);
-                        showToast("danger", uploadRes.message || "Failed to upload image.");
-                        return;
-                      }
-                      const imagePath = (uploadRes as any).path as string;
-                      const updateRes = await updateItem(Number(id), { image: imagePath } as any);
-                      setImageUploading(false);
-                      if (!updateRes.success) {
-                        setImagePreview(prevPreview);
-                        setImageFile(null);
-                        showToast("danger", updateRes.message || "Failed to save image.");
-                      } else {
-                        showToast("success", "Image updated successfully.");
-                      }
-                    }}
-                  />
-
-                  <hr className="my-3" />
-
-                  {/* Opening stock */}
-                  <div className="d-flex align-items-center gap-2 mb-3">
-                    <i className="ti ti-building-warehouse fs-16 text-primary" />
-                    <Link to="#" className="fs-14 text-primary fw-medium">Opening Stock</Link>
-                    <i className="ti ti-info-circle fs-14 text-muted" />
-                    <span className="ms-auto fs-14 fw-semibold">: 0.00</span>
-                  </div>
-
-                  {/* Stock */}
-                  <div className="d-flex align-items-center gap-1 mb-2">
-                    <span className="fs-14 fw-semibold">Stock</span>
-                    <i className="ti ti-info-circle fs-14 text-muted" />
-                  </div>
-                  <StockRow label="Stock on Hand" />
-                  <StockRow label="Committed Stock" />
-                  <StockRow label="Available for Sale" />
-
-                  <hr className="my-3" />
-
-                  {/* Reorder Point */}
-                  <p className="fs-14 fw-semibold mb-2" style={{ textDecorationLine: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
-                    Reorder Point
-                  </p>
-
-                  {notifyReorderEnabled ? (
-                    <div className="position-relative mb-4">
-                      {reorderPoint !== null ? (
-                        <div className="d-flex align-items-center gap-2">
-                          <span className="fs-15 fw-semibold">{parseFloat(String(reorderPoint)).toFixed(2)}</span>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
-                            style={{ width: 26, height: 26 }}
-                            onClick={() => { setReorderInput(String(reorderPoint)); setReorderPopoverOpen(true); }}
-                          >
-                            <i className="ti ti-pencil fs-12" />
-                          </button>
+                  <div className="col-lg-6">
+                    <div className="card border h-100">
+                      <div className="card-body">
+                        <div className="d-flex align-items-center gap-2 mb-3">
+                          <i className="ti ti-photo text-muted fs-18" />
+                          <h6 className="fw-semibold fs-15 mb-0">Item Image</h6>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
-                          onClick={() => { setReorderInput(""); setReorderPopoverOpen(true); }}
-                        >
-                          + Add
-                        </button>
-                      )}
-
-                      {reorderPopoverOpen && (
-                        <>
-                          <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 99 }} onClick={() => setReorderPopoverOpen(false)} />
-                          <div
-                            className="position-absolute border rounded shadow bg-white p-3"
-                            style={{ top: 32, left: 0, zIndex: 100, minWidth: 240 }}
-                          >
-                            <p className="fs-14 fw-semibold mb-3">Reorder Point</p>
-                            <label className="fs-13 fw-medium text-danger mb-1">Set Reorder point*</label>
-                            <input
-                              type="number"
-                              className="form-control form-control-sm mb-3"
-                              min={0}
-                              step={0.01}
-                              value={reorderInput}
-                              onChange={(e) => setReorderInput(e.target.value)}
-                              autoFocus
-                            />
-                            <div className="d-flex gap-2">
-                              <button
-                                type="button"
-                                className="btn btn-danger me-2"
-                                disabled={reorderSaving || reorderInput.trim() === ""}
-                                onClick={async () => {
-                                  const val = parseFloat(reorderInput);
-                                  if (isNaN(val) || val < 0) return;
-                                  setReorderSaving(true);
-                                  const res = await updateItem(Number(id), { reorder_point: val } as any);
-                                  setReorderSaving(false);
-                                  if (res.success) {
-                                    setReorderPoint(val);
-                                    setReorderPopoverOpen(false);
-                                    showToast("success", "Reorder point updated.");
-                                  } else {
-                                    showToast("danger", res.message || "Failed to update reorder point.");
-                                  }
-                                }}
-                              >
-                                {reorderSaving ? <span className="spinner-border spinner-border-sm" /> : "Update"}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline-light"
-                                onClick={() => setReorderPopoverOpen(false)}
-                              >
-                                Cancel
-                              </button>
+                        <label htmlFor="overview_image_input"
+                          className="border rounded d-flex flex-column align-items-center justify-content-center text-center overflow-hidden position-relative"
+                          style={{ cursor: imageUploading ? "wait" : "pointer", background: "#fafafa", height: 180 }}>
+                          {imagePreview ? (
+                            <img src={imagePreview} alt={item.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }} />
+                          ) : (
+                            <>
+                              <i className="ti ti-photo-up text-primary fs-32 mb-2" />
+                              <span className="fw-semibold fs-14">Upload Image</span>
+                              <small className="text-muted mt-1">PNG, JPG up to 10 MB</small>
+                            </>
+                          )}
+                          {imageUploading && (
+                            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: "rgba(255,255,255,0.7)" }}>
+                              <span className="spinner-border spinner-border-sm text-primary" />
                             </div>
+                          )}
+                          {imagePreview && !imageUploading && (
+                            <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 p-1 lh-1"
+                              style={{ fontSize: 12, zIndex: 1 }}
+                              onClick={async e => {
+                                e.preventDefault();
+                                const prev = imagePreview;
+                                setImagePreview(null);
+                                const res = await updateCompositeItem(Number(id), { image: null });
+                                if (!res.success) { setImagePreview(prev); showToast("danger", res.message || "Failed to remove image."); }
+                                else {
+                                  bustCompositeItem(Number(id));
+                                  emitMutation("composite-items:mutated");
+                                  showToast("success", "Image removed successfully.");
+                                }
+                              }}>
+                              <i className="ti ti-x" />
+                            </button>
+                          )}
+                        </label>
+                        <input id="overview_image_input" type="file" accept="image/*" className="d-none"
+                          onClick={e => { (e.target as HTMLInputElement).value = ""; }}
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const prev = imagePreview;
+                            const objectUrl = URL.createObjectURL(file);
+                            setImagePreview(objectUrl);
+                            setImageUploading(true);
+                            const uploadRes = await uploadItemImage(file);
+                            if (!uploadRes.success) {
+                              setImageUploading(false); setImagePreview(prev);
+                              URL.revokeObjectURL(objectUrl);
+                              showToast("danger", uploadRes.message || "Failed to upload image."); return;
+                            }
+                            const imagePath = (uploadRes as any).path as string;
+                            const updateRes = await updateCompositeItem(Number(id), { image: imagePath });
+                            URL.revokeObjectURL(objectUrl);
+                            setImageUploading(false);
+                            if (!updateRes.success) { setImagePreview(prev); showToast("danger", updateRes.message || "Failed to save image."); }
+                            else {
+                              setImagePreview(`/storage/${imagePath}`);
+                              bustCompositeItem(Number(id));
+                              emitMutation("composite-items:mutated");
+                              showToast("success", "Image updated successfully.");
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stock Summary */}
+                  <div className="col-lg-6">
+                    <div className="card border h-100">
+                      <div className="card-body position-relative">
+                        <div className="d-flex align-items-center gap-2 mb-3">
+                          <i className="ti ti-building-warehouse text-muted fs-18" />
+                          <h6 className="fw-semibold fs-15 mb-0">Stock Summary</h6>
+                        </div>
+                        {/* Opening Stock — shown separately */}
+                        <div className="d-flex align-items-center py-2 mb-1" style={{ background: "#f8f9fa", borderRadius: 6, padding: "8px 12px" }}>
+                          <span className="text-muted fs-14 flex-shrink-0" style={{ width: "60%" }}>Opening Stock</span>
+                          <span className="fs-14 fw-semibold">0.00</span>
+                        </div>
+
+                        <hr className="my-2" />
+
+                        {[
+                          { label: "Stock on Hand",      value: "0.00" },
+                          { label: "Committed Stock",    value: "0.00" },
+                          { label: "Available for Sale", value: "0.00" },
+                        ].map(row => (
+                          <div key={row.label} className="d-flex align-items-center py-2 border-bottom">
+                            <span className="text-muted fs-14 flex-shrink-0" style={{ width: "60%" }}>{row.label}</span>
+                            <span className="fs-14 fw-medium">{row.value}</span>
                           </div>
-                        </>
-                      )}
+                        ))}
+                        <hr className="my-3" />
+
+                        <p className="fs-14 fw-semibold mb-2" style={{ textDecorationLine: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
+                          Reorder Point
+                        </p>
+
+                        {notifyReorderEnabled ? (
+                          <div className="position-relative">
+                            {reorderPoint !== null ? (
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="fs-15 fw-semibold">{parseFloat(String(reorderPoint)).toFixed(2)}</span>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
+                                  style={{ width: 26, height: 26 }}
+                                  onClick={() => { setReorderInput(String(reorderPoint)); setReorderPopoverOpen(true); }}
+                                >
+                                  <i className="ti ti-pencil fs-12" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
+                                onClick={() => { setReorderInput(""); setReorderPopoverOpen(true); }}
+                              >
+                                + Add
+                              </button>
+                            )}
+
+                            {reorderPopoverOpen && (
+                              <>
+                                <div
+                                  style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+                                  onClick={e => { if (e.target === e.currentTarget) setReorderPopoverOpen(false); }}
+                                >
+                                  <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
+                                    <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Reorder Point</p>
+                                    <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "#64748b", lineHeight: 1.55 }}>Set a reorder point for this item.</p>
+                                    <label className="fs-13 fw-medium text-danger mb-1">Set Reorder point*</label>
+                                    <input
+                                      type="number"
+                                      className="form-control mb-4"
+                                      min={0}
+                                      step={0.01}
+                                      value={reorderInput}
+                                      onChange={e => setReorderInput(e.target.value)}
+                                      autoFocus
+                                    />
+                                    <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                                      <button type="button" className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={() => setReorderPopoverOpen(false)} disabled={reorderSaving}>Cancel</button>
+                                      <button
+                                        type="button"
+                                        className="btn flex-grow-1"
+                                        style={{ background: "#e03131", color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
+                                        disabled={reorderSaving || reorderInput.trim() === "" || isNaN(parseFloat(reorderInput))}
+                                        onClick={async () => {
+                                          const val = parseFloat(reorderInput);
+                                          if (isNaN(val) || val < 0) return;
+                                          setReorderSaving(true);
+                                          const res = await updateCompositeItem(Number(id), { reorder_point: val });
+                                          setReorderSaving(false);
+                                          if (res.success) {
+                                            setReorderPoint(val);
+                                            setReorderPopoverOpen(false);
+                                            bustCompositeItem(Number(id));
+                                            emitMutation("composite-items:mutated");
+                                            showToast("success", "Reorder point updated.");
+                                          } else {
+                                            showToast("danger", res.message || "Failed to update reorder point.");
+                                          }
+                                        }}
+                                      >
+                                        {reorderSaving ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />Saving…</> : "Update"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rounded p-3" style={{ background: "#fff8f0", border: "1px solid #fde8c8" }}>
+                            <p className="fs-14 mb-0" style={{ color: "#7a5c2e" }}>
+                              You have to enable reorder notification before setting reorder point for items.{" "}
+                              <Link to={`${route.projectSettings}?highlight=notify-reorder`} className="text-primary">Click here</Link>
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="rounded p-3 mb-4" style={{ background: "#fff8f0", border: "1px solid #fde8c8" }}>
-                      <p className="fs-14 mb-0" style={{ color: "#7a5c2e" }}>
-                        You have to enable reorder notification before setting reorder point for items.{" "}
-                        <Link to={`${route.projectSettings}?highlight=notify-reorder`} className="text-primary">Click here</Link>
-                      </p>
-                    </div>
-                  )}
+                  </div>
 
                 </div>
 
-                {/* ── Full-width: Associated Components ── */}
-                <div className="col-12">
+                {/* Associated Components */}
+                <div className="mt-3">
                   <hr className="mt-0 mb-3" />
                   <h6 className="fw-semibold fs-14 mb-3">
                     Associated Products
@@ -815,30 +1129,28 @@ const CompositeItemOverview = () => {
                         <table className="table mb-0" style={{ minWidth: 640, width: "100%" }}>
                           <thead>
                             <tr>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 56, whiteSpace: "nowrap" }} />
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", whiteSpace: "nowrap" }}>Item Name</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 100, whiteSpace: "nowrap" }}>Type</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>SKU</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Unit</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Qty</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Selling (₹)</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Cost (₹)</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 56 }} />
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6" }}>Item Name</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 100 }}>Type</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>SKU</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80 }}>Unit</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80 }}>Qty</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Selling (₹)</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Cost (₹)</th>
                             </tr>
                           </thead>
                           <tbody>
                             {components.map((comp: any) => {
-                              const ci = comp.component_item ?? {};
+                              const ci    = comp.component_item ?? {};
                               const ciImg = ci.image ? `/storage/${ci.image}` : null;
-                              const qty = comp.quantity ? parseFloat(comp.quantity) : 0;
-                              const sp  = comp.selling_price != null ? parseFloat(comp.selling_price) : null;
-                              const cp  = comp.cost_price    != null ? parseFloat(comp.cost_price)    : null;
+                              const qty   = comp.quantity ? parseFloat(comp.quantity) : 0;
+                              const sp    = comp.selling_price != null ? parseFloat(comp.selling_price) : null;
+                              const cp    = comp.cost_price    != null ? parseFloat(comp.cost_price)    : null;
                               return (
                                 <tr key={comp.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
                                   <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
-                                    <div
-                                      className="rounded border d-flex align-items-center justify-content-center overflow-hidden"
-                                      style={{ width: 36, height: 36, background: "#f8f9fa", flexShrink: 0 }}
-                                    >
+                                    <div className="rounded border d-flex align-items-center justify-content-center overflow-hidden"
+                                      style={{ width: 36, height: 36, background: "#f8f9fa", flexShrink: 0 }}>
                                       {ciImg
                                         ? <img src={ciImg} alt={ci.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                         : <i className="ti ti-photo text-muted" style={{ fontSize: 14 }} />
@@ -875,8 +1187,8 @@ const CompositeItemOverview = () => {
                   )}
                 </div>
 
-                {/* ── Full-width: Sales Order Summary chart ── */}
-                <div className="col-12">
+                {/* Sales Order Summary chart */}
+                <div className="mt-3">
                   <hr className="mt-0 mb-3" />
                   <div className="d-flex align-items-center justify-content-between mb-2">
                     <h6 className="fw-semibold mb-0 fs-14">
@@ -909,6 +1221,19 @@ const CompositeItemOverview = () => {
                   </div>
                 </div>
 
+                {/* Last updated footer */}
+                <div className="d-inline-flex align-items-center gap-2 mt-4 px-3 py-2 rounded"
+                  style={{ background: "#f8f9fa", border: "1px solid #e9ecef" }}>
+                  <i className="ti ti-clock text-muted fs-14" />
+                  <span className="fs-14 text-muted">
+                    Last updated on{" "}
+                    <span className="fw-semibold" style={{ color: "#495057" }}>
+                      {new Date(item.updated_at ?? item.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+                      {", "}
+                      {new Date(item.updated_at ?? item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                    </span>
+                  </span>
+                </div>
               </div>
             )}
 
@@ -918,22 +1243,6 @@ const CompositeItemOverview = () => {
                 <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                   <div className="d-flex align-items-center gap-2">
                     <h6 className="fw-semibold fs-15 mb-0">Stock Locations</h6>
-                    <div className="dropdown">
-                      <button
-                        type="button"
-                        className="btn btn-outline-light shadow"
-                        data-bs-toggle="dropdown"
-                        style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                      >
-                        <i className="ti ti-settings fs-14" />
-                      </button>
-                      <div className="dropdown-menu dropdown-menu-start dropmenu-hover-primary">
-                        <ul>
-                          <li><button className="dropdown-item fs-13"><i className="ti ti-columns me-2" />Customize Columns</button></li>
-                          <li><button className="dropdown-item fs-13"><i className="ti ti-download me-2" />Export</button></li>
-                        </ul>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -966,7 +1275,7 @@ const CompositeItemOverview = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {locations.map((loc) => (
+                        {locations.map(loc => (
                           <tr key={loc.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
                             <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
                               <div className="d-flex align-items-center gap-1">
@@ -1005,13 +1314,27 @@ const CompositeItemOverview = () => {
             {/* ── Tab: History ── */}
             {activeTab === "history" && (
               <div>
-                <div className="d-flex align-items-center justify-content-between mb-3">
+                {/* Header row */}
+                <div className="d-flex align-items-center justify-content-between mb-4">
                   <div>
-                    <h6 className="fw-semibold mb-0">Activity History</h6>
+                    <h6 className="fw-semibold mb-0 fs-15">Activity History</h6>
                     {!auditLoading && (
-                      <span className="fs-13 text-muted">{auditTotal} {auditTotal === 1 ? "entry" : "entries"}</span>
+                      <span className="fs-13 text-muted">{auditTotal} {auditTotal === 1 ? "record" : "records"}</span>
                     )}
                   </div>
+                  {!auditLoading && auditLastPage > 1 && (
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="fs-13 text-muted">Page {auditPage} of {auditLastPage}</span>
+                      <button type="button" className="btn btn-sm btn-outline-light shadow" disabled={auditPage <= 1}
+                        onClick={() => setAuditPage(p => p - 1)} style={{ width: 30, height: 30, padding: 0 }}>
+                        <i className="ti ti-chevron-left fs-14" />
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline-light shadow" disabled={auditPage >= auditLastPage}
+                        onClick={() => setAuditPage(p => p + 1)} style={{ width: 30, height: 30, padding: 0 }}>
+                        <i className="ti ti-chevron-right fs-14" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {auditLoading ? (
@@ -1021,48 +1344,49 @@ const CompositeItemOverview = () => {
                   </div>
                 ) : auditLogs.length === 0 ? (
                   <div className="text-center py-5 text-muted">
-                    <i className="ti ti-history fs-40 d-block mb-2" />
-                    <p className="fs-14 mb-0">No history recorded yet.</p>
+                    <i className="ti ti-history fs-36 d-block mb-2" />
+                    <p className="fs-14 mb-0">No activity recorded yet.</p>
                   </div>
                 ) : (
-                  <div className="position-relative">
-                    <div style={{ position: "absolute", left: 17, top: 18, bottom: 18, width: 2, background: "#dee2e6", zIndex: 0 }} />
+                  <div style={{ position: "relative", paddingLeft: 52 }}>
+                    {/* Continuous spine */}
+                    <div style={{ position: "absolute", left: 17, top: 0, bottom: 0, width: 2, background: "#e9ecef", zIndex: 0 }} />
                     {auditLogs.map((log, idx) => {
-                      const isLast = idx === auditLogs.length - 1;
-                      const eventColor: Record<string, string> = { created: "bg-success", updated: "bg-primary", deleted: "bg-danger", restored: "bg-warning" };
-                      const eventIcon:  Record<string, string> = { created: "ti-plus", updated: "ti-pencil", deleted: "ti-trash", restored: "ti-refresh" };
-                      const eventLabel: Record<string, string> = { created: "Created", updated: "Updated", deleted: "Deleted", restored: "Restored" };
-                      const bgClass   = eventColor[log.event] ?? "bg-secondary";
-                      const iconClass = eventIcon[log.event]  ?? "ti-activity";
-                      const label     = eventLabel[log.event] ?? log.event;
+                      const eventIcon: Record<string, string> = {
+                        created:  "ti-plus",
+                        updated:  "ti-pencil",
+                        deleted:  "ti-trash",
+                        restored: "ti-refresh",
+                      };
+                      const iconClass = eventIcon[log.event] ?? "ti-activity";
 
-                      const changedFields = log.new_values ? Object.keys(log.new_values) : [];
-                      const actor  = log.user?.name ?? log.user?.email ?? "System";
-                      const dateObj = new Date(log.created_at);
+                      const SKIP_FIELDS = new Set(["updated_at", "created_at", "deleted_at", "remember_token", "email_verified_at"]);
+                      const changedFields = Object.keys({ ...(log.old_values ?? {}), ...(log.new_values ?? {}) })
+                        .filter(f => !SKIP_FIELDS.has(f));
+
+                      const actor = log.user?.name ?? log.user?.email ?? "System";
+                      const rawTs = log.created_at;
+                      const utcTs = /Z$|[+-]\d{2}:\d{2}$/.test(rawTs) ? rawTs : rawTs.replace(' ', 'T') + 'Z';
+                      const dateObj = new Date(utcTs);
                       const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
                       const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
                       const fieldLabel: Record<string, string> = {
-                        name: "Item Name", item_type: "Item Type", unit: "Unit", sku: "SKU",
-                        description: "Description", image: "Image", selling_price: "Selling Price",
-                        cost_price: "Cost Price", track_inventory: "Track Inventory",
-                        reorder_point: "Reorder Point", valuation_method: "Valuation Method",
-                        is_returnable: "Returnable", has_sales_info: "Sales Info",
-                        has_purchase_info: "Purchase Info", sales_description: "Sales Description",
-                        purchase_description: "Purchase Description", preferred_vendor: "Preferred Vendor",
-                        form_type: "Form Type", product_tag: "Product Tag",
-                        is_composite: "Is Composite", composite_type: "Composite Type",
+                        name: "Item Name", composite_type: "Composite Type", item_type: "Item Type",
+                        unit: "Unit", sku: "SKU", description: "Description", image: "Image",
+                        selling_price: "Selling Price", cost_price: "Cost Price",
+                        track_inventory: "Track Inventory", reorder_point: "Reorder Point",
+                        valuation_method: "Valuation Method", is_returnable: "Returnable",
+                        has_sales_info: "Sales Info", has_purchase_info: "Purchase Info",
+                        sales_description: "Sales Description", purchase_description: "Purchase Description",
+                        preferred_vendor: "Preferred Vendor", product_tag: "Product Tag",
                         components: "Components",
                       };
 
                       const subKeyLabels: Record<string, Record<string, string>> = {
-                        refs: {
-                          brand_id: "Brand", category_id: "Category", hsn_code_id: "HSN Code",
-                          gst_rate_id: "GST Rate", sales_account_id: "Sales Account",
-                          purchase_account_id: "Purchase Account", inventory_account_id: "Inventory Account",
-                        },
+                        refs: { brand_id: "Brand", category_id: "Category", hsn_code_id: "HSN Code", gst_rate_id: "GST Rate", sales_account_id: "Sales Account", purchase_account_id: "Purchase Account", inventory_account_id: "Inventory Account" },
                         dimensions: { length: "Length", width: "Width", height: "Height", unit: "Dimension Unit" },
-                        weight:      { value: "Weight", unit: "Weight Unit" },
+                        weight:     { value: "Weight", unit: "Weight Unit" },
                         identifiers: { upc: "UPC", mpn: "MPN", ean: "EAN", isbn: "ISBN" },
                       };
 
@@ -1074,146 +1398,130 @@ const CompositeItemOverview = () => {
                       type DiffRow = { key: string; label: string; oldVal: any; newVal: any };
 
                       const diffRows: DiffRow[] = changedFields.flatMap((field): DiffRow[] => {
-                        if (field === "refs") {
-                          const rawOld = parseIfStr(log.old_values?.refs);
-                          const rawNew = parseIfStr(log.new_values?.refs);
+                        if (["refs", "dimensions", "weight", "identifiers", "custom_fields"].includes(field)) {
+                          const rawOld = parseIfStr(log.old_values?.[field]);
+                          const rawNew = parseIfStr(log.new_values?.[field]);
                           const oldS = (rawOld && typeof rawOld === "object" && !Array.isArray(rawOld)) ? rawOld : {};
                           const newS = (rawNew && typeof rawNew === "object" && !Array.isArray(rawNew)) ? rawNew : {};
-                          const changed = Object.keys({ ...oldS, ...newS }).filter((k) => String(oldS[k] ?? "") !== String(newS[k] ?? ""));
+                          const changed = Object.keys({ ...oldS, ...newS }).filter(k => String(oldS[k] ?? "") !== String(newS[k] ?? ""));
                           if (changed.length === 0) return [];
-                          return changed.map((k) => ({ key: `refs.${k}`, label: subKeyLabels.refs[k] ?? k, oldVal: oldS[k] ?? null, newVal: newS[k] ?? null }));
-                        }
-                        if (field === "dimensions") {
-                          const rawOld = parseIfStr(log.old_values?.dimensions);
-                          const rawNew = parseIfStr(log.new_values?.dimensions);
-                          const oldS = (rawOld && typeof rawOld === "object" && !Array.isArray(rawOld)) ? rawOld : {};
-                          const newS = (rawNew && typeof rawNew === "object" && !Array.isArray(rawNew)) ? rawNew : {};
-                          const changed = Object.keys({ ...oldS, ...newS }).filter((k) => JSON.stringify(oldS[k]) !== JSON.stringify(newS[k]));
-                          if (changed.length === 0) return [];
-                          const ctxUnit = newS.unit || oldS.unit || "";
-                          return changed.map((k) => {
-                            const withUnit = (v: any) => v != null && k !== "unit" && ctxUnit ? `${v} ${ctxUnit}` : v;
-                            return { key: `dimensions.${k}`, label: subKeyLabels.dimensions[k] ?? k, oldVal: withUnit(oldS[k] ?? null), newVal: withUnit(newS[k] ?? null) };
-                          });
-                        }
-                        if (field === "weight") {
-                          const rawOld = parseIfStr(log.old_values?.weight);
-                          const rawNew = parseIfStr(log.new_values?.weight);
-                          const oldS = (rawOld && typeof rawOld === "object" && !Array.isArray(rawOld)) ? rawOld : {};
-                          const newS = (rawNew && typeof rawNew === "object" && !Array.isArray(rawNew)) ? rawNew : {};
-                          const changed = Object.keys({ ...oldS, ...newS }).filter((k) => JSON.stringify(oldS[k]) !== JSON.stringify(newS[k]));
-                          if (changed.length === 0) return [];
-                          const ctxUnit = newS.unit || oldS.unit || "";
-                          return changed.map((k) => {
-                            const withUnit = (v: any) => v != null && k === "value" && ctxUnit ? `${v} ${ctxUnit}` : v;
-                            return { key: `weight.${k}`, label: subKeyLabels.weight[k] ?? k, oldVal: withUnit(oldS[k] ?? null), newVal: withUnit(newS[k] ?? null) };
-                          });
-                        }
-                        if (field === "identifiers") {
-                          const rawOld = parseIfStr(log.old_values?.identifiers);
-                          const rawNew = parseIfStr(log.new_values?.identifiers);
-                          const oldS = (rawOld && typeof rawOld === "object" && !Array.isArray(rawOld)) ? rawOld : {};
-                          const newS = (rawNew && typeof rawNew === "object" && !Array.isArray(rawNew)) ? rawNew : {};
-                          const changed = Object.keys({ ...oldS, ...newS }).filter((k) => String(oldS[k] ?? "") !== String(newS[k] ?? ""));
-                          if (changed.length === 0) return [];
-                          return changed.map((k) => ({ key: `identifiers.${k}`, label: subKeyLabels.identifiers[k] ?? k.toUpperCase(), oldVal: oldS[k] ?? null, newVal: newS[k] ?? null }));
-                        }
-                        if (field === "custom_fields") {
-                          const rawOld = parseIfStr(log.old_values?.custom_fields);
-                          const rawNew = parseIfStr(log.new_values?.custom_fields);
-                          const oldS = (rawOld && typeof rawOld === "object" && !Array.isArray(rawOld)) ? rawOld : {};
-                          const newS = (rawNew && typeof rawNew === "object" && !Array.isArray(rawNew)) ? rawNew : {};
-                          const changed = Object.keys({ ...oldS, ...newS }).filter((k) => String(oldS[k] ?? "") !== String(newS[k] ?? ""));
-                          if (changed.length === 0) return [];
-                          return changed.map((k) => ({ key: `custom_fields.${k}`, label: cfLabels[k] ?? k, oldVal: oldS[k] ?? null, newVal: newS[k] ?? null }));
+                          const labels = subKeyLabels[field] ?? {};
+                          return changed.map(k => ({
+                            key:    `${field}.${k}`,
+                            label:  field === "custom_fields" ? (cfLabels[k] ?? k) : (labels[k] ?? k),
+                            oldVal: oldS[k] ?? null,
+                            newVal: newS[k] ?? null,
+                          }));
                         }
                         return [{ key: field, label: fieldLabel[field] ?? field, oldVal: parseIfStr(log.old_values?.[field]), newVal: parseIfStr(log.new_values?.[field]) }];
                       });
 
                       if (log.event === "updated" && diffRows.length === 0) return null;
 
+                      const eventMessages: Record<string, string> = {
+                        created:  "Created item",
+                        deleted:  "Deleted item",
+                        restored: "Restored item",
+                      };
+                      let message = eventMessages[log.event];
+                      if (!message && log.event === "updated") {
+                        message = diffRows.length === 1
+                          ? `Changed ${diffRows[0].label.toLowerCase()}`
+                          : `Updated ${diffRows.length} fields`;
+                      }
+                      message = message ?? log.event.replace(/_/g, " ");
+
+                      const isLast = idx === auditLogs.filter(Boolean).length - 1;
+
+                      const leafKey = (key: string) => key.split(".").at(-1) ?? key;
+                      const boolFields  = new Set(["track_inventory", "is_returnable", "has_sales_info", "has_purchase_info"]);
+                      const priceFields = new Set(["selling_price", "cost_price"]);
+                      const enumMap: Record<string, Record<string, string>> = {
+                        composite_type:   { assembly: "Assembly", kit: "Kit" },
+                        item_type:        { goods: "Goods", service: "Service" },
+                        valuation_method: { fifo: "FIFO", average: "Weighted Average" },
+                      };
+                      const longFields = new Set(["description", "sales_description", "purchase_description"]);
+
+                      const fmtVal = (v: any, key: string): string => {
+                        if (v === null || v === undefined || v === "") return "—";
+                        const lk = leafKey(key);
+                        if (boolFields.has(lk)) return (v === true || v === 1 || v === "1") ? "Yes" : "No";
+                        if (enumMap[lk]) return enumMap[lk][String(v)] ?? String(v);
+                        if (priceFields.has(lk)) { const n = parseFloat(String(v)); if (!isNaN(n)) return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+                        if (typeof v === "boolean") return v ? "Yes" : "No";
+                        if (longFields.has(key)) { const s = String(v); return s.length > 80 ? s.slice(0, 80) + "…" : s; }
+                        return String(v);
+                      };
+
                       return (
-                        <div key={log.id} className={`d-flex gap-3 align-items-center position-relative ${isLast ? "" : "mb-4"}`}>
-                          <div style={{ width: 36, flexShrink: 0, zIndex: 1 }}>
-                            <div className={`d-flex align-items-center justify-content-center rounded-circle ${bgClass} text-white`} style={{ width: 36, height: 36, fontSize: 15 }}>
-                              <i className={`ti ${iconClass}`} />
-                            </div>
+                        <div key={log.id} style={{ position: "relative", marginBottom: isLast ? 0 : 20 }}>
+
+                          {/* Icon circle */}
+                          <div style={{
+                            position: "absolute", left: -52,
+                            top: "50%", transform: "translateY(-50%)",
+                            width: 36, height: 36, borderRadius: "50%",
+                            background: "#fff4f4", border: "1.5px solid #e03131",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            zIndex: 1,
+                          }}>
+                            <i className={`ti ${iconClass}`} style={{ fontSize: 14, color: "#e03131" }} />
                           </div>
-                          <div className="flex-grow-1">
-                            <div className="card mb-0" style={{ borderRadius: 10, background: "#fff", border: "1px solid #e2e5ea" }}>
-                              <div className="card-body p-3">
-                                <div className="d-flex align-items-start justify-content-between mb-2 flex-wrap gap-1">
-                                  <div className="d-flex align-items-center gap-2">
-                                    <span className={`badge ${bgClass} fs-12`}>{label}</span>
-                                    <span className="fs-14 fw-medium text-dark">
-                                      {log.event === "created"  ? "Item was created"  :
-                                       log.event === "deleted"  ? "Item was deleted"  :
-                                       log.event === "restored" ? "Item was restored" :
-                                       diffRows.length === 1
-                                         ? `${diffRows[0].label} was changed`
-                                         : `${diffRows.length} field${diffRows.length !== 1 ? "s" : ""} updated`}
-                                    </span>
-                                  </div>
-                                  <div className="text-end flex-shrink-0">
-                                    <div className="fs-13 fw-medium text-muted">{dateStr}</div>
-                                    <div className="fs-12 text-muted">{timeStr}</div>
-                                  </div>
-                                </div>
-                                <div className="d-flex align-items-center gap-2 mb-2">
-                                  <span className="d-inline-flex align-items-center justify-content-center rounded-circle bg-light text-muted fw-semibold flex-shrink-0" style={{ width: 26, height: 26, fontSize: 12 }}>
-                                    {actor.charAt(0).toUpperCase()}
-                                  </span>
-                                  <span className="fs-13 text-muted">{actor}</span>
-                                  {log.ip_address && <span className="fs-12 text-muted ms-1">· {log.ip_address}</span>}
-                                </div>
-                                {log.event === "updated" && diffRows.length > 0 && (
-                                  <div className="mt-2 border-top pt-2">
-                                    {diffRows.map((row) => {
-                                      const leafKey = row.key.split(".").at(-1) ?? row.key;
-                                      const boolFields  = new Set(["track_inventory", "is_returnable", "has_sales_info", "has_purchase_info", "is_composite"]);
-                                      const priceFields = new Set(["selling_price", "cost_price"]);
-                                      const enumMap: Record<string, Record<string, string>> = {
-                                        item_type:        { goods: "Goods", service: "Service" },
-                                        valuation_method: { fifo: "FIFO", average: "Weighted Average" },
-                                        composite_type:   { assembly: "Assembly", kit: "Kit" },
-                                      };
-                                      const longFields = new Set(["description", "sales_description", "purchase_description"]);
 
-                                      const fmtVal = (v: any): React.ReactNode => {
-                                        if (v === null || v === undefined || v === "")
-                                          return <span className="text-muted fst-italic">empty</span>;
-                                        if (boolFields.has(leafKey))
-                                          return (v === true || v === 1 || v === "1") ? "Yes" : "No";
-                                        if (enumMap[row.key]) return enumMap[row.key][String(v)] ?? String(v);
-                                        if (priceFields.has(leafKey)) {
-                                          const n = parseFloat(String(v));
-                                          if (!isNaN(n)) return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                        }
-                                        if (typeof v === "boolean") return v ? "Yes" : "No";
-                                        if (row.key === "image") return (
-                                          <a href={`/storage/${v}`} target="_blank" rel="noreferrer" download className="d-inline-flex align-items-center gap-1 fs-13 text-primary" style={{ textDecoration: "none" }}>
-                                            <i className="ti ti-photo fs-13" /> View image
-                                          </a>
-                                        );
-                                        if (longFields.has(row.key)) {
-                                          const s = String(v);
-                                          return s.length > 80 ? s.slice(0, 80) + "…" : s;
-                                        }
-                                        return String(v);
-                                      };
+                          {/* Card */}
+                          <div className="card border" style={{ borderRadius: 10 }}>
+                            <div className="card-body" style={{ padding: "18px 20px" }}>
 
+                              {/* Title + date */}
+                              <div className="d-flex align-items-start justify-content-between gap-3 mb-3">
+                                <span className="fw-semibold fs-15" style={{ color: "#212529" }}>{message}</span>
+                                <div className="text-end flex-shrink-0">
+                                  <div className="fs-13 fw-medium" style={{ color: "#495057" }}>{dateStr}</div>
+                                  <div className="fs-12 text-muted">{timeStr}</div>
+                                </div>
+                              </div>
+
+                              {/* Diff rows */}
+                              {log.event === "updated" && diffRows.length > 0 && (
+                                <div className="rounded mb-3 overflow-hidden" style={{ border: "1px solid #e9ecef" }}>
+                                  {diffRows.map((row, ri) => {
+                                    const rowBg = { padding: "10px 14px", background: ri % 2 === 0 ? "#fff" : "#fafafa", borderTop: ri > 0 ? "1px solid #f1f3f5" : "none" };
+                                    if (row.key === "image") {
+                                      const toSrc = (v: any) => { if (!v) return null; const s = String(v); return s.startsWith("http") || s.startsWith("/") ? s : `/storage/${s}`; };
+                                      const oldSrc = toSrc(row.oldVal);
+                                      const newSrc = toSrc(row.newVal);
                                       return (
-                                        <div key={row.key} className="d-flex align-items-center gap-2 py-1 flex-wrap">
-                                          <span className="fs-13 text-muted" style={{ minWidth: 150 }}>{row.label}</span>
-                                          <span className="fs-13 text-danger text-decoration-line-through">{fmtVal(row.oldVal)}</span>
-                                          <i className="ti ti-arrow-right fs-12 text-muted" />
-                                          <span className="fs-13 text-success fw-medium">{fmtVal(row.newVal)}</span>
+                                        <div key={row.key} className="d-flex align-items-center gap-3" style={{ ...rowBg, paddingTop: 12, paddingBottom: 12 }}>
+                                          <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>Image</span>
+                                          {oldSrc ? <img src={oldSrc} alt="Previous" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid #dee2e6", opacity: 0.65 }} /> : <span className="fs-13 text-muted">—</span>}
+                                          <i className="ti ti-arrow-right flex-shrink-0" style={{ fontSize: 12, color: "#adb5bd" }} />
+                                          {newSrc ? <img src={newSrc} alt="New" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1.5px solid #e03131" }} /> : <span className="fs-13 text-muted">—</span>}
                                         </div>
                                       );
-                                    })}
-                                  </div>
-                                )}
+                                    }
+                                    return (
+                                      <div key={row.key} className="d-flex align-items-center gap-3" style={rowBg}>
+                                        <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>{row.label}</span>
+                                        <span className="fs-13 px-2 py-1 rounded text-decoration-line-through flex-shrink-0" style={{ background: "#f1f3f5", color: "#9ca3af" }}>{fmtVal(row.oldVal, row.key)}</span>
+                                        <i className="ti ti-arrow-right flex-shrink-0" style={{ fontSize: 12, color: "#adb5bd" }} />
+                                        <span className="fs-13 fw-semibold px-2 py-1 rounded" style={{ background: "#fff4f4", color: "#e03131" }}>{fmtVal(row.newVal, row.key)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Actor */}
+                              <div className="d-flex align-items-center gap-2 border-top pt-3">
+                                <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 fw-semibold"
+                                  style={{ width: 24, height: 24, background: "#f1f3f5", fontSize: 11, color: "#6c757d" }}>
+                                  {actor.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="fs-13 text-muted">{actor}</span>
+                                {log.ip_address && <span className="fs-12 text-muted">· {log.ip_address}</span>}
                               </div>
+
                             </div>
                           </div>
                         </div>
@@ -1221,31 +1529,23 @@ const CompositeItemOverview = () => {
                     })}
                   </div>
                 )}
-
-                {!auditLoading && auditLastPage > 1 && (
-                  <div className="d-flex align-items-center justify-content-between mt-4 pt-3 border-top">
-                    <button type="button" className="btn btn-sm btn-outline-light shadow" disabled={auditPage <= 1} onClick={() => setAuditPage((p) => p - 1)}>
-                      <i className="ti ti-chevron-left me-1" />Prev
-                    </button>
-                    <span className="fs-13 text-muted">Page {auditPage} of {auditLastPage}</span>
-                    <button type="button" className="btn btn-sm btn-outline-light shadow" disabled={auditPage >= auditLastPage} onClick={() => setAuditPage((p) => p + 1)}>
-                      Next<i className="ti ti-chevron-right ms-1" />
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
           </div>
-          <Footer />
-        </div>{/* end right scroll area */}
+        </div>{/* end right panel */}
       </div>{/* end two-pane shell */}
 
-      {/* ── Toast Notifications ── */}
+      <Footer />
+
+      {/* ── Confirm Dialog ── */}
+      <ConfirmDialog config={confirmConfig} onClose={() => setConfirmConfig(null)} />
+
+      {/* ── Toast ── */}
       <div className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
-          onClose={() => setToast((t) => ({ ...t, show: false }))}
+          onClose={() => setToast(t => ({ ...t, show: false }))}
           role="alert"
           aria-live="assertive"
           aria-atomic="true"

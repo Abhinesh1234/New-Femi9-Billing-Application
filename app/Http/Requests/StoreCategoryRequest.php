@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreCategoryRequest extends FormRequest
 {
@@ -12,7 +13,10 @@ class StoreCategoryRequest extends FormRequest
     {
         return [
             'name'      => 'required|string|min:1|max:255',
-            'parent_id' => 'nullable|integer|exists:categories,id',
+            'parent_id' => [
+                'nullable', 'integer',
+                Rule::exists('categories', 'id')->whereNull('deleted_at'),
+            ],
         ];
     }
 

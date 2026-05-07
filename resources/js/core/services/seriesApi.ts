@@ -15,6 +15,7 @@ export interface SeriesItem {
   id: number;
   name: string;
   locations_count?: number;
+  locations?: { id: number; name: string }[];
   modules_config?: {
     id: number;
     series_id: number;
@@ -22,6 +23,7 @@ export interface SeriesItem {
   } | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface SeriesPayload {
@@ -51,9 +53,16 @@ function handleError(err: unknown): ErrorResponse {
   return { success: false, message: "Network error." };
 }
 
-export async function fetchSeries(params?: { search?: string }): Promise<ListResult> {
+export async function fetchSeries(params?: { search?: string; trashed?: boolean }): Promise<ListResult> {
   try {
     const { data } = await axios.get<ListResponse>(BASE, { params });
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
+export async function restoreSeries(id: number): Promise<ItemResult> {
+  try {
+    const { data } = await axios.patch<ItemResponse>(`${BASE}/${id}/restore`);
     return data;
   } catch (e) { return handleError(e); }
 }

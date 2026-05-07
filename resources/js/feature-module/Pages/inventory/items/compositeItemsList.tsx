@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
 import { Link, useNavigate } from "react-router";
-import { Modal } from "react-bootstrap";
+import { Modal, Toast } from "react-bootstrap";
 import {
   DndContext,
   closestCenter,
@@ -23,7 +23,10 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import Datatable from "../../../../components/dataTable";
 import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
-import { fetchCompositeItems, type CompositeItemRecord } from "../../../../core/services/compositeItemApi";
+import { type CompositeItemRecord } from "../../../../core/services/compositeItemApi";
+import { readCompositeItemList, getCompositeItemList, bustAllCompositeItemCache } from "../../../../core/cache/compositeItemCache";
+import { onMutation } from "../../../../core/cache/mutationEvents";
+import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
 
 const route = all_routes;
 
@@ -57,8 +60,10 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   track_inventory: 180,
   reorder_point:   180,
 };
-const COL_WIDTHS_LS_KEY = "femi9_composite_items_col_widths";
-const VIEW_LS_KEY       = "femi9_composite_items_view";
+const COL_WIDTHS_LS_KEY  = "femi9_composite_items_col_widths";
+const COL_ORDER_LS_KEY   = "femi9_composite_items_col_order";
+const COL_VISIBLE_LS_KEY = "femi9_composite_items_col_visible";
+const VIEW_LS_KEY        = "femi9_composite_items_view";
 
 interface ResizableTitleProps extends ThHTMLAttributes<HTMLTableCellElement> {
   onResize?: (key: string, width: number) => void;
@@ -191,6 +196,8 @@ function SortableColRow({ col, checked, onToggle }: { col: ColDef; checked: bool
   );
 }
 
+type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
+
 // ─── Main component ───────────────────────────────────────────────────────────
 const CompositeItemsList = () => {
   const navigate = useNavigate();
@@ -203,18 +210,49 @@ const CompositeItemsList = () => {
   const [items, setItems]                   = useState<CompositeItemRecord[]>([]);
   const [total, setTotal]                   = useState(0);
   const [loading, setLoading]               = useState(true);
-  const [typeFilter, setTypeFilter]         = useState<"all" | "assembly" | "kit">("all");
+  const [typeFilter, setTypeFilter]         = useState<"all" | "assembly" | "kit" | "deleted">("all");
+  const [sortBy, setSortBy]                 = useState<SortOption>("newest");
+  const [deletedItems, setDeletedItems]     = useState<CompositeItemRecord[]>([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
   const [expandedRowKeys, setExpandedRowKeys] = useState<number[]>([]);
-  // Measured left-edge of the folder button relative to the <table> element.
-  // Used so tree connector lines land exactly under the folder icon regardless of
-  // how Ant Design renders the selection column + cell padding at runtime.
-  const [folderBtnLeft, setFolderBtnLeft] = useState(48); // safe default
+  const [folderBtnLeft, setFolderBtnLeft]     = useState(48);
+
+  // ── Toast ──
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ show: false, message: "", type: "success" });
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
+  };
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   // ── Customize Columns modal ──
   const [showColsModal, setShowColsModal]   = useState(false);
   const [colSearch, setColSearch]           = useState("");
-  const [colOrder, setColOrder]             = useState<ColDef[]>(INITIAL_COLS);
-  const [visibleCols, setVisibleCols]       = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
+  const [colOrder, setColOrder] = useState<ColDef[]>(() => {
+    try {
+      const saved = localStorage.getItem(COL_ORDER_LS_KEY);
+      if (saved) {
+        const savedKeys: string[] = JSON.parse(saved);
+        const ordered = savedKeys.map(k => INITIAL_COLS.find(c => c.key === k)).filter(Boolean) as ColDef[];
+        const savedSet = new Set(savedKeys);
+        return [...ordered, ...INITIAL_COLS.filter(c => !savedSet.has(c.key))];
+      }
+    } catch {}
+    return INITIAL_COLS;
+  });
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COL_VISIBLE_LS_KEY);
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const validKeys = new Set(INITIAL_COLS.map(c => c.key));
+        return new Set<string>(parsed.filter(k => validKeys.has(k)));
+      }
+    } catch {}
+    return new Set(DEFAULT_VISIBLE);
+  });
   const [draftOrder, setDraftOrder]         = useState<ColDef[]>(INITIAL_COLS);
   const [draftVisible, setDraftVisible]     = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
 
@@ -244,8 +282,14 @@ const CompositeItemsList = () => {
   };
   const closeColsModal = () => setShowColsModal(false);
   const saveColsModal  = () => {
-    setColOrder([...draftOrder]);
-    setVisibleCols(new Set(draftVisible));
+    const newOrder = [...draftOrder];
+    const newVisible = new Set(draftVisible);
+    setColOrder(newOrder);
+    setVisibleCols(newVisible);
+    try {
+      localStorage.setItem(COL_ORDER_LS_KEY, JSON.stringify(newOrder.map(c => c.key)));
+      localStorage.setItem(COL_VISIBLE_LS_KEY, JSON.stringify([...newVisible]));
+    } catch {}
     setShowColsModal(false);
   };
 
@@ -280,30 +324,65 @@ const CompositeItemsList = () => {
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = async () => {
+  const loadFresh = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    const res = await fetchCompositeItems({ per_page: 100 });
-    if (res.success) {
-      setItems(res.data.data);
-      setTotal(res.data.total);
-    } else {
-      setLoadError((res as any).message ?? "Failed to load composite items.");
+    try {
+      bustAllCompositeItemCache();
+      const data = await getCompositeItemList();
+      setItems(data);
+      setTotal(data.length);
+    } catch (e: any) {
+      setLoadError(e.message ?? "Failed to load composite items.");
     }
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  // Cache-first initial load
+  useEffect(() => {
+    const cached = readCompositeItemList();
+    if (cached) { setItems(cached); setTotal(cached.length); setLoading(false); return; }
+    getCompositeItemList()
+      .then(data => { setItems(data); setTotal(data.length); setLoading(false); })
+      .catch((e: any) => { setLoadError(e.message ?? "Failed to load composite items."); setLoading(false); });
+  }, []);
+
   useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
 
-  // After items load, measure the actual pixel offset of the folder button inside
-  // the <table> so the tree connector lines align exactly regardless of how Ant
-  // Design renders the selection column / cell padding at runtime.
+  // Reset grid page when filter changes
+  useEffect(() => { setGridPage(12); }, [typeFilter]);
+
+  // Reload when any page mutates composite item data
+  useEffect(() => onMutation("composite-items:mutated", loadFresh), [loadFresh]);
+
+  // Reload on window focus — cache-first so no network hit if data is still fresh
+  useEffect(() => {
+    const onFocus = () => {
+      getCompositeItemList()
+        .then(data => { setItems(data); setTotal(data.length); })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  // Lazy-fetch deleted items when filter switches to "deleted" (cache-first)
+  useEffect(() => {
+    if (typeFilter !== "deleted") return;
+    const cached = readCompositeItemList(true);
+    if (cached) { setDeletedItems(cached); return; }
+    setDeletedLoading(true);
+    getCompositeItemList(true)
+      .then(data => { setDeletedItems(data); setDeletedLoading(false); })
+      .catch(() => setDeletedLoading(false));
+  }, [typeFilter]);
+
+  // Measure folder button position
   useEffect(() => {
     if (items.length === 0) return;
     const raf = requestAnimationFrame(() => {
-      const btn      = document.querySelector(".composite-folder-btn") as HTMLElement | null;
-      const tableEl  = document.querySelector(".custom-table table")   as HTMLElement | null;
+      const btn     = document.querySelector(".composite-folder-btn") as HTMLElement | null;
+      const tableEl = document.querySelector(".composite-items-custom-table table") as HTMLElement | null;
       if (btn && tableEl) {
         const x = Math.round(btn.getBoundingClientRect().left - tableEl.getBoundingClientRect().left);
         if (x > 0) setFolderBtnLeft(x);
@@ -312,9 +391,21 @@ const CompositeItemsList = () => {
     return () => cancelAnimationFrame(raf);
   }, [items]);
 
-  const filtered = typeFilter === "all"
-    ? items
-    : items.filter((i) => i.composite_type === typeFilter);
+  const filtered = useMemo(() => {
+    const base = typeFilter === "deleted"
+      ? deletedItems
+      : typeFilter === "all"
+        ? items
+        : items.filter((i) => i.composite_type === typeFilter);
+    return [...base].sort((a, b) => {
+      switch (sortBy) {
+        case "oldest":    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "name_asc":  return a.name.localeCompare(b.name);
+        case "name_desc": return b.name.localeCompare(a.name);
+        default:          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+  }, [items, deletedItems, typeFilter, sortBy]);
 
   // ── Build table columns ──
   const columns = useMemo(() => {
@@ -332,11 +423,10 @@ const CompositeItemsList = () => {
         width: colWidths["name"] ?? DEFAULT_COL_WIDTHS["name"],
         onHeaderCell: resizeCell("name"),
         render: (_: string, record: CompositeItemRecord) => {
-          const isExpanded = expandedRowKeys.includes(record.id);
+          const isExpanded    = expandedRowKeys.includes(record.id);
           const hasComponents = (record.components?.length ?? 0) > 0;
           return (
             <div className="d-flex align-items-center gap-2">
-              {/* Wrapper gives us a position context for the connector tail */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <button
                   type="button"
@@ -366,9 +456,6 @@ const CompositeItemsList = () => {
                     style={{ color: isExpanded ? "#e03131" : "#6c757d" }}
                   />
                 </button>
-                {/* Connector tail: draws a line from folder-button centre to the cell bottom,
-                    so the tree vline in the expanded row appears to originate from the folder.
-                    Height = half button (14px) + cell bottom padding (16px) = 30px */}
                 {isExpanded && hasComponents && (
                   <div
                     style={{
@@ -384,7 +471,7 @@ const CompositeItemsList = () => {
                   />
                 )}
               </div>
-              <Link to="#" className="title-name fw-medium">{record.name}</Link>
+              <Link to={`/composite-items/${record.id}`} className="title-name fw-medium">{record.name}</Link>
             </div>
           );
         },
@@ -501,16 +588,86 @@ const CompositeItemsList = () => {
     if (!searchText.trim()) return base;
     const q = searchText.toLowerCase();
     return base.filter((item) =>
-      Object.values(item).some((v) => String(v ?? "").toLowerCase().includes(q))
+      item.name.toLowerCase().includes(q) ||
+      (item.sku ?? "").toLowerCase().includes(q) ||
+      item.composite_type.toLowerCase().includes(q) ||
+      item.item_type.toLowerCase().includes(q)
     );
   }, [filtered, searchText]);
+
+  // ── Export handlers ──
+  const exportHeaders = ["Name", "SKU", "Type", "Selling Price", "Cost Price", "Stock Tracked", "Reorder Level", "Added On"];
+  const buildExportRows = () => filtered.map(item => {
+    const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+    return [
+      item.name,
+      item.sku || "—",
+      item.composite_type === "assembly" ? "Assembly" : "Kit",
+      item.selling_price ? `₹${parseFloat(item.selling_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—",
+      item.cost_price    ? `₹${parseFloat(item.cost_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—",
+      item.track_inventory ? "Yes" : "No",
+      item.reorder_point != null ? String(item.reorder_point) : "—",
+      fmt(item.created_at),
+    ];
+  });
+
+  const handleExportPdf = () => {
+    try { exportToPdfPrint("Composite Items", exportHeaders, buildExportRows()); }
+    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+  };
+
+  const handleExportExcel = () => {
+    const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+    const rows = filtered.map(item => ({
+      name:          item.name,
+      sku:           item.sku || "—",
+      type:          item.composite_type === "assembly" ? "Assembly" : "Kit",
+      selling_price: item.selling_price ? `₹${parseFloat(item.selling_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—",
+      cost_price:    item.cost_price    ? `₹${parseFloat(item.cost_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—",
+      stock_tracked: item.track_inventory ? "Yes" : "No",
+      reorder_level: item.reorder_point != null ? String(item.reorder_point) : "—",
+      added_on:      fmt(item.created_at),
+    }));
+    exportToExcelFile("Composite Items", [
+      { header: "Name",          key: "name",          width: 30 },
+      { header: "SKU",           key: "sku",           width: 16 },
+      { header: "Type",          key: "type",          width: 12 },
+      { header: "Selling Price", key: "selling_price", width: 18 },
+      { header: "Cost Price",    key: "cost_price",    width: 18 },
+      { header: "Stock Tracked", key: "stock_tracked", width: 14 },
+      { header: "Reorder Level", key: "reorder_level", width: 16 },
+      { header: "Added On",      key: "added_on",      width: 16 },
+    ], rows).catch(() => showToast("Excel export failed.", "error"));
+  };
+
+  const sortLabel: Record<SortOption, string> = {
+    newest:    "Newest",
+    oldest:    "Oldest",
+    name_asc:  "Name A–Z",
+    name_desc: "Name Z–A",
+  };
+
+  const typeFilterLabel: Record<string, string> = {
+    all:      "All Types",
+    assembly: "Assembly",
+    kit:      "Kit",
+    deleted:  "Deleted Items",
+  };
 
   return (
     <>
       <div className="page-wrapper">
         <div className="content">
 
-          <PageHeader title="Composite Items" badgeCount={total} showModuleTile={false} showExport={true} />
+          <PageHeader
+            title="Composite Items"
+            badgeCount={total}
+            showModuleTile={false}
+            showExport={true}
+            onRefresh={loadFresh}
+            onExportPdf={handleExportPdf}
+            onExportExcel={handleExportExcel}
+          />
 
           <div className="card border-0 rounded-0">
             <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -533,13 +690,14 @@ const CompositeItemsList = () => {
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="dropdown">
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
-                      {typeFilter === "all" ? "All Types" : typeFilter === "assembly" ? "Assembly" : "Kit"}
+                      {typeFilterLabel[typeFilter] ?? "All Types"}
                     </Link>
                     <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
-                        <li><button className="dropdown-item" onClick={() => setTypeFilter("all")}><i className="ti ti-dots-vertical me-1" /> All Types</button></li>
-                        <li><button className="dropdown-item" onClick={() => setTypeFilter("assembly")}><i className="ti ti-dots-vertical me-1" /> Assembly</button></li>
-                        <li><button className="dropdown-item" onClick={() => setTypeFilter("kit")}><i className="ti ti-dots-vertical me-1" /> Kit</button></li>
+                        <li><button className="dropdown-item" onClick={() => setTypeFilter("all")}><i className="ti ti-layout-list me-1" />All Types</button></li>
+                        <li><button className="dropdown-item" onClick={() => setTypeFilter("assembly")}><i className="ti ti-tools me-1" />Assembly</button></li>
+                        <li><button className="dropdown-item" onClick={() => setTypeFilter("kit")}><i className="ti ti-package me-1" />Kit</button></li>
+                        <li><button className="dropdown-item" onClick={() => setTypeFilter("deleted")}><i className="ti ti-trash me-1" />Deleted Items</button></li>
                       </ul>
                     </div>
                   </div>
@@ -548,15 +706,15 @@ const CompositeItemsList = () => {
                 {/* Right */}
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="dropdown">
-                    <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
-                      <i className="ti ti-sort-ascending-2 me-2" />Sort By
-                    </Link>
+                    <button type="button" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
+                      <i className="ti ti-sort-ascending-2 me-2" />{sortLabel[sortBy]}
+                    </button>
                     <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
-                        <li><Link to="#" className="dropdown-item">Newest</Link></li>
-                        <li><Link to="#" className="dropdown-item">Oldest</Link></li>
-                        <li><Link to="#" className="dropdown-item">Name A–Z</Link></li>
-                        <li><Link to="#" className="dropdown-item">Name Z–A</Link></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "newest" ? " active" : ""}`} onClick={() => setSortBy("newest")}><i className="ti ti-clock-hour-3 fs-15" />Newest</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "oldest" ? " active" : ""}`} onClick={() => setSortBy("oldest")}><i className="ti ti-history fs-15" />Oldest</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "name_asc" ? " active" : ""}`} onClick={() => setSortBy("name_asc")}><i className="ti ti-sort-ascending-letters fs-15" />Name A–Z</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "name_desc" ? " active" : ""}`} onClick={() => setSortBy("name_desc")}><i className="ti ti-sort-descending-letters fs-15" />Name Z–A</button></li>
                       </ul>
                     </div>
                   </div>
@@ -592,26 +750,26 @@ const CompositeItemsList = () => {
                 <div className="alert alert-danger mx-3 mt-3 mb-0 d-flex align-items-center gap-2">
                   <i className="ti ti-alert-circle" />
                   {loadError}
-                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={load}>Retry</button>
+                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={loadFresh}>Retry</button>
                 </div>
               )}
-              {loading ? (
+              {(loading || (typeFilter === "deleted" && deletedLoading)) ? (
                 <div className="text-center py-5 text-muted">
                   <span className="spinner-border spinner-border-sm me-2" />
-                  Loading items…
+                  {typeFilter === "deleted" ? "Loading deleted items…" : "Loading items…"}
                 </div>
               ) : view === "list" ? (
-                <div className="custom-table table-nowrap">
+                <div className="composite-items-custom-table custom-table table-nowrap">
                   <Datatable
                     columns={columns}
                     dataSource={filtered}
-                    Selection={true}
+                    Selection={false}
                     searchText={searchText}
                     components={TABLE_COMPONENTS}
                     scroll={{ x: "max-content" }}
                     rowKey="id"
                     onRow={(record: CompositeItemRecord) => ({
-                      onClick: () => navigate(`/composite-items/${record.id}`),
+                      onClick: () => navigate(`/composite-items/${record.id}`, { state: typeFilter === "deleted" ? { listFilter: "deleted" } : undefined }),
                       style: { cursor: "pointer" },
                     })}
                     expandable={{
@@ -625,22 +783,18 @@ const CompositeItemsList = () => {
                           <div>
                             {comps.map((comp, idx) => {
                               const isLast = idx === comps.length - 1;
-                              const name = comp.component_item?.name ?? `Item #${comp.component_item_id}`;
-                              const qty  = parseFloat(comp.quantity);
-                              const unit = comp.component_item?.unit
+                              const name   = comp.component_item?.name ?? `Item #${comp.component_item_id}`;
+                              const qty    = parseFloat(comp.quantity);
+                              const unit   = comp.component_item?.unit
                                 ? comp.component_item.unit
                                 : comp.component_type === "service" ? "service" : "unit";
                               return (
                                 <div key={comp.id} className="composite-tree-row">
-                                  {/* Width = measured left-edge of folder button, so the
-                                      tree-icon-col centre lands directly under the folder */}
                                   <div className="tree-cell-pad" style={{ width: folderBtnLeft }} />
-                                  {/* 28px — same as folder button width; tree lines live here */}
                                   <div className="tree-icon-col">
                                     <div className="tree-vline" style={{ height: isLast ? "50%" : "100%" }} />
                                     <div className="tree-hline" />
                                   </div>
-                                  {/* 8px gap — matches gap-2 in the Name cell flex row */}
                                   <div className="tree-gap" />
                                   <span className="tree-name">{name}</span>
                                   <span className="tree-qty">( {qty} {unit} )</span>
@@ -678,7 +832,7 @@ const CompositeItemsList = () => {
                             <div
                               className="card border shadow"
                               style={{ cursor: "pointer" }}
-                              onClick={() => navigate(`/composite-items/${item.id}`)}
+                              onClick={() => navigate(`/composite-items/${item.id}`, { state: typeFilter === "deleted" ? { listFilter: "deleted" } : undefined })}
                             >
                               <div className="card-body">
 
@@ -842,6 +996,30 @@ const CompositeItemsList = () => {
           <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
         </Modal.Footer>
       </Modal>
+
+      {/* ── Toast notification ───────────────────────────────────────────────── */}
+      <div
+        role="region"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)", zIndex: 1090 }}
+      >
+        <Toast
+          show={toast.show}
+          onClose={() => setToast(t => ({ ...t, show: false }))}
+          delay={4000}
+          autohide
+          style={{ minWidth: 320, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.13)" }}
+        >
+          <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
+            <span style={{ width: 36, height: 36, borderRadius: "50%", background: toast.type === "success" ? "#e6f9ee" : "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <i className={`ti ${toast.type === "success" ? "ti-check text-success" : "ti-x"} fs-18`} style={toast.type === "error" ? { color: "#e03131" } : {}} />
+            </span>
+            <span className="fs-14 fw-medium text-dark">{toast.message}</span>
+            <button type="button" className="btn-close ms-auto" style={{ fontSize: 11 }} onClick={() => setToast(t => ({ ...t, show: false }))} />
+          </Toast.Body>
+        </Toast>
+      </div>
     </>
   );
 };

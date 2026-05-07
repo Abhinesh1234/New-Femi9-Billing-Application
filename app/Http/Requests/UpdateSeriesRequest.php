@@ -19,6 +19,7 @@ class UpdateSeriesRequest extends FormRequest
                 'sometimes', 'required', 'string', 'min:1', 'max:255',
                 Rule::unique('transaction_series', 'name')->ignore($seriesId),
             ],
+            'customer_category' => 'sometimes|nullable|string|in:retail,wholesale,vip,corporate,distributor',
             'modules'                       => 'sometimes|required|array|min:1',
             'modules.*.module'              => 'required_with:modules|string|max:100',
             'modules.*.prefix'              => 'nullable|string|max:100',

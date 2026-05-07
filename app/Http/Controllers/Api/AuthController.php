@@ -96,18 +96,23 @@ class AuthController extends Controller
     // ── GET /api/auth/me ──────────────────────────────────────────────────────
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user();
-        return $this->successResponse([
-            'user' => [
-                'id'          => $user->id,
-                'name'        => $user->name,
-                'phone'       => $user->phone,
-                'email'       => $user->email,
-                'avatar'      => $user->avatar,
-                'user_type'   => $user->user_type,
-                'permissions' => $user->permissions,
-            ],
-        ]);
+        try {
+            $user = $request->user();
+            return $this->successResponse([
+                'user' => [
+                    'id'          => $user->id,
+                    'name'        => $user->name,
+                    'phone'       => $user->phone,
+                    'email'       => $user->email,
+                    'avatar'      => $user->avatar,
+                    'user_type'   => $user->user_type,
+                    'permissions' => $user->permissions,
+                ],
+            ]);
+        } catch (Throwable $e) {
+            $this->logException('AuthController::me', $e, $this->buildCtx($request, 'AuthController::me'));
+            return $this->errorResponse('Failed to fetch user profile.', 500);
+        }
     }
 
     // ── POST /api/auth/change-password ────────────────────────────────────────
@@ -122,6 +127,10 @@ class AuthController extends Controller
 
         if (!Hash::check($request->current_password, $user->password)) {
             return $this->errorResponse('Current password is incorrect.', 422);
+        }
+
+        if (Hash::check($request->new_password, $user->password)) {
+            return $this->errorResponse('New password must be different from the current password.', 422);
         }
 
         try {

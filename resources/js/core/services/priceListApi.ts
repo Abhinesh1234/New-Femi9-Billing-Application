@@ -48,6 +48,7 @@ export interface PriceListRecord {
   admin_only:             boolean;
   created_at:             string;
   updated_at:             string;
+  deleted_at:             string | null;
 }
 
 interface ListResponse {
@@ -111,6 +112,21 @@ export async function updatePriceList(id: number, payload: Partial<PriceListPayl
 export async function destroyPriceList(id: number): Promise<PriceListResult> {
   try {
     const { data } = await axios.delete<SuccessResponse>(`${BASE}/${id}`);
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
+export async function fetchPriceListsAll(trashed = false): Promise<PriceListRecord[]> {
+  const res = await fetchPriceLists(trashed ? { per_page: 1000, trashed: true } as any : { per_page: 1000 });
+  if (!res.success) throw new Error((res as ErrorResponse).message ?? "Failed to fetch price lists.");
+  return (res as ListResponse).data.data;
+}
+
+interface RestorePriceListResponse { success: true; message: string; }
+export type RestorePriceListResult = RestorePriceListResponse | ErrorResponse;
+export async function restorePriceList(id: number): Promise<RestorePriceListResult> {
+  try {
+    const { data } = await axios.post<RestorePriceListResponse>(`${BASE}/${id}/restore`);
     return data;
   } catch (e) { return handleError(e); }
 }

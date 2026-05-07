@@ -81,13 +81,29 @@ export async function fetchItemAuditLogs(
   }
 }
 
+export async function fetchCompositeItemAuditLogs(
+  compositeItemId: number,
+  page = 1,
+  perPage = 25
+): Promise<AuditLogResult> {
+  try {
+    // Composite items are stored in the items table — auditable_type is 'items'
+    const { data } = await axios.get<SuccessResponse>(`${BASE}/items/${compositeItemId}`, {
+      params: { page, per_page: perPage },
+    });
+    return data;
+  } catch (e) {
+    return handleError(e);
+  }
+}
+
 export async function fetchSeriesAuditLogs(
   seriesId: number,
   page = 1,
   perPage = 25
 ): Promise<AuditLogResult> {
   try {
-    const { data } = await axios.get<SuccessResponse>(`${BASE}/series/${seriesId}`, {
+    const { data } = await axios.get<SuccessResponse>(`${BASE}/transaction_series/${seriesId}`, {
       params: { page, per_page: perPage },
     });
     return data;

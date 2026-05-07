@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\OpeningStockController;
 use App\Http\Controllers\Api\PriceListController;
 use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -38,9 +39,9 @@ Route::prefix('auth')->middleware(['auth:sanctum'])->group(function () {
 Route::middleware(['auth:sanctum'])->group(function () {
 
     // ── Settings ──────────────────────────────────────────────────────────────
-    Route::prefix('settings')->group(function () {
+    Route::prefix('settings')->middleware('throttle:60,1')->group(function () {
         Route::get('/{module}', [SettingController::class, 'show']);
-        Route::put('/{module}', [SettingController::class, 'update']);
+        Route::put('/{module}', [SettingController::class, 'update'])->middleware('throttle:30,1');
     });
 
     // ── Items ─────────────────────────────────────────────────────────────────
@@ -56,11 +57,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/{item}/restore',     [ItemController::class, 'restore']);
 
         // Opening stock
-        Route::get('/{item}/opening-stock',  [OpeningStockController::class, 'show']);
+        Route::get('/{item}/opening-stock',  [OpeningStockController::class, 'show'])->middleware('throttle:60,1');
         Route::post('/{item}/opening-stock', [OpeningStockController::class, 'save'])->middleware('throttle:30,1');
 
         // Current stock snapshot
-        Route::get('/{item}/stock', [OpeningStockController::class, 'stock']);
+        Route::get('/{item}/stock', [OpeningStockController::class, 'stock'])->middleware('throttle:60,1');
     });
 
     // ── Composite Items ───────────────────────────────────────────────────────
@@ -143,7 +144,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/',        [PriceListController::class, 'store'])->middleware('throttle:30,1');
         Route::get('/{id}',     [PriceListController::class, 'show']);
         Route::put('/{id}',     [PriceListController::class, 'update'])->middleware('throttle:30,1');
-        Route::delete('/{id}',  [PriceListController::class, 'destroy']);
+        Route::delete('/{id}',          [PriceListController::class, 'destroy']);
+        Route::post('/{id}/restore',    [PriceListController::class, 'restore'])->middleware('throttle:30,1');
     });
 
     // ── Transaction Series ────────────────────────────────────────────────────
@@ -153,8 +155,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/{id}',             [SeriesController::class, 'show']);
         Route::put('/{id}',             [SeriesController::class, 'update'])->middleware('throttle:30,1');
         Route::patch('/{id}/locations', [SeriesController::class, 'assignLocations'])->middleware('throttle:30,1');
+        Route::patch('/{id}/restore',   [SeriesController::class, 'restore'])->middleware('throttle:30,1');
         Route::delete('/{id}',          [SeriesController::class, 'destroy']);
     });
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    Route::get('users', [UserController::class, 'index'])->middleware('throttle:60,1');
 
     // ── Audit logs ────────────────────────────────────────────────────────────
     Route::prefix('audit-logs')->middleware('throttle:60,1')->group(function () {
@@ -166,9 +172,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::prefix('custom-fields')->middleware('throttle:60,1')->group(function () {
         Route::get('/show/{id}', [SettingController::class, 'showCustomField']);
         Route::get('/{module}',  [SettingController::class, 'indexCustomFields']);
-        Route::post('/',         [SettingController::class, 'storeCustomField'])->middleware('throttle:30,1');
-        Route::put('/{id}',      [SettingController::class, 'updateCustomField'])->middleware('throttle:30,1');
-        Route::delete('/{id}',   [SettingController::class, 'destroyCustomField'])->middleware('throttle:20,1');
+        Route::post('/',         [SettingController::class, 'storeCustomField'])->middleware('throttle:20,1');
+        Route::put('/{id}',      [SettingController::class, 'updateCustomField'])->middleware('throttle:20,1');
+        Route::delete('/{id}',   [SettingController::class, 'destroyCustomField'])->middleware('throttle:10,1');
     });
 
 }); // end auth:sanctum

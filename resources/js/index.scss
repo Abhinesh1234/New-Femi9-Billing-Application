@@ -750,6 +750,16 @@ box-shadow: var(--crms-box-shadow);
   }
 }
 
+// Refresh button spin animation
+@keyframes spin-360 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin-animation {
+  display: inline-block;
+  animation: spin-360 0.7s linear infinite;
+}
+
 // Shell-gray cancel button (used in all modal Save/Cancel pairs)
 .btn-cancel {
   background-color: #6c757d;

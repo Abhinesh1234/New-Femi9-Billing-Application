@@ -27,27 +27,20 @@ const customComponents = {
 const CommonSelect: React.FC<SelectProps> = ({ options, defaultValue, value, className, onChange, isClearable, placeholder, menuPortalTarget, menuPosition, isDisabled }) => {
   const [selectedOption, setSelectedOption] = useState<Option | undefined>(defaultValue);
 
- const customStyles = {
-  option: (base: any, state: any) => ({
-    ...base,
-    backgroundColor: state.isSelected
-      ? "#E41F07"
-      : state.isFocused
-      ? "#white" // optional: different hover bg if not selected
-      : "white",
-    color: state.isSelected
-      ? "#fff"
-      : state.isFocused
-      ? "#E41F07"
-      : "#707070",
-    cursor: "pointer",
-    "&:hover": {
-      backgroundColor: "#E41F07", // lighter hover effect (or keep same as focused)
-      color: state.isSelected ? "white" : "#fff",
-    },
-  }),
-  menuPortal: (base: any) => ({ ...base, zIndex: 9999 }),
-};
+  const customStyles = {
+    option: (base: any, state: any) => ({
+      ...base,
+      backgroundColor: state.isSelected ? "#E41F07" : state.isFocused ? "white" : "white",
+      color: state.isSelected ? "#fff" : state.isFocused ? "#E41F07" : "#707070",
+      cursor: "pointer",
+      "&:hover": {
+        backgroundColor: "#E41F07",
+        color: state.isSelected ? "white" : "#fff",
+      },
+    }),
+    menu: (base: any) => ({ ...base, zIndex: 999 }),
+    menuPortal: (base: any) => ({ ...base, zIndex: 999 }),
+  };
 
 
   const handleChange = (option: Option | null) => {

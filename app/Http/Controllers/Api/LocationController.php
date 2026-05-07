@@ -81,7 +81,7 @@ class LocationController extends Controller
         $ctx = $this->buildCtx($request, 'LocationController::show');
 
         try {
-            $location = Location::with([
+            $location = Location::withTrashed()->with([
                     'parent:id,name',
                     'children:id,name,type,parent_id',
                     'defaultTxnSeries:id,name',
@@ -137,11 +137,26 @@ class LocationController extends Controller
         try {
             $location = Location::findOrFail($id);
 
-            try {
-                $this->audit($request, 'deleted', $id, $location->toArray(), null);
-            } catch (Throwable) {}
+            // Collect this location + every descendant (recursive via closure table pattern)
+            $allIds = $this->collectDescendantIds($id);
 
-            $location->delete();
+            // Audit + soft-delete every location in the subtree
+            foreach ($allIds as $locId) {
+                $loc = Location::find($locId);
+                if (!$loc) continue;
+                try {
+                    $this->audit($request, 'deleted', $locId, $loc->toArray(), null);
+                } catch (Throwable) {}
+                $loc->delete();
+            }
+
+            // Also record the removal on the parent so its History tab reflects the change
+            if ($location->parent_id) {
+                try {
+                    $this->audit($request, 'child_deleted', $location->parent_id,
+                        ['child_id' => $location->id, 'child_name' => $location->name], null);
+                } catch (Throwable) {}
+            }
 
             Log::info('[LocationController] Deleted', array_merge($ctx, ['location_id' => $id]));
             return $this->successResponse(['message' => 'Location deleted.']);
@@ -188,13 +203,31 @@ class LocationController extends Controller
 
         try {
             $location = Location::onlyTrashed()->findOrFail($id);
-            $location->restore();
 
-            try {
-                $this->audit($request, 'restored', $id, null, $location->fresh()->toArray());
-            } catch (Throwable) {}
+            // Cascade-restore every descendant that was soft-deleted at or after this location
+            $allIds = $this->collectDescendantIds($id, onlyTrashed: true);
 
-            return $this->successResponse(['message' => 'Location restored.']);
+            foreach ($allIds as $locId) {
+                $loc = Location::onlyTrashed()->find($locId);
+                if (!$loc) continue;
+                $loc->restore();
+                try {
+                    $this->audit($request, 'restored', $locId, null, $loc->fresh()->toArray());
+                } catch (Throwable) {}
+            }
+
+            if ($location->parent_id) {
+                try {
+                    $this->audit($request, 'child_restored', $location->parent_id,
+                        null, ['child_id' => $location->id, 'child_name' => $location->name]);
+                } catch (Throwable) {}
+            }
+
+            return $this->successResponse([
+                'message'      => 'Location restored.',
+                'data'         => $location->fresh(),
+                'restored_ids' => $allIds,
+            ]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             return $this->errorResponse('Deleted location not found.', 404);
@@ -267,6 +300,28 @@ class LocationController extends Controller
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private function collectDescendantIds(int $rootId, bool $onlyTrashed = false): array
+    {
+        $ids   = [$rootId];
+        $queue = [$rootId];
+
+        while (!empty($queue)) {
+            $parentId = array_shift($queue);
+            $query    = $onlyTrashed
+                ? Location::onlyTrashed()->where('parent_id', $parentId)
+                : Location::withTrashed()->where('parent_id', $parentId);
+
+            $children = $query->pluck('id')->toArray();
+
+            foreach ($children as $childId) {
+                $ids[]   = $childId;
+                $queue[] = $childId;
+            }
+        }
+
+        return $ids;
+    }
 
     private function audit(
         Request $request,

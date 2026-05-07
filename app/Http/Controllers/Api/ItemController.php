@@ -53,7 +53,7 @@ class ItemController extends Controller
                 ->when($request->filled('trashed') && $request->boolean('trashed'), fn($q) => $q->onlyTrashed())
                 ->latest();
 
-            $perPage = max(1, min((int) $request->query('per_page', 20), 100));
+            $perPage = max(1, min((int) $request->query('per_page', 20), 1000));
             $items   = $query->paginate($perPage);
 
             return $this->successResponse(['data' => $items]);

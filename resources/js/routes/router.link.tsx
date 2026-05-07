@@ -199,6 +199,8 @@ import NewTransactionSeries from "../feature-module/Pages/inventory/locations/ne
 import PriceList from "../feature-module/Pages/inventory/price-list/priceList";
 import NewPriceList from "../feature-module/Pages/inventory/price-list/newPriceList";
 import PriceListOverview from "../feature-module/Pages/inventory/price-list/priceListOverview";
+import CustomerCategoryList from "../feature-module/Pages/customers/customerCategories/customerCategoryList";
+import NewCustomerCategory from "../feature-module/Pages/customers/customerCategories/newCustomerCategory";
 import EditCustomField from "../feature-module/Pages/settings/app-settings/editCustomField";
 import EmailSettings from "../feature-module/Pages/settings/system-settings/emailSettings";
 import SmsGateways from "../feature-module/Pages/settings/system-settings/smsGateways";
@@ -1478,6 +1480,7 @@ export const publicRoutes = [
     element: <CompositeItemsList />,
     route: Route,
     meta_title: "Composite Items",
+    feature: "composite_items",
   },
   {
     id: "comp-1",
@@ -1485,6 +1488,7 @@ export const publicRoutes = [
     element: <CompositeItem />,
     route: Route,
     meta_title: "New Composite Item",
+    feature: "composite_items",
   },
   {
     id: "comp-2",
@@ -1492,6 +1496,7 @@ export const publicRoutes = [
     element: <CompositeItemOverview />,
     route: Route,
     meta_title: "Composite Item Overview",
+    feature: "composite_items",
   },
   {
     id: "comp-3",
@@ -1499,6 +1504,7 @@ export const publicRoutes = [
     element: <CompositeItem />,
     route: Route,
     meta_title: "Edit Composite Item",
+    feature: "composite_items",
   },
   {
     id: "inv-loc-list",
@@ -1562,6 +1568,7 @@ export const publicRoutes = [
     element: <PriceList />,
     route: Route,
     meta_title: "Price Lists",
+    feature: "price_lists",
   },
   {
     id: "inv-price-list-overview",
@@ -1569,6 +1576,7 @@ export const publicRoutes = [
     element: <PriceListOverview />,
     route: Route,
     meta_title: "Price List Overview",
+    feature: "price_lists",
   },
   {
     id: "inv-price-list-new",
@@ -1576,6 +1584,7 @@ export const publicRoutes = [
     element: <NewPriceList />,
     route: Route,
     meta_title: "New Price List",
+    feature: "price_lists",
   },
   {
     id: "inv-price-list-edit",
@@ -1583,6 +1592,28 @@ export const publicRoutes = [
     element: <NewPriceList />,
     route: Route,
     meta_title: "Edit Price List",
+    feature: "price_lists",
+  },
+  {
+    id: "cust-cat-0",
+    path: route.customerCategories,
+    element: <CustomerCategoryList />,
+    route: Route,
+    meta_title: "Customer Categories",
+  },
+  {
+    id: "cust-cat-1",
+    path: route.addCustomerCategory,
+    element: <NewCustomerCategory />,
+    route: Route,
+    meta_title: "Add Customer Category",
+  },
+  {
+    id: "cust-cat-2",
+    path: route.editCustomerCategory,
+    element: <NewCustomerCategory />,
+    route: Route,
+    meta_title: "Edit Customer Category",
   },
   {
     id: "168b",

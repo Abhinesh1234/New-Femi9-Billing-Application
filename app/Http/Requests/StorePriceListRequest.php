@@ -70,6 +70,7 @@ class StorePriceListRequest extends FormRequest
             $items = $this->input('items');
             if (!is_array($items)) return;
 
+            // Rule 1: no duplicate item_id in the same request
             $seenItemIds = [];
             foreach ($items as $i => $item) {
                 $id = (int) ($item['item_id'] ?? 0);
@@ -85,6 +86,7 @@ class StorePriceListRequest extends FormRequest
                 $ranges = $item['volume_ranges'] ?? [];
                 if (!is_array($ranges)) continue;
 
+                // Rule 2: end_qty must be >= start_qty
                 foreach ($ranges as $j => $range) {
                     $start = (float) ($range['start_qty'] ?? 0);
                     $end   = isset($range['end_qty']) ? (float) $range['end_qty'] : null;
@@ -93,6 +95,22 @@ class StorePriceListRequest extends FormRequest
                             "items.{$i}.volume_ranges.{$j}.end_qty",
                             'End quantity must be greater than or equal to start quantity.'
                         );
+                    }
+                }
+
+                // Rule 3: volume ranges must not overlap
+                if (count($ranges) < 2) continue;
+                $sorted = $ranges;
+                usort($sorted, fn($a, $b) => ($a['start_qty'] ?? 0) <=> ($b['start_qty'] ?? 0));
+                for ($j = 1; $j < count($sorted); $j++) {
+                    $prevEnd   = (float) ($sorted[$j - 1]['end_qty'] ?? 0);
+                    $currStart = (float) ($sorted[$j]['start_qty'] ?? 0);
+                    if ($prevEnd > 0 && $currStart <= $prevEnd) {
+                        $v->errors()->add(
+                            "items.{$i}.volume_ranges",
+                            "Volume ranges for an item must not overlap (range starting at {$currStart} overlaps with the previous range ending at {$prevEnd})."
+                        );
+                        break;
                     }
                 }
             }

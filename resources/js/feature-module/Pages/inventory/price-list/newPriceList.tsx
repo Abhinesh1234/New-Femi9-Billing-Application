@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Modal, OverlayTrigger, Toast, Tooltip } from "react-bootstrap";
 import { fetchPriceList, storePriceList, updatePriceList } from "../../../../core/services/priceListApi";
+import { fetchItems } from "../../../../core/services/itemApi";
+import { bustPriceList, bustPriceLists } from "../../../../core/cache/priceListCache";
+import { emitMutation } from "../../../../core/cache/mutationEvents";
 import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
 import { all_routes } from "../../../../routes/all_routes";
@@ -100,15 +103,18 @@ const NewPriceList = () => {
   const [pricingScheme,   setPricingScheme]   = useState<PricingScheme>("unit");
   const [currency,        setCurrency]        = useState("INR - Indian Rupee");
   const [includeDiscount, setIncludeDiscount] = useState(false);
-  const [importPriceList, setImportPriceList] = useState(false);
   const [adminOnly,       setAdminOnly]       = useState(false);
 
-  // ── Bulk items (sample — will come from API) ──────────────────────────────
-  const [items, setItems] = useState<BulkItem[]>(() => [
-    { id: 1, code: "330", salesRate: 100.00, customRate: "", discount: "", ranges: [mkRange()] },
-    { id: 2, code: "290", salesRate: 200.00, customRate: "", discount: "", ranges: [mkRange()] },
-    { id: 3, code: "410", salesRate: 249.00, customRate: "", discount: "", ranges: [mkRange()] },
-  ]);
+  // ── Bulk items (populated from API) ──────────────────────────────────────
+  const [items,           setItems]           = useState<BulkItem[]>([]);
+  const [apiItemsLoading, setApiItemsLoading] = useState(!isEditMode);
+
+  // ── Bulk rates modal ──────────────────────────────────────────────────────
+  const [showBulkModal,  setShowBulkModal]  = useState(false);
+  const [bulkTarget,     setBulkTarget]     = useState<"custom_rate" | "discount">("custom_rate");
+  const [bulkAdjMethod,  setBulkAdjMethod]  = useState<AdjustmentMethod>("markup");
+  const [bulkValue,      setBulkValue]      = useState("");
+  const [bulkError,      setBulkError]      = useState("");
 
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -125,76 +131,150 @@ const NewPriceList = () => {
     toastTimerRef.current = setTimeout(() => setToast((t) => ({ ...t, show: false })), 4000);
   };
 
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+
   const clr = (key: string) =>
     setErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });
+
+  // Fetch all items from API and optionally merge with saved price list item data
+  const loadItems = useCallback(async (savedByItemId?: Map<number, any>) => {
+    setApiItemsLoading(true);
+    try {
+      const res = await fetchItems({ per_page: 500 });
+      if (res.success) {
+        setItems(res.data.data.map(item => {
+          const saved         = savedByItemId?.get(item.id);
+          const oldCustomRate = saved?.custom_rate != null
+            ? String(parseFloat(String(saved.custom_rate))) : "";
+          const oldDiscount   = saved?.discount    != null
+            ? String(parseFloat(String(saved.discount)))    : "";
+          const ranges: RangeRow[] =
+            Array.isArray(saved?.volume_ranges) && saved.volume_ranges.length > 0
+              ? saved.volume_ranges.map((r: any) => ({
+                  id:         _nextRangeId++,
+                  startQty:   r.start_qty   != null ? String(r.start_qty)                       : "",
+                  endQty:     r.end_qty     != null ? String(r.end_qty)                         : "",
+                  customRate: r.custom_rate != null ? String(parseFloat(String(r.custom_rate))) : "",
+                  discount:   r.discount    != null ? String(parseFloat(String(r.discount)))    : "",
+                }))
+              : [mkRange()];
+          return {
+            id:            item.id,
+            code:          item.name,
+            salesRate:     parseFloat(item.selling_price ?? "0") || 0,
+            customRate:    oldCustomRate,
+            discount:      oldDiscount,
+            ranges,
+            oldCustomRate: oldCustomRate || undefined,
+            oldDiscount:   oldDiscount   || undefined,
+          };
+        }));
+      } else {
+        showToast("danger", (res as any).message ?? "Failed to load items.");
+      }
+    } catch {
+      showToast("danger", "Failed to load items.");
+    } finally {
+      setApiItemsLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // New mode: fetch items on mount
+  useEffect(() => {
+    if (isEditMode) return;
+    loadItems();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Bulk apply handler
+  const applyBulkRates = () => {
+    const val = parseFloat(bulkValue);
+    if (isNaN(val) || val < 0) { setBulkError("Enter a valid positive number."); return; }
+    if (bulkTarget === "discount" && val > 100) { setBulkError("Discount cannot exceed 100%."); return; }
+    if (bulkTarget === "custom_rate" && val > 100) { setBulkError("Percentage cannot exceed 100%."); return; }
+    setItems(prev => prev.map(item => {
+      if (bulkTarget === "discount") return { ...item, discount: val.toFixed(2) };
+      const rate = bulkAdjMethod === "markup"
+        ? item.salesRate * (1 + val / 100)
+        : item.salesRate * (1 - val / 100);
+      return { ...item, customRate: Math.max(0, rate).toFixed(2) };
+    }));
+    setShowBulkModal(false);
+    setBulkValue("");
+    setBulkError("");
+  };
+
+  // Refresh current record in edit mode — busts cache so the overview/list picks up changes too
+  const handleRefresh = useCallback(async () => {
+    if (!isEditMode || !editId) return;
+    bustPriceList(editId);
+    setErrors({});
+    const res = await fetchPriceList(editId);
+    if (!res.success) { showToast("danger", (res as any).message ?? "Failed to refresh."); return; }
+    const d = (res as any).data;
+    const s = d.settings ?? {};
+    setName(d.name ?? "");
+    setTransactionType(d.transaction_type ?? "sales");
+    setCustomerCategory(d.customer_category_id ? String(d.customer_category_id) : null);
+    setPriceListScope(d.price_list_type ?? "all_items");
+    setDescription(d.description ?? "");
+    setAdminOnly(d.admin_only ?? false);
+    if (d.price_list_type === "all_items") {
+      setAdjMethod(s.adjustment_method ?? "markup");
+      setPercentage(s.percentage != null ? String(s.percentage) : "");
+      setRoundOff(s.round_off ?? "Never mind");
+    } else {
+      setPricingScheme(s.pricing_scheme ?? "unit");
+      setCurrency(s.currency ?? "INR - Indian Rupee");
+      setIncludeDiscount(s.include_discount ?? false);
+    }
+    showToast("success", "Data refreshed.");
+  }, [isEditMode, editId]);
 
   // ── Populate form when in edit mode ──────────────────────────────────────
   useEffect(() => {
     if (!isEditMode || !editId) return;
     (async () => {
       setEditLoading(true);
-      const res = await fetchPriceList(editId);
-      if (res.success) {
-        const d = (res as any).data;
-        const s = d.settings ?? {};
-        setName(d.name ?? "");
-        setTransactionType(d.transaction_type ?? "sales");
-        setCustomerCategory(d.customer_category_id ? String(d.customer_category_id) : null);
-        setPriceListScope(d.price_list_type ?? "all_items");
-        setDescription(d.description ?? "");
-        setAdminOnly(d.admin_only ?? false);
-        // all_items settings
-        if (d.price_list_type === "all_items") {
-          setAdjMethod(s.adjustment_method ?? "markup");
-          setPercentage(s.percentage != null ? String(s.percentage) : "");
-          setRoundOff(s.round_off ?? "Never mind");
-        }
-        // individual_items settings
-        if (d.price_list_type === "individual_items") {
-          setPricingScheme(s.pricing_scheme ?? "unit");
-          setCurrency(s.currency ?? "INR - Indian Rupee");
-          setIncludeDiscount(s.include_discount ?? false);
-        }
+      try {
+        const [priceListRes, itemsRes] = await Promise.all([
+          fetchPriceList(editId),
+          fetchItems({ per_page: 500 }),
+        ]);
 
-        // Populate saved prices into the items table
-        if (d.price_list_type === "individual_items" && Array.isArray(d.items) && d.items.length > 0) {
+        if (priceListRes.success) {
+          const d = (priceListRes as any).data;
+          const s = d.settings ?? {};
+          setName(d.name ?? "");
+          setTransactionType(d.transaction_type ?? "sales");
+          setCustomerCategory(d.customer_category_id ? String(d.customer_category_id) : null);
+          setPriceListScope(d.price_list_type ?? "all_items");
+          setDescription(d.description ?? "");
+          setAdminOnly(d.admin_only ?? false);
+          if (d.price_list_type === "all_items") {
+            setAdjMethod(s.adjustment_method ?? "markup");
+            setPercentage(s.percentage != null ? String(s.percentage) : "");
+            setRoundOff(s.round_off ?? "Never mind");
+          } else {
+            setPricingScheme(s.pricing_scheme ?? "unit");
+            setCurrency(s.currency ?? "INR - Indian Rupee");
+            setIncludeDiscount(s.include_discount ?? false);
+          }
+
+          // Build saved prices map then merge with API items
           const savedByItemId = new Map<number, any>(
-            d.items.map((pi: any) => [Number(pi.item_id), pi])
+            Array.isArray(d.items) ? d.items.map((pi: any) => [Number(pi.item_id), pi]) : []
           );
-          setItems((prev) => prev.map((item) => {
-            const saved = savedByItemId.get(item.id);
-            if (!saved) return item;
-
-            const oldCustomRate = saved.custom_rate != null
-              ? String(parseFloat(String(saved.custom_rate))) : "";
-            const oldDiscount = saved.discount != null
-              ? String(parseFloat(String(saved.discount))) : "";
-
-            const ranges: RangeRow[] =
-              Array.isArray(saved.volume_ranges) && saved.volume_ranges.length > 0
-                ? saved.volume_ranges.map((r: any) => ({
-                    id:         _nextRangeId++,
-                    startQty:   r.start_qty   != null ? String(r.start_qty)                    : "",
-                    endQty:     r.end_qty     != null ? String(r.end_qty)                      : "",
-                    customRate: r.custom_rate != null ? String(parseFloat(String(r.custom_rate))) : "",
-                    discount:   r.discount    != null ? String(parseFloat(String(r.discount)))    : "",
-                  }))
-                : [mkRange()];
-
-            return {
-              ...item,
-              customRate:    oldCustomRate,
-              discount:      oldDiscount,
-              ranges,
-              oldCustomRate,
-              oldDiscount,
-            };
-          }));
+          await loadItems(savedByItemId);
+        } else {
+          showToast("danger", (priceListRes as any).message ?? "Failed to load price list.");
         }
-      } else {
-        showToast("danger", (res as any).message ?? "Failed to load price list.");
+      } catch {
+        showToast("danger", "Failed to load price list data.");
+      } finally {
+        setEditLoading(false);
       }
-      setEditLoading(false);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
@@ -217,8 +297,14 @@ const NewPriceList = () => {
   // ── Validation ────────────────────────────────────────────────────────────
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!name.trim()) errs.name = "Name is required.";
-    if (priceListScope === "all_items" && !percentage) errs.percentage = "Percentage is required.";
+    if (!name.trim())              errs.name = "Name is required.";
+    if (name.trim().length > 100)  errs.name = "Name must be 100 characters or less.";
+    if (priceListScope === "all_items") {
+      if (!percentage)                                errs.percentage = "Percentage is required.";
+      else if (isNaN(parseFloat(percentage)))         errs.percentage = "Percentage must be a number.";
+      else if (parseFloat(percentage) < 0)            errs.percentage = "Percentage must be 0 or greater.";
+      else if (parseFloat(percentage) > 100)          errs.percentage = "Percentage must be 100 or less.";
+    }
     setErrors(errs);
     if (Object.keys(errs).length > 0) showToast("danger", Object.values(errs)[0]);
     return Object.keys(errs).length === 0;
@@ -265,8 +351,15 @@ const NewPriceList = () => {
         : await storePriceList(payload);
 
       if (res.success) {
+        if (isEditMode && editId) {
+          bustPriceList(editId);
+        } else {
+          bustPriceLists();
+        }
+        emitMutation("price-lists:mutated");
         showToast("success", isEditMode ? "Price list updated successfully." : "Price list saved successfully.");
-        setTimeout(() => navigate(isEditMode ? `/price-list/${editId}` : route.priceList), 1200);
+        const targetId = isEditMode ? editId : (res as any).data?.id;
+        setTimeout(() => navigate(targetId ? `/price-list/${targetId}` : route.priceList), 1200);
       } else {
         showToast("danger", res.message || "Failed to save price list.");
         if ("errors" in res && res.errors) {
@@ -311,6 +404,7 @@ const NewPriceList = () => {
             showExport={false}
             showClose
             onClose={goBack}
+            onRefresh={isEditMode ? handleRefresh : undefined}
           />
 
           <div className="card mb-0">
@@ -325,6 +419,8 @@ const NewPriceList = () => {
                   <input
                     type="text"
                     className={`form-control${errors.name ? " is-invalid" : ""}`}
+                    placeholder="e.g. Wholesale Price List"
+                    maxLength={100}
                     value={name}
                     onChange={(e) => { setName(e.target.value); clr("name"); }}
                   />
@@ -435,6 +531,7 @@ const NewPriceList = () => {
                     className="form-control"
                     rows={3}
                     placeholder="Enter the description"
+                    maxLength={500}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
@@ -486,6 +583,8 @@ const NewPriceList = () => {
                             className={`form-control${errors.percentage ? " is-invalid" : ""}`}
                             placeholder="0.00"
                             min={0}
+                            max={100}
+                            step="0.01"
                             value={percentage}
                             onChange={(e) => { setPercentage(e.target.value); clr("percentage"); }}
                           />
@@ -603,19 +702,6 @@ const NewPriceList = () => {
 
                     <div className="d-flex align-items-center justify-content-between mb-2">
                       <h6 className="fw-semibold fs-14 mb-0">Customise Rates in Bulk</h6>
-                      <div className="d-flex align-items-center gap-2">
-                        <span className="fs-14 text-muted">Import Price List for Items</span>
-                        <div className="form-check form-switch mb-0">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            role="switch"
-                            id="import_price_list"
-                            checked={importPriceList}
-                            onChange={() => setImportPriceList((v) => !v)}
-                          />
-                        </div>
-                      </div>
                     </div>
 
                     <div className="mb-3">
@@ -623,6 +709,8 @@ const NewPriceList = () => {
                         type="button"
                         className="btn btn-link p-0 fs-14 text-danger d-flex align-items-center gap-1"
                         style={{ textDecoration: "none" }}
+                        onClick={() => { setBulkValue(""); setBulkError(""); setShowBulkModal(true); }}
+                        disabled={items.length === 0}
                       >
                         <i className="ti ti-circle-plus fs-15" />
                         Update Rates in Bulk
@@ -636,7 +724,9 @@ const NewPriceList = () => {
                       <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
                         <div className="d-flex align-items-center gap-2 mb-1">
                           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
-                          <span className="fw-semibold fs-14">{items.length} item(s) selected</span>
+                          <span className="fw-semibold fs-14">
+                            {apiItemsLoading ? "Loading items…" : `${items.length} item(s) available`}
+                          </span>
                         </div>
                         <p className="text-muted fs-13 mb-0">Customise the rate for each item in this price list.</p>
                       </div>
@@ -694,7 +784,20 @@ const NewPriceList = () => {
                           </thead>
 
                           <tbody>
-                            {pricingScheme === "unit"
+                            {apiItemsLoading ? (
+                              <tr>
+                                <td colSpan={6} className="text-center py-4 text-muted fs-14">
+                                  <span className="spinner-border spinner-border-sm me-2" />
+                                  Loading items…
+                                </td>
+                              </tr>
+                            ) : items.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="text-center py-4 text-muted fs-14">
+                                  No items found.
+                                </td>
+                              </tr>
+                            ) : pricingScheme === "unit"
                               ? items.map((item) => (
                                 <tr key={item.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
                                   <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>{item.code}</td>
@@ -962,6 +1065,145 @@ const NewPriceList = () => {
           </div>
         </Modal.Body>
       </Modal>
+
+      {/* ── Update Rates in Bulk (fixed-overlay, matches location ConfirmDialog style) ── */}
+      {showBulkModal && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1060,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)",
+          }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowBulkModal(false); setBulkError(""); } }}
+        >
+          <div
+            style={{
+              background: "#fff", borderRadius: 14, padding: "32px 28px 24px",
+              width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 0,
+            }}
+          >
+            {/* Icon circle */}
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%", background: "#fff0f0",
+              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16,
+            }}>
+              <i className="ti ti-adjustments" style={{ fontSize: 24, color: "#e03131" }} />
+            </div>
+
+            {/* Title */}
+            <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>
+              Update Rates in Bulk
+            </p>
+
+            {/* Subtitle */}
+            <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>
+              Apply a rate adjustment to all {items.length} items at once.
+            </p>
+
+            {/* Form — full width */}
+            <div style={{ width: "100%" }}>
+
+              {/* Apply to */}
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: 13, color: "#374151" }}>Apply to</p>
+                <div style={{ display: "flex", gap: 24 }}>
+                  {([
+                    { value: "custom_rate" as const, label: "Custom Rate" },
+                    { value: "discount"   as const, label: "Discount (%)" },
+                  ]).map(opt => (
+                    <div key={opt.value} className="form-check mb-0">
+                      <input
+                        className="form-check-input"
+                        type="radio"
+                        id={`bulk_target_${opt.value}`}
+                        name="bulkTarget"
+                        checked={bulkTarget === opt.value}
+                        onChange={() => { setBulkTarget(opt.value); setBulkError(""); }}
+                      />
+                      <label className="form-check-label fs-14" htmlFor={`bulk_target_${opt.value}`}>
+                        {opt.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Adjustment method — only for custom rate */}
+              {bulkTarget === "custom_rate" && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: 13, color: "#374151" }}>Adjustment</p>
+                  <div style={{ display: "flex", gap: 24 }}>
+                    {([
+                      { value: "markup"   as AdjustmentMethod, label: "Markup"   },
+                      { value: "markdown" as AdjustmentMethod, label: "Markdown" },
+                    ]).map(opt => (
+                      <div key={opt.value} className="form-check mb-0">
+                        <input
+                          className="form-check-input"
+                          type="radio"
+                          id={`bulk_adj_${opt.value}`}
+                          name="bulkAdjMethod"
+                          checked={bulkAdjMethod === opt.value}
+                          onChange={() => setBulkAdjMethod(opt.value)}
+                        />
+                        <label className="form-check-label fs-14" htmlFor={`bulk_adj_${opt.value}`}>
+                          {opt.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#9ca3af" }}>
+                    {bulkAdjMethod === "markup"
+                      ? "Custom rate = Sales rate × (1 + %)"
+                      : "Custom rate = Sales rate × (1 − %)"}
+                  </p>
+                </div>
+              )}
+
+              {/* Value input */}
+              <div style={{ marginBottom: bulkError ? 4 : 0 }}>
+                <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: 13, color: "#374151" }}>
+                  {bulkTarget === "custom_rate" ? "Percentage (%)" : "Discount (%)"}
+                </p>
+                <div className="input-group">
+                  <input
+                    type="number"
+                    className={`form-control${bulkError ? " is-invalid" : ""}`}
+                    placeholder="0.00"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={bulkValue}
+                    onChange={e => { setBulkValue(e.target.value); setBulkError(""); }}
+                    autoFocus
+                  />
+                  <span className="input-group-text bg-white">%</span>
+                  {bulkError && <div className="invalid-feedback">{bulkError}</div>}
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 24 }}>
+              <button
+                className="btn btn-light flex-grow-1"
+                style={{ fontWeight: 500, fontSize: 14, height: 44 }}
+                onClick={() => { setShowBulkModal(false); setBulkError(""); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn flex-grow-1"
+                style={{ background: "#e03131", color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
+                onClick={applyBulkRates}
+              >
+                Apply to All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

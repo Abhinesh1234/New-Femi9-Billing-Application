@@ -12,6 +12,7 @@
 import axios from "axios";
 import store from "./redux/store";
 import { clearAuth } from "./redux/authSlice";
+import { clearProductSettings } from "./redux/productSettingsSlice";
 
 export function setupAxios(): void {
   // ── Request: attach token ────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export function setupAxios(): void {
         // Token is invalid or expired — clean up and redirect to login
         localStorage.removeItem("auth_token");
         store.dispatch(clearAuth());
+        store.dispatch(clearProductSettings());
 
         const currentPath = window.location.pathname;
         if (currentPath !== "/login") {

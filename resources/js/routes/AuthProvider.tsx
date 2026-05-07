@@ -2,7 +2,10 @@ import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "../core/redux/store";
 import { setUser, clearAuth, setAuthLoading } from "../core/redux/authSlice";
+import { setProductSettings, clearProductSettings } from "../core/redux/productSettingsSlice";
 import { me } from "../core/services/authApi";
+import { getSettings } from "../core/cache/settingCache";
+import type { ProductConfiguration } from "../core/services/settingApi";
 
 interface Props {
   children: React.ReactNode;
@@ -29,11 +32,22 @@ const AuthProvider = ({ children }: Props) => {
     (async () => {
       const result = await me();
       if (result.success) {
+        // Fetch product settings first so feature flags are ready the moment routes render
+        try {
+          const settings = await getSettings<ProductConfiguration>("products");
+          dispatch(setProductSettings({
+            enableCompositeItems: settings.enable_composite_items ?? false,
+            enablePriceLists:     settings.enable_price_lists     ?? false,
+          }));
+        } catch {
+          dispatch(setProductSettings({ enableCompositeItems: false, enablePriceLists: false }));
+        }
         dispatch(setUser(result.user));
       } else {
         // Token is stale / invalid — clear everything
         localStorage.removeItem("auth_token");
         dispatch(clearAuth());
+        dispatch(clearProductSettings());
       }
     })();
   }, []); // run once on mount

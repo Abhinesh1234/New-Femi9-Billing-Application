@@ -23,7 +23,15 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import Datatable from "../../../../components/dataTable";
 import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
-import { fetchLocations, setPrimaryLocation, type LocationListItem } from "../../../../core/services/locationApi";
+import { setPrimaryLocation, type LocationListItem } from "../../../../core/services/locationApi";
+import {
+  readLocationList,
+  getLocationList,
+  bustLocationLists,
+  hydrateLocationList,
+} from "../../../../core/cache/locationCache";
+import { onMutation } from "../../../../core/cache/mutationEvents";
+import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
 
 const route = all_routes;
 
@@ -113,8 +121,10 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   is_active:           100,
   created_at:          160,
 };
-const COL_WIDTHS_LS_KEY = "femi9_locations_col_widths";
-const VIEW_LS_KEY       = "femi9_locations_view";
+const COL_WIDTHS_LS_KEY   = "femi9_locations_col_widths";
+const COL_ORDER_LS_KEY    = "femi9_locations_col_order";
+const COL_VISIBLE_LS_KEY  = "femi9_locations_col_visible";
+const VIEW_LS_KEY         = "femi9_locations_view";
 
 interface ResizableTitleProps extends ThHTMLAttributes<HTMLTableCellElement> {
   onResize?:    (key: string, width: number) => void;
@@ -234,6 +244,59 @@ function StarButton({ isPrimary, loading, onClick }: {
   );
 }
 
+// ── Confirmation dialog ───────────────────────────────────────────────────────
+interface ConfirmConfig {
+  icon:         string;
+  iconColor:    string;
+  iconBg:       string;
+  title:        string;
+  message:      string;
+  confirmLabel: string;
+  confirmColor: string;
+  onConfirm:    () => Promise<void>;
+}
+
+function ConfirmDialog({ config, onClose }: { config: ConfirmConfig | null; onClose: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { setBusy(false); }, [config]);
+  if (!config) return null;
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await config.onConfirm(); } finally { setBusy(false); }
+    onClose();
+  };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: config.iconBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
+        </div>
+        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>{config.title}</p>
+        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>{config.message}</p>
+        <div style={{ display: "flex", gap: 10, width: "100%" }}>
+          <button className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={onClose} disabled={busy}>Cancel</button>
+          <button
+            className="btn flex-grow-1"
+            style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
+            onClick={handleConfirm}
+            disabled={busy}
+          >
+            {busy
+              ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</>
+              : config.confirmLabel
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 const LocationList = () => {
   const navigate = useNavigate();
@@ -244,13 +307,15 @@ const LocationList = () => {
   });
   const [gridPage, setGridPage] = useState(12);
 
-  const [searchText,     setSearchText]     = useState("");
-  const [locations,      setLocations]      = useState<LocationListItem[]>([]);
-  const [total,          setTotal]          = useState(0);
-  const [loading,        setLoading]        = useState(true);
-  const [typeFilter,     setTypeFilter]     = useState<"all" | "business" | "warehouse">("all");
+  const [searchText,        setSearchText]        = useState("");
+  const [locations,         setLocations]         = useState<LocationListItem[]>([]);
+  const [deletedLocations,  setDeletedLocations]  = useState<LocationListItem[]>([]);
+  const [deletedLoading,    setDeletedLoading]    = useState(false);
+  const [total,             setTotal]             = useState(0);
+  const [loading,           setLoading]           = useState(true);
+  const [listFilter,        setListFilter]        = useState<"active" | "deleted">("active");
   const [settingPrimary,   setSettingPrimary]   = useState<number | null>(null);
-  const [pendingPrimaryId, setPendingPrimaryId] = useState<number | null>(null);
+  const [confirmConfig,    setConfirmConfig]    = useState<ConfirmConfig | null>(null);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({
     show: false, message: "", type: "success",
   });
@@ -267,8 +332,29 @@ const LocationList = () => {
   // ── Customize Columns modal ──
   const [showColsModal,  setShowColsModal]  = useState(false);
   const [colSearch,      setColSearch]      = useState("");
-  const [colOrder,       setColOrder]       = useState<ColDef[]>(INITIAL_COLS);
-  const [visibleCols,    setVisibleCols]    = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
+  const [colOrder, setColOrder] = useState<ColDef[]>(() => {
+    try {
+      const saved = localStorage.getItem(COL_ORDER_LS_KEY);
+      if (saved) {
+        const savedKeys: string[] = JSON.parse(saved);
+        const ordered = savedKeys.map(k => INITIAL_COLS.find(c => c.key === k)).filter(Boolean) as ColDef[];
+        const savedSet = new Set(savedKeys);
+        return [...ordered, ...INITIAL_COLS.filter(c => !savedSet.has(c.key))];
+      }
+    } catch {}
+    return INITIAL_COLS;
+  });
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COL_VISIBLE_LS_KEY);
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const validKeys = new Set(INITIAL_COLS.map(c => c.key));
+        return new Set<string>(parsed.filter(k => validKeys.has(k)));
+      }
+    } catch {}
+    return new Set(DEFAULT_VISIBLE);
+  });
   const [draftOrder,     setDraftOrder]     = useState<ColDef[]>(INITIAL_COLS);
   const [draftVisible,   setDraftVisible]   = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
 
@@ -290,7 +376,17 @@ const LocationList = () => {
 
   const openColsModal = () => { setDraftOrder([...colOrder]); setDraftVisible(new Set(visibleCols)); setColSearch(""); setShowColsModal(true); };
   const closeColsModal = () => setShowColsModal(false);
-  const saveColsModal  = () => { setColOrder([...draftOrder]); setVisibleCols(new Set(draftVisible)); setShowColsModal(false); };
+  const saveColsModal  = () => {
+    const newOrder = [...draftOrder];
+    const newVisible = new Set(draftVisible);
+    setColOrder(newOrder);
+    setVisibleCols(newVisible);
+    try {
+      localStorage.setItem(COL_ORDER_LS_KEY, JSON.stringify(newOrder.map(c => c.key)));
+      localStorage.setItem(COL_VISIBLE_LS_KEY, JSON.stringify([...newVisible]));
+    } catch {}
+    setShowColsModal(false);
+  };
   const toggleDraft    = (key: string) => setDraftVisible(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
 
   const sensors = useSensors(
@@ -315,65 +411,103 @@ const LocationList = () => {
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = async () => {
+  const loadFresh = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    const res = await fetchLocations();
-    if (res.success) {
-      setLocations(res.data);
-      setTotal(res.data.length);
-    } else {
-      setLoadError((res as any).message ?? "Failed to load locations.");
+    bustLocationLists();
+    try {
+      const data = await getLocationList();
+      setLocations(data);
+      setTotal(data.length);
+    } catch (e: any) {
+      setLoadError(e.message ?? "Failed to load locations.");
     }
     setLoading(false);
-  };
+  }, []);
 
-  const handleSetPrimary = useCallback(async (id: number) => {
-    setSettingPrimary(id);
-    // Optimistic: flip is_primary in local state (only one can be true)
-    setLocations(prev => prev.map(l => ({ ...l, is_primary: l.id === id })));
-    const res = await setPrimaryLocation(id);
+  const handleSetPrimary = useCallback(async (targetId: number) => {
+    setSettingPrimary(targetId);
+    let snapshot: LocationListItem[] = [];
+    setLocations(prev => {
+      snapshot = prev;
+      const updated = prev.map(l => ({ ...l, is_primary: l.id === targetId }));
+      hydrateLocationList(updated); // optimistic cache update
+      return updated;
+    });
+    const res = await setPrimaryLocation(targetId);
     if (res.success) {
       showToast("The location has been marked as primary.");
     } else {
-      // Rollback: reload from server
-      const rollback = await fetchLocations();
-      if (rollback.success) setLocations(rollback.data);
-      showToast("Failed to update primary location. Please try again.", "error");
+      bustLocationLists();
+      try {
+        const freshData = await getLocationList();
+        setLocations(freshData);
+        showToast("Failed to update primary location. Please try again.", "error");
+      } catch {
+        setLocations(snapshot);
+        hydrateLocationList(snapshot);
+        showToast("Could not verify update. State restored — please refresh.", "error");
+      }
     }
     setSettingPrimary(null);
   }, []);
-  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const cached = readLocationList();
+    if (cached) { setLocations(cached); setTotal(cached.length); setLoading(false); return; }
+    loadFresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
 
-  // Clear row hover state when the confirmation modal opens (cursor may not have moved off the row)
+  // Lazy-fetch soft-deleted locations when filter switches to "deleted"
   useEffect(() => {
-    if (pendingPrimaryId !== null && tableWrapRef.current) {
-      tableWrapRef.current.querySelectorAll<HTMLElement>('tr[data-star-hover]').forEach(tr => {
-        tr.removeAttribute('data-star-hover');
-      });
-    }
-  }, [pendingPrimaryId]);
+    if (listFilter !== "deleted") return;
+    const cached = readLocationList(true);
+    if (cached) { setDeletedLocations(cached); return; }
+    setDeletedLoading(true);
+    getLocationList(true)
+      .then(data => { setDeletedLocations(data); setDeletedLoading(false); })
+      .catch(() => setDeletedLoading(false));
+  }, [listFilter]);
+
+  // Reload when any page mutates location data (e.g. save/delete from edit or overview)
+  useEffect(() => onMutation("locations:mutated", loadFresh), [loadFresh]);
+
+  // Reload on window focus: cache-first so no network hit if data is still fresh
+  useEffect(() => {
+    const onFocus = () => {
+      getLocationList()
+        .then(data => { setLocations(data); setTotal(data.length); })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
 
   // ── Build filtered tree ──
   const treeRows = useMemo((): TreeNode[] => {
-    let base = typeFilter !== "all" ? locations.filter(l => l.type === typeFilter) : locations;
+    // Show all non-deleted locations (active + inactive) in the default view.
+    // Inactive ones render with a badge; both are distinct from soft-deleted.
+    const base = listFilter === "deleted" ? deletedLocations : locations;
     return buildTree(base);
-  }, [locations, typeFilter]);
+  }, [locations, deletedLocations, listFilter]);
 
   // Search filters the tree rows (keep ancestors of matches)
   const filteredRows = useMemo((): TreeNode[] => {
     if (!searchText.trim()) return treeRows;
     const q = (search: string) => search.toLowerCase();
     const matchIds = new Set(treeRows.filter(l => l.name.toLowerCase().includes(q(searchText))).map(l => l.id));
-    const allById  = new Map(locations.map(l => [l.id, l]));
+    const sourceList = listFilter === "deleted" ? deletedLocations : locations;
+    const allById  = new Map(sourceList.map(l => [l.id, l]));
     const expanded = new Set<number>(matchIds);
     for (const id of matchIds) {
       let cur = allById.get(id);
       while (cur?.parent_id) { expanded.add(cur.parent_id); cur = allById.get(cur.parent_id); }
     }
     return treeRows.filter(l => expanded.has(l.id));
-  }, [treeRows, searchText, locations]);
+  }, [treeRows, searchText, locations, deletedLocations, listFilter]);
 
 
   // ── Build table columns ──
@@ -393,67 +527,75 @@ const LocationList = () => {
         onHeaderCell: resizeCell("name"),
         onCell: () => ({ style: { position: "relative", overflow: "visible" } as React.CSSProperties }),
         render: (_: string, record: TreeNode) => {
-          const { depth, isLastSibling, hasChildren } = record;
+          const { depth, isLastSibling, hasChildren, ancestorLast } = record;
 
-          // Consistent coordinate system (all x values from the flex div's left edge):
-          //   circleX(d) = 10 + d * 24   → circle centre at this depth
-          //   paddingLeft = circleX - 5   → so circle's left edge = circleX-5, centre = circleX
-          //
-          // depth=0: circleX=10, paddingLeft=5
-          // depth=1: circleX=34, paddingLeft=29  — and vertical line is at parent circleX=10
-          // depth=2: circleX=58, paddingLeft=53  — and vertical line is at parent circleX=34
           const STEP = 24;
-          const circleX = 10 + depth * STEP;  // centre of THIS node's circle
-          const parentX = 10 + (depth - 1) * STEP; // centre of parent's circle (used for lines)
+          const cX = (d: number) => 10 + d * STEP; // circle centre at depth d
+          const cx = cX(depth);      // this node's circle centre
+          const px = cX(depth - 1);  // parent's circle centre
 
           const hasTree = depth > 0 || hasChildren;
-          // paddingLeft: push first flex child (the circle or icon) to the right place
-          const paddingLeft = hasTree ? circleX - 5 : 0;
+          const paddingLeft = hasTree ? cx - 5 : 0;
 
           return (
             <div className="d-flex align-items-center" style={{ gap: 8, paddingLeft, position: "relative" }}>
 
-              {/* ── vertical trunk DOWN from this node's circle (when it has children) ── */}
-              {hasChildren && (
-                <div style={{
-                  position: "absolute",
-                  left: circleX - 0.5,
-                  top: "50%",
-                  bottom: -50,         // bleed past cell padding to connect to child row
-                  width: 1,
-                  background: "#cbd5e1",
-                  pointerEvents: "none",
-                }} />
-              )}
-
-              {/* ── connector lines for child nodes (depth > 0) ─────────────── */}
-              {depth > 0 && (
-                <>
-                  {/* Vertical line from row top (bleeding past cell padding) down to
-                      midpoint (last sibling └) or row bottom (not last ├) */}
-                  <div style={{
+              {/* ── Pass-through lines: for every ancestor at depth d (0..depth-2) that is
+                  NOT the last sibling, draw a full-height vertical line so the trunk
+                  continues through rows belonging to deeper sub-trees ── */}
+              {Array.from({ length: Math.max(0, depth - 1) }, (_, d) =>
+                !ancestorLast[d] ? (
+                  <div key={`pt-${d}`} style={{
                     position: "absolute",
-                    left: parentX - 0.5,
-                    top: -50,          // bleed past cell padding to connect to parent row
-                    bottom: isLastSibling ? "50%" : -50,
-                    width: 1,
+                    left: cX(d) - 0.75,
+                    top: -50, bottom: -50,
+                    width: 1.5,
                     background: "#cbd5e1",
                     pointerEvents: "none",
                   }} />
-                  {/* Horizontal elbow from parent trunk to just before this circle */}
+                ) : null
+              )}
+
+              {/* ── This node's own connector (depth > 0) ── */}
+              {depth > 0 && (
+                <>
+                  {/* Vertical: from above (top bleed) to centre; continues below if not last sibling */}
                   <div style={{
                     position: "absolute",
-                    left: parentX,
-                    top: "calc(50% - 0.5px)",
-                    width: circleX - parentX - 5,
-                    height: 1,
+                    left: px - 0.75,
+                    top: -50,
+                    bottom: isLastSibling ? "50%" : -50,
+                    width: 1.5,
+                    background: "#cbd5e1",
+                    pointerEvents: "none",
+                  }} />
+                  {/* Horizontal elbow: parent trunk → just before this node's circle */}
+                  <div style={{
+                    position: "absolute",
+                    left: px,
+                    top: "calc(50% - 0.75px)",
+                    width: cx - px - 5,
+                    height: 1.5,
                     background: "#cbd5e1",
                     pointerEvents: "none",
                   }} />
                 </>
               )}
 
-              {/* ── circle (only for nodes that have children) ─────────────── */}
+              {/* ── Trunk down from this node's circle to the first child row ── */}
+              {hasChildren && (
+                <div style={{
+                  position: "absolute",
+                  left: cx - 0.75,
+                  top: "50%",
+                  bottom: -50,
+                  width: 1.5,
+                  background: "#cbd5e1",
+                  pointerEvents: "none",
+                }} />
+              )}
+
+              {/* ── Circle (only for nodes with children) ── */}
               {hasChildren && (
                 <svg width={10} height={10} viewBox="0 0 10 10" style={{ flexShrink: 0, zIndex: 1, position: "relative" }}>
                   <circle cx={5} cy={5} r={4} fill="white" stroke="#94a3b8" strokeWidth={1.5} />
@@ -473,7 +615,19 @@ const LocationList = () => {
                 <StarButton
                   isPrimary={!!record.is_primary}
                   loading={settingPrimary === record.id}
-                  onClick={e => { e.stopPropagation(); setPendingPrimaryId(record.id); }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setConfirmConfig({
+                      icon:         "ti-star",
+                      iconColor:    "#f59e0b",
+                      iconBg:       "#fef3c7",
+                      title:        "Set as Primary Location?",
+                      message:      `"${record.name}" will become the primary location. The current primary will be unset.`,
+                      confirmLabel: "Set Primary",
+                      confirmColor: "#f59e0b",
+                      onConfirm:    () => handleSetPrimary(record.id),
+                    });
+                  }}
                 />
               </div>
               {!record.is_active && <span className="badge badge-soft-danger ms-2 fs-11">Inactive</span>}
@@ -586,14 +740,69 @@ const LocationList = () => {
     }
 
     return cols;
-  }, [visibleCols, colOrder, colWidths, handleResize, handleSetPrimary, settingPrimary, setPendingPrimaryId]);
+  }, [visibleCols, colOrder, colWidths, handleResize, handleSetPrimary, settingPrimary, setConfirmConfig]);
 
-  // Grid search filter
+  // Grid search filter — only match meaningful text fields, not IDs or nested objects
   const gridRows = useMemo(() => {
     if (!searchText.trim()) return filteredRows;
-    const q = searchText.toLowerCase();
-    return filteredRows.filter(l => Object.values(l).some(v => String(v ?? "").toLowerCase().includes(q)));
+    const q = searchText.trim().toLowerCase();
+    return filteredRows.filter(l =>
+      l.name.toLowerCase().includes(q) ||
+      l.type.toLowerCase().includes(q) ||
+      (l.parent?.name ?? "").toLowerCase().includes(q) ||
+      (l.default_txn_series?.name ?? "").toLowerCase().includes(q) ||
+      (l.address?.city ?? "").toLowerCase().includes(q) ||
+      (l.address?.state ?? "").toLowerCase().includes(q) ||
+      (l.address?.country ?? "").toLowerCase().includes(q) ||
+      (l.created_by?.name ?? "").toLowerCase().includes(q)
+    );
   }, [filteredRows, searchText]);
+
+  // ── Export handlers ──
+  const exportTitle = listFilter === "deleted" ? "Deleted Locations" : "Locations";
+  const exportFilename = listFilter === "deleted" ? "Deleted_Locations" : "Locations";
+
+  const exportHeaders = ["Name", "Type", "Address", "Parent Location", "Default Series", "Status", "Created On"];
+  const buildExportRows = () => filteredRows.map(r => {
+    const indent = "  ".repeat(r.depth * 2);
+    const fmt    = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+    return [
+      indent + r.name,
+      r.type === "business" ? "Business" : "Warehouse",
+      formatAddress(r.address),
+      r.parent?.name ?? "—",
+      r.default_txn_series?.name ?? "—",
+      r.is_active ? "Active" : "Inactive",
+      fmt(r.created_at),
+    ];
+  });
+
+  const handleExportPdf = () => {
+    try { exportToPdfPrint(exportTitle, exportHeaders, buildExportRows()); }
+    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+  };
+
+  const handleExportExcel = () => {
+    const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+    const rows = filteredRows.map(r => ({
+      name:           "  ".repeat(r.depth * 2) + r.name,
+      type:           r.type === "business" ? "Business" : "Warehouse",
+      address:        formatAddress(r.address),
+      parent:         r.parent?.name ?? "—",
+      default_series: r.default_txn_series?.name ?? "—",
+      status:         r.is_active ? "Active" : "Inactive",
+      created_at:     fmt(r.created_at),
+    }));
+    exportToExcelFile(exportFilename, [
+      { header: "Name",            key: "name",           width: 30 },
+      { header: "Type",            key: "type",           width: 14 },
+      { header: "Address",         key: "address",        width: 28 },
+      { header: "Parent Location", key: "parent",         width: 22 },
+      { header: "Default Series",  key: "default_series", width: 24 },
+      { header: "Status",          key: "status",         width: 12 },
+      { header: "Created On",      key: "created_at",     width: 18 },
+    ], rows).catch(() => showToast("Excel export failed.", "error"));
+  };
 
   return (
     <>
@@ -604,18 +813,18 @@ const LocationList = () => {
       `}</style>
       <div className="page-wrapper">
         <div className="content">
-          <PageHeader title="Locations" badgeCount={total} showModuleTile={false} showExport={true} />
+          <PageHeader title="Locations" badgeCount={total} showModuleTile={false} showExport={true} onRefresh={loadFresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
 
           <div className="card border-0 rounded-0">
-            <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div className="card-header d-flex align-items-center justify-content-between gap-2">
               <div className="input-icon input-icon-start position-relative">
                 <span className="input-icon-addon text-dark">
                   <i className="ti ti-search" />
                 </span>
                 <SearchInput value={searchText} onChange={setSearchText} />
               </div>
-              <div className="d-flex align-items-center gap-3">
-                <Link to={route.newTransactionSeries} className="fs-14 text-primary">
+              <div className="d-flex align-items-center gap-3 flex-shrink-0">
+                <Link to={route.transactionSeriesList} className="fs-14 text-primary">
                   Transaction Series Preferences
                 </Link>
                 <Link to={route.addLocation} className="btn btn-primary">
@@ -628,17 +837,16 @@ const LocationList = () => {
             <div className="card-body">
               <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
 
-                {/* Left — type filter */}
+                {/* Left — list filter */}
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="dropdown">
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
-                      {typeFilter === "all" ? "All Locations" : typeFilter === "business" ? "Business" : "Warehouse"}
+                      {listFilter === "active" ? "Active Locations" : "Deleted Locations"}
                     </Link>
-                    <div className="dropdown-menu">
+                    <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
-                        <li><button className="dropdown-item" onClick={() => setTypeFilter("all")}><i className="ti ti-dots-vertical me-1" />All Locations</button></li>
-                        <li><button className="dropdown-item" onClick={() => setTypeFilter("business")}><i className="ti ti-dots-vertical me-1" />Business</button></li>
-                        <li><button className="dropdown-item" onClick={() => setTypeFilter("warehouse")}><i className="ti ti-dots-vertical me-1" />Warehouse</button></li>
+                        <li><button className="dropdown-item" onClick={() => setListFilter("active")}><i className="ti ti-circle-check me-1" />Active Locations</button></li>
+                        <li><button className="dropdown-item" onClick={() => setListFilter("deleted")}><i className="ti ti-trash me-1" />Deleted Locations</button></li>
                       </ul>
                     </div>
                   </div>
@@ -677,20 +885,20 @@ const LocationList = () => {
                 <div className="alert alert-danger mx-3 mt-3 mb-0 d-flex align-items-center gap-2">
                   <i className="ti ti-alert-circle" />
                   {loadError}
-                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={load}>Retry</button>
+                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={loadFresh}>Retry</button>
                 </div>
               )}
-              {loading ? (
+              {(loading || (listFilter === "deleted" && deletedLoading)) ? (
                 <div className="text-center py-5 text-muted">
                   <span className="spinner-border spinner-border-sm me-2" />
-                  Loading locations…
+                  {listFilter === "deleted" ? "Loading deleted locations…" : "Loading locations…"}
                 </div>
               ) : view === "list" ? (
                 <div ref={tableWrapRef} className="custom-table table-nowrap">
                   <Datatable
                     columns={columns}
                     dataSource={filteredRows.map(r => ({ ...r, key: r.id }))}
-                    Selection={true}
+                    Selection={false}
                     searchText={searchText}
                     components={TABLE_COMPONENTS}
                     scroll={{ x: "max-content" }}
@@ -794,31 +1002,6 @@ const LocationList = () => {
         <Footer />
       </div>
 
-      {/* ── Mark As Primary Modal ────────────────────────────────────────────── */}
-      <Modal show={pendingPrimaryId !== null} onHide={() => setPendingPrimaryId(null)} centered>
-        <Modal.Header closeButton className="px-4 py-3">
-          <Modal.Title className="fs-18 fw-semibold">Mark As Primary Location</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="px-4 pt-3 pb-4">
-          <p className="fs-14 text-muted mb-0">Are you sure you want to mark this location as primary?</p>
-        </Modal.Body>
-        <Modal.Footer className="px-4 py-3 justify-content-start">
-          <button
-            type="button"
-            className="btn btn-primary me-2"
-            onClick={() => {
-              if (pendingPrimaryId !== null) handleSetPrimary(pendingPrimaryId);
-              setPendingPrimaryId(null);
-            }}
-          >
-            Mark as Primary
-          </button>
-          <button type="button" className="btn btn-outline-light" style={{ textDecoration: "none" }} onClick={() => setPendingPrimaryId(null)}>
-            Cancel
-          </button>
-        </Modal.Footer>
-      </Modal>
-
       {/* ── Customize Columns Modal ───────────────────────────────────────────── */}
       <Modal show={showColsModal} onHide={closeColsModal} centered size="lg">
         <Modal.Header className="px-4 py-3 border-bottom">
@@ -886,6 +1069,9 @@ const LocationList = () => {
           <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
         </Modal.Footer>
       </Modal>
+
+      {/* ── Confirmation dialog ──────────────────────────────────────────────── */}
+      <ConfirmDialog config={confirmConfig} onClose={() => setConfirmConfig(null)} />
 
       {/* ── Toast notification ───────────────────────────────────────────────── */}
       <div

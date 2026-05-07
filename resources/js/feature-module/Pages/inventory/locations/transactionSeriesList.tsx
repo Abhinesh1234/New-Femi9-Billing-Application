@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
 import { Link, useNavigate } from "react-router";
-import { Modal } from "react-bootstrap";
+import { Modal, Toast } from "react-bootstrap";
 import {
   DndContext,
   closestCenter,
@@ -23,9 +23,14 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import Datatable from "../../../../components/dataTable";
 import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
-import { fetchSeries, type SeriesItem, type SeriesModule } from "../../../../core/services/seriesApi";
+import { type SeriesItem, type SeriesModule } from "../../../../core/services/seriesApi";
+import { readSeriesList, getSeriesList, bustSeriesLists } from "../../../../core/cache/seriesCache";
+import { onMutation } from "../../../../core/cache/mutationEvents";
+import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
 
 const route = all_routes;
+
+type SeriesFilter = "active" | "deleted";
 
 // ─── Module column map (key → backend module name, in display order) ──────────
 const MODULE_COLS = [
@@ -69,8 +74,10 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   associated_locations:  180,
 };
 
-const COL_WIDTHS_LS_KEY = "femi9_txn_series_col_widths";
-const VIEW_LS_KEY       = "femi9_txn_series_view";
+const COL_WIDTHS_LS_KEY  = "femi9_txn_series_col_widths";
+const COL_ORDER_LS_KEY   = "femi9_txn_series_col_order";
+const COL_VISIBLE_LS_KEY = "femi9_txn_series_col_visible";
+const VIEW_LS_KEY        = "femi9_txn_series_view";
 
 // ─── Helper: render prefix + padded current_number for a module ───────────────
 function formatModuleNumber(mod: SeriesModule): string {
@@ -227,15 +234,52 @@ const TransactionSeriesList = () => {
   });
   const [gridPage, setGridPage]   = useState(12);
   const [searchText, setSearchText] = useState("");
-  const [items, setItems]           = useState<SeriesItem[]>([]);
-  const [total, setTotal]           = useState(0);
-  const [loading, setLoading]       = useState(true);
+  const [items, setItems]                 = useState<SeriesItem[]>([]);
+  const [deletedItems, setDeletedItems]   = useState<SeriesItem[]>([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [total, setTotal]                 = useState(0);
+  const [loading, setLoading]             = useState(true);
+  const [seriesFilter, setSeriesFilter]   = useState<SeriesFilter>("active");
+  const [loadError, setLoadError]         = useState<string | null>(null);
+
+  // ── Toast ──
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({
+    show: false, message: "", type: "success",
+  });
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
+  };
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   // ── Customize Columns modal ──
   const [showColsModal, setShowColsModal] = useState(false);
   const [colSearch, setColSearch]         = useState("");
-  const [colOrder, setColOrder]           = useState<ColDef[]>(INITIAL_COLS);
-  const [visibleCols, setVisibleCols]     = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
+  const [colOrder, setColOrder] = useState<ColDef[]>(() => {
+    try {
+      const saved = localStorage.getItem(COL_ORDER_LS_KEY);
+      if (saved) {
+        const savedKeys: string[] = JSON.parse(saved);
+        const ordered = savedKeys.map(k => INITIAL_COLS.find(c => c.key === k)).filter(Boolean) as ColDef[];
+        const savedSet = new Set(savedKeys);
+        return [...ordered, ...INITIAL_COLS.filter(c => !savedSet.has(c.key))];
+      }
+    } catch {}
+    return INITIAL_COLS;
+  });
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COL_VISIBLE_LS_KEY);
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const validKeys = new Set(INITIAL_COLS.map(c => c.key));
+        return new Set<string>(parsed.filter(k => validKeys.has(k)));
+      }
+    } catch {}
+    return new Set(DEFAULT_VISIBLE);
+  });
   const [draftOrder, setDraftOrder]       = useState<ColDef[]>(INITIAL_COLS);
   const [draftVisible, setDraftVisible]   = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
 
@@ -265,8 +309,14 @@ const TransactionSeriesList = () => {
   };
   const closeColsModal = () => setShowColsModal(false);
   const saveColsModal  = () => {
-    setColOrder([...draftOrder]);
-    setVisibleCols(new Set(draftVisible));
+    const newOrder = [...draftOrder];
+    const newVisible = new Set(draftVisible);
+    setColOrder(newOrder);
+    setVisibleCols(newVisible);
+    try {
+      localStorage.setItem(COL_ORDER_LS_KEY, JSON.stringify(newOrder.map(c => c.key)));
+      localStorage.setItem(COL_VISIBLE_LS_KEY, JSON.stringify([...newVisible]));
+    } catch {}
     setShowColsModal(false);
   };
 
@@ -299,18 +349,53 @@ const TransactionSeriesList = () => {
     [draftOrder, colSearch],
   );
 
-  const load = async () => {
+  const loadFresh = useCallback(async () => {
     setLoading(true);
-    const res = await fetchSeries();
-    if (res.success) {
-      setItems(res.data);
-      setTotal(res.data.length);
+    setLoadError(null);
+    bustSeriesLists();
+    try {
+      const data = await getSeriesList();
+      setItems(data);
+      setTotal(data.length);
+    } catch (e: any) {
+      setLoadError(e.message ?? "Failed to load series.");
     }
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const cached = readSeriesList();
+    if (cached) { setItems(cached); setTotal(cached.length); setLoading(false); return; }
+    loadFresh();
+  }, []);
   useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
+
+  useEffect(() => {
+    if (seriesFilter !== "deleted") return;
+    const cached = readSeriesList(true);
+    if (cached) { setDeletedItems(cached); return; }
+    setDeletedLoading(true);
+    getSeriesList(true)
+      .then(data => { setDeletedItems(data); setDeletedLoading(false); })
+      .catch((e: any) => {
+        setLoadError(e.message ?? "Failed to load deleted series.");
+        setDeletedLoading(false);
+      });
+  }, [seriesFilter]);
+
+  // Reload when any page mutates series data
+  useEffect(() => onMutation("series:mutated", loadFresh), [loadFresh]);
+
+  // Reload on window focus: cache-first so no network hit if data is still fresh
+  useEffect(() => {
+    const onFocus = () => {
+      getSeriesList()
+        .then(data => { setItems(data); setTotal(data.length); })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   // ── Build table columns in the saved order ──
   const columns = useMemo(() => {
@@ -332,9 +417,9 @@ const TransactionSeriesList = () => {
           <div className="d-flex align-items-center gap-2">
             <div
               className="rounded border d-flex align-items-center justify-content-center flex-shrink-0"
-              style={{ width: 36, height: 36, background: "#f5f5f5" }}
+              style={{ width: 40, height: 40, background: "#f5f5f5" }}
             >
-              <i className="ti ti-replace text-muted fs-16" />
+              <i className="ti ti-replace text-muted fs-18" />
             </div>
             <Link
               to={`/locations/series/${record.id}`}
@@ -404,39 +489,102 @@ const TransactionSeriesList = () => {
     return cols;
   }, [visibleCols, colOrder, colWidths, handleResize]);
 
+  // ── Active vs deleted data source ──
+  const filteredItems = useMemo(
+    () => seriesFilter === "deleted" ? deletedItems : items,
+    [seriesFilter, items, deletedItems],
+  );
+
   // ── Grid search filter ──
   const gridItems = useMemo(() => {
-    if (!searchText.trim()) return items;
+    if (!searchText.trim()) return filteredItems;
     const q = searchText.toLowerCase();
-    return items.filter((item) =>
-      item.name.toLowerCase().includes(q)
-    );
-  }, [items, searchText]);
+    return filteredItems.filter(item => item.name.toLowerCase().includes(q));
+  }, [filteredItems, searchText]);
+
+  // ── Export handlers ──
+  const seriesExportTitle = seriesFilter === "deleted" ? "Deleted Transaction Series" : "Transaction Number Series";
+  const seriesExportFilename = seriesFilter === "deleted" ? "Deleted_Transaction_Series" : "Transaction_Series";
+
+  const moduleExportCols = MODULE_COLS.filter(c => c.key !== "associated_locations");
+
+  const buildSeriesExportRows = () => gridItems.map(item => {
+    const base = [item.name];
+    for (const col of moduleExportCols) {
+      const mod = item.modules_config?.modules?.find(m => m.module === col.module);
+      base.push(mod ? formatModuleNumber(mod) : "—");
+    }
+    base.push(String(item.locations_count ?? 0));
+    return base;
+  });
+
+  const seriesExportHeaders = ["Series Name", ...moduleExportCols.map(c => c.label), "Locations"];
+
+  const handleExportPdf = () => {
+    try { exportToPdfPrint(seriesExportTitle, seriesExportHeaders, buildSeriesExportRows()); }
+    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+  };
+
+  const handleExportExcel = () => {
+    const columns = [
+      { header: "Series Name", key: "name", width: 26 },
+      ...moduleExportCols.map(c => ({ header: c.label, key: c.key, width: 18 })),
+      { header: "Locations", key: "locations", width: 14 },
+    ];
+    const rows = gridItems.map(item => {
+      const row: Record<string, string | number | null> = { name: item.name };
+      for (const col of moduleExportCols) {
+        const mod = item.modules_config?.modules?.find(m => m.module === col.module);
+        row[col.key] = mod ? formatModuleNumber(mod) : "—";
+      }
+      row["locations"] = item.locations_count ?? 0;
+      return row;
+    });
+    exportToExcelFile(seriesExportFilename, columns, rows)
+      .catch(() => showToast("Excel export failed.", "error"));
+  };
 
   return (
     <>
       <div className="page-wrapper">
         <div className="content">
 
-          <PageHeader title="Transaction Number Series" badgeCount={total} showModuleTile={false} showExport={true} />
+          <PageHeader title="Transaction Number Series" badgeCount={total} showModuleTile={false} showExport={true} onRefresh={loadFresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
 
           <div className="card border-0 rounded-0">
-            <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div className="card-header d-flex align-items-center justify-content-between gap-2">
               <div className="input-icon input-icon-start position-relative">
                 <span className="input-icon-addon text-dark">
                   <i className="ti ti-search" />
                 </span>
                 <SearchInput value={searchText} onChange={setSearchText} />
               </div>
-              <Link to={route.newTransactionSeries} className="btn btn-primary">
+              <Link to={route.newTransactionSeries} className="btn btn-primary flex-shrink-0">
                 <i className="ti ti-square-rounded-plus-filled me-1" />
                 New Series
               </Link>
             </div>
 
             <div className="card-body">
-              <div className="d-flex align-items-center justify-content-end flex-wrap gap-2 mb-3">
+              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
 
+                {/* Left — series filter */}
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <div className="dropdown">
+                    <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
+                      {seriesFilter === "active" ? "Active Transaction Series" : "Deleted Transaction Series"}
+                    </Link>
+                    <div className="dropdown-menu dropmenu-hover-primary">
+                      <ul>
+                        <li><button className="dropdown-item" onClick={() => setSeriesFilter("active")}><i className="ti ti-circle-check me-1" />Active Transaction Series</button></li>
+                        <li><button className="dropdown-item" onClick={() => setSeriesFilter("deleted")}><i className="ti ti-trash me-1" />Deleted Transaction Series</button></li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right — manage cols + view toggle */}
+                <div className="d-flex align-items-center gap-2 flex-wrap">
                 {view === "list" && (
                   <button type="button" className="btn bg-soft-indigo px-2 border-0" onClick={openColsModal}>
                     <i className="ti ti-columns-3 me-2" />Manage Columns
@@ -461,19 +609,27 @@ const TransactionSeriesList = () => {
                     <i className="ti ti-grid-dots" />
                   </button>
                 </div>
-              </div>
+                </div>{/* end right controls */}
+              </div>{/* end controls row */}
 
-              {loading ? (
+              {loadError && (
+                <div className="alert alert-danger mx-3 mt-3 mb-0 d-flex align-items-center gap-2">
+                  <i className="ti ti-alert-circle" />
+                  {loadError}
+                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={loadFresh}>Retry</button>
+                </div>
+              )}
+              {(loading || (seriesFilter === "deleted" && deletedLoading)) ? (
                 <div className="text-center py-5 text-muted">
                   <span className="spinner-border spinner-border-sm me-2" />
-                  Loading…
+                  {seriesFilter === "deleted" ? "Loading deleted series…" : "Loading…"}
                 </div>
               ) : view === "list" ? (
                 <div className="custom-table table-nowrap">
                   <Datatable
                     columns={columns}
-                    dataSource={items}
-                    Selection={true}
+                    dataSource={filteredItems.map(r => ({ ...r, key: r.id }))}
+                    Selection={false}
                     searchText={searchText}
                     components={TABLE_COMPONENTS}
                     scroll={{ x: "max-content" }}
@@ -510,7 +666,7 @@ const TransactionSeriesList = () => {
 
                                 {/* Header: locations count */}
                                 <div className="d-flex align-items-center justify-content-between border-bottom pb-3 mb-3">
-                                  <h4 className="mb-0 fs-14 fw-semibold">{item.name}</h4>
+                                  <h4 className="mb-1 fs-14 fw-semibold">{item.name}</h4>
                                   <span className="badge badge-soft-info ms-2">
                                     {item.locations_count ?? 0} location{(item.locations_count ?? 0) !== 1 ? "s" : ""}
                                   </span>
@@ -563,7 +719,7 @@ const TransactionSeriesList = () => {
       </div>
 
       {/* ── Customize Columns Modal ─────────────────────────────────────────── */}
-      <Modal show={showColsModal} onHide={closeColsModal} centered size="md">
+      <Modal show={showColsModal} onHide={closeColsModal} centered size="lg">
         <Modal.Header className="px-4 py-3 border-bottom">
           <div className="d-flex align-items-center justify-content-between w-100">
             <div className="d-flex align-items-center gap-2">
@@ -622,6 +778,14 @@ const TransactionSeriesList = () => {
               </SortableContext>
             </DndContext>
           </div>
+
+          {/* Fixed: Action */}
+          <div className="d-flex align-items-center gap-3 px-4 py-3 border-top bg-light">
+            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
+            <i className="ti ti-lock text-muted fs-15" />
+            <span className="fs-14 text-muted">Action</span>
+            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
+          </div>
         </Modal.Body>
 
         <Modal.Footer className="px-4 py-3 border-top justify-content-start gap-2">
@@ -629,6 +793,38 @@ const TransactionSeriesList = () => {
           <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
         </Modal.Footer>
       </Modal>
+
+      {/* ── Toast notification ───────────────────────────────────────────────── */}
+      <div
+        className="position-fixed top-0 start-50 translate-middle-x pt-4"
+        style={{ zIndex: 9999, pointerEvents: "none" }}
+      >
+        <Toast
+          show={toast.show}
+          onClose={() => setToast(t => ({ ...t, show: false }))}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+          style={{
+            pointerEvents: "auto",
+            borderRadius: 12,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
+            border: "none",
+            minWidth: 320,
+            background: "#fff",
+          }}
+        >
+          <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
+            <span
+              className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${toast.type === "success" ? "bg-success" : "bg-danger"}`}
+              style={{ width: 36, height: 36 }}
+            >
+              <i className={`ti fs-16 text-white ${toast.type === "success" ? "ti-check" : "ti-x"}`} />
+            </span>
+            <span className="fw-medium fs-14">{toast.message}</span>
+          </Toast.Body>
+        </Toast>
+      </div>
     </>
   );
 };

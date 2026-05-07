@@ -10,10 +10,14 @@ interface PageHeaderProps {
   showModuleTile:any;
   showClose?: boolean;
   onClose?: () => void;
+  onRefresh?: () => void | Promise<void>;
+  onExportPdf?:   () => void;
+  onExportExcel?: () => void;
 }
 
-const PageHeader = ({ title = "", badgeCount = null, showExport = false, moduleTitle = "", showModuleTile = true, showClose = false, onClose }: PageHeaderProps) => {
+const PageHeader = ({ title = "", badgeCount = null, showExport = false, moduleTitle = "", showModuleTile = true, showClose = false, onClose, onRefresh, onExportPdf, onExportExcel }: PageHeaderProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [spinning, setSpinning] = useState(false);
 
   useEffect(() => {
     // Initialize Bootstrap tooltips
@@ -26,6 +30,12 @@ const PageHeader = ({ title = "", badgeCount = null, showExport = false, moduleT
       });
     }
   }, []);
+
+  const handleRefresh = async () => {
+    if (!onRefresh || spinning) return;
+    setSpinning(true);
+    try { await onRefresh(); } finally { setSpinning(false); }
+  };
 
   const handleCollapseToggle = () => {
     const body = document.body;
@@ -77,32 +87,45 @@ const PageHeader = ({ title = "", badgeCount = null, showExport = false, moduleT
             <div className="dropdown-menu dropdown-menu-end">
               <ul>
                 <li>
-                  <Link to="#" className="dropdown-item">
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    onClick={onExportPdf}
+                    disabled={!onExportPdf}
+                  >
                     <i className="ti ti-file-type-pdf me-1" />
                     Export as PDF
-                  </Link>
+                  </button>
                 </li>
                 <li>
-                  <Link to="#" className="dropdown-item">
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    onClick={onExportExcel}
+                    disabled={!onExportExcel}
+                  >
                     <i className="ti ti-file-type-xls me-1" />
                     Export as Excel
-                  </Link>
+                  </button>
                 </li>
               </ul>
             </div>
           </div>
         )}
 
-          <Link
-            to="#"
+          <button
+            type="button"
             className="btn btn-icon btn-outline-light shadow"
-            data-bs-toggle="tooltip"
+            data-bs-toggle={onRefresh ? undefined : "tooltip"}
             data-bs-placement="top"
             data-bs-title="Refresh"
             aria-label="Refresh"
+            disabled={spinning}
+            onClick={onRefresh ? handleRefresh : undefined}
+            style={{ cursor: onRefresh ? "pointer" : "default" }}
           >
-            <i className="ti ti-refresh" />
-          </Link>
+            <i className={`ti ti-refresh${spinning ? " spin-animation" : ""}`} />
+          </button>
 
           <Link
             to="#"

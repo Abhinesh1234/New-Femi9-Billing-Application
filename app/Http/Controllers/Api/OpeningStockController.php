@@ -52,7 +52,9 @@ class OpeningStockController extends Controller
         Log::info('[OpeningStockController] Save started', $ctx);
 
         try {
-            if (!Item::withTrashed()->where('id', $itemId)->exists()) {
+            // Only allow active (non-deleted) items to receive opening stock
+            $item = Item::find($itemId);
+            if (!$item) {
                 return $this->errorResponse('Item not found.', 404);
             }
 
@@ -61,21 +63,21 @@ class OpeningStockController extends Controller
             $userId   = $request->user()->id;
             $locIds   = array_column($entries, 'location_id');
 
-            // Reject if any submitted location already has an opening entry
-            $existing = ItemStockLedger::where('item_id', $itemId)
-                ->where('transaction_type', 'opening')
-                ->whereIn('location_id', $locIds)
-                ->pluck('location_id')
-                ->toArray();
+            DB::transaction(function () use ($itemId, $entries, $today, $userId, $locIds) {
+                // Re-check inside the transaction with a row lock to prevent
+                // duplicate opening entries from concurrent requests
+                $existing = ItemStockLedger::where('item_id', $itemId)
+                    ->where('transaction_type', 'opening')
+                    ->whereIn('location_id', $locIds)
+                    ->lockForUpdate()
+                    ->pluck('location_id')
+                    ->toArray();
 
-            if (!empty($existing)) {
-                return $this->errorResponse(
-                    'Opening stock has already been set for one or more of the selected locations and cannot be changed.',
-                    422
-                );
-            }
-
-            DB::transaction(function () use ($itemId, $entries, $today, $userId) {
+                if (!empty($existing)) {
+                    throw new \RuntimeException(
+                        'Opening stock has already been set for one or more of the selected locations and cannot be changed.'
+                    );
+                }
                 foreach ($entries as $entry) {
                     $locId = (int) $entry['location_id'];
                     $qty   = (float) $entry['opening_stock'];
@@ -118,6 +120,9 @@ class OpeningStockController extends Controller
                 'message' => 'Opening stock saved successfully.',
             ], 201);
 
+        } catch (\RuntimeException $e) {
+            // Business-rule violations surfaced from inside the transaction
+            return $this->errorResponse($e->getMessage(), 422);
         } catch (Throwable $e) {
             $this->logException('OpeningStockController::save', $e, $ctx);
             return $this->errorResponse('Failed to save opening stock.', 500);

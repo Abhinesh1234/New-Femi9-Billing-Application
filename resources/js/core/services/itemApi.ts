@@ -123,11 +123,25 @@ export interface ItemListResponse {
 
 export type FetchItemsResult = ItemListResponse | ErrorResponse;
 
-export async function fetchItems(params?: { search?: string; item_type?: string; page?: number; per_page?: number; exclude_composite?: boolean }): Promise<FetchItemsResult> {
+export async function fetchItems(params?: { search?: string; item_type?: string; page?: number; per_page?: number; exclude_composite?: boolean; trashed?: boolean }): Promise<FetchItemsResult> {
   try {
     const { data } = await axios.get<ItemListResponse>(BASE, { params });
     return data;
   } catch (e) { return handleError(e); }
+}
+
+interface RestoreItemResponse { success: true; message: string; }
+export type RestoreItemResult = RestoreItemResponse | ErrorResponse;
+export async function restoreItem(id: number): Promise<RestoreItemResult> {
+  try { const { data } = await axios.post<RestoreItemResponse>(`${BASE}/${id}/restore`); return data; }
+  catch (e) { return handleError(e); }
+}
+
+interface DeleteItemResponse { success: true; message: string; }
+export type DeleteItemResult = DeleteItemResponse | ErrorResponse;
+export async function deleteItem(id: number): Promise<DeleteItemResult> {
+  try { const { data } = await axios.delete<DeleteItemResponse>(`${BASE}/${id}`); return data; }
+  catch (e) { return handleError(e); }
 }
 
 interface ItemDetailResponse { success: true; data: Record<string, unknown>; }

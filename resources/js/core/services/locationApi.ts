@@ -12,6 +12,7 @@ export interface LocationListItem {
   is_active: boolean;
   is_primary: boolean;
   created_at: string;
+  updated_at?: string | null;
   txn_series_id: number | null;
   default_txn_series_id: number | null;
   address?: {
@@ -27,6 +28,7 @@ export interface LocationListItem {
   parent?: { id: number; name: string } | null;
   default_txn_series?: { id: number; name: string } | null;
   created_by?: { id: number; name: string; phone: string } | null;
+  deleted_at?: string | null;
 }
 
 export interface StoreLocationPayload {
@@ -55,9 +57,9 @@ export interface StoreLocationPayload {
 }
 
 interface ListResponse   { success: true; data: LocationListItem[]; }
-interface ItemResponse   { success: true; message: string; data: any; }
+interface ItemResponse   { success: true; message: string; data: LocationListItem; }
 interface DeleteResponse { success: true; message: string; }
-interface ErrorResponse  { success: false; message: string; }
+interface ErrorResponse  { success: false; message: string; errors?: Record<string, string[]>; }
 
 type ListResult   = ListResponse   | ErrorResponse;
 type ItemResult   = ItemResponse   | ErrorResponse;
@@ -65,7 +67,8 @@ type DeleteResult = DeleteResponse | ErrorResponse;
 
 function handleError(err: unknown): ErrorResponse {
   if (err instanceof AxiosError && err.response) {
-    return { success: false, message: (err.response.data as ErrorResponse)?.message ?? "Unexpected error." };
+    const body = err.response.data as ErrorResponse;
+    return { success: false, message: body?.message ?? "Unexpected error.", errors: body?.errors };
   }
   return { success: false, message: "Network error." };
 }
@@ -77,7 +80,7 @@ export async function fetchLocation(id: number): Promise<ItemResult> {
   } catch (e) { return handleError(e); }
 }
 
-export async function fetchLocations(params?: { active_only?: boolean; type?: string }): Promise<ListResult> {
+export async function fetchLocations(params?: { active_only?: boolean; type?: string; trashed?: boolean }): Promise<ListResult> {
   try {
     const { data } = await axios.get<ListResponse>(BASE, { params });
     return data;
@@ -112,6 +115,13 @@ export async function setPrimaryLocation(id: number): Promise<ItemResult> {
   } catch (e) { return handleError(e); }
 }
 
+export async function restoreLocation(id: number): Promise<ItemResult> {
+  try {
+    const { data } = await axios.post<ItemResponse>(`${BASE}/${id}/restore`);
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
 export async function uploadLocationLogo(file: File): Promise<{ success: boolean; path?: string; message?: string }> {
   try {
     const form = new FormData();
@@ -120,5 +130,8 @@ export async function uploadLocationLogo(file: File): Promise<{ success: boolean
       headers: { "Content-Type": "multipart/form-data" },
     });
     return data;
-  } catch (e) { return handleError(e) as any; }
+  } catch (e) {
+    const err = handleError(e);
+    return { success: false, message: err.message };
+  }
 }

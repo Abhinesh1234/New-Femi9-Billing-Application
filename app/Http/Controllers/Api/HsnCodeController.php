@@ -88,6 +88,7 @@ class HsnCodeController extends Controller
 
         try {
             HsnCode::onlyTrashed()->findOrFail($hsnCode)->restore();
+            Log::info('[HsnCodeController] Restored', array_merge($ctx, ['hsn_code_id' => $hsnCode]));
             return $this->successResponse(['message' => 'HSN code restored.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

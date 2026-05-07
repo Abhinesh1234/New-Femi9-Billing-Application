@@ -11,12 +11,19 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import CommonSelect, { Option } from "../../../../components/common-select/commonSelect";
 import { fetchCustomFields, fetchAutoGeneratePreview, type CustomField } from "../../../../core/services/customFieldApi";
 import { fetchSettings, type ProductConfiguration } from "../../../../core/services/settingApi";
-import { fetchBrands, storeBrand, updateBrand as apiBrandUpdate, destroyBrand, type Brand } from "../../../../core/services/brandApi";
-import { fetchCategories, storeCategory, updateCategory as apiCategoryUpdate, destroyCategory, type Category } from "../../../../core/services/categoryApi";
-import { fetchHsnCodes, storeHsnCode, updateHsnCode as apiHsnUpdate, destroyHsnCode, type HsnCode } from "../../../../core/services/hsnCodeApi";
-import { fetchGstRates, storeGstRate, updateGstRate as apiGstUpdate, destroyGstRate, type GstRate } from "../../../../core/services/gstRateApi";
-import { fetchAccounts, storeAccount, updateAccount as apiAccountUpdate, destroyAccount, type Account } from "../../../../core/services/accountApi";
+import { storeBrand, updateBrand as apiBrandUpdate, destroyBrand, type Brand } from "../../../../core/services/brandApi";
+import { storeCategory, updateCategory as apiCategoryUpdate, destroyCategory, type Category } from "../../../../core/services/categoryApi";
+import { storeHsnCode, updateHsnCode as apiHsnUpdate, destroyHsnCode, type HsnCode } from "../../../../core/services/hsnCodeApi";
+import { storeGstRate, updateGstRate as apiGstUpdate, destroyGstRate, type GstRate } from "../../../../core/services/gstRateApi";
+import { storeAccount, updateAccount as apiAccountUpdate, destroyAccount, type Account } from "../../../../core/services/accountApi";
+import { getBrands, bustBrands } from "../../../../core/cache/brandCache";
+import { getCategories, bustCategories } from "../../../../core/cache/categoryCache";
+import { getHsnCodes, bustHsnCodes } from "../../../../core/cache/hsnCodeCache";
+import { getGstRates, bustGstRates } from "../../../../core/cache/gstRateCache";
+import { getAccounts, bustAccounts } from "../../../../core/cache/accountCache";
 import { storeItem, updateItem, fetchItem, uploadItemImage, uploadCustomFieldFile, fetchItems, type ItemPayload, type ItemRefs } from "../../../../core/services/itemApi";
+import { bustAllItemCache, bustItem } from "../../../../core/cache/itemCache";
+import { emitMutation } from "../../../../core/cache/mutationEvents";
 
 const toOpt = (v: string): Option | null => (v ? { value: v, label: v } : null);
 const stringsToOpts = (arr: string[]): Option[] => arr.filter(Boolean).map((s) => ({ value: s, label: s }));
@@ -1027,18 +1034,18 @@ const NewItem = () => {
 
   useEffect(() => {
     const load = async () => {
-      const [cfRes, agpRes, settingsRes, brandsRes, catsRes, hsnRes, gstRes,
-             salesAccRes, purchaseAccRes, inventoryAccRes] = await Promise.all([
+      const [cfRes, agpRes, settingsRes, brandsData, catsData, hsnData, gstData,
+             salesAccData, purchaseAccData, inventoryAccData] = await Promise.all([
         fetchCustomFields("products"),
         fetchAutoGeneratePreview("items"),
         fetchSettings<ProductConfiguration>("products"),
-        fetchBrands(),
-        fetchCategories(),
-        fetchHsnCodes(),
-        fetchGstRates(),
-        fetchAccounts("sales"),
-        fetchAccounts("purchase"),
-        fetchAccounts("inventory"),
+        getBrands().catch(() => [] as Brand[]),
+        getCategories().catch(() => [] as Category[]),
+        getHsnCodes().catch(() => [] as HsnCode[]),
+        getGstRates().catch(() => [] as GstRate[]),
+        getAccounts("sales").catch(() => [] as Account[]),
+        getAccounts("purchase").catch(() => [] as Account[]),
+        getAccounts("inventory").catch(() => [] as Account[]),
       ]);
 
       // ── Custom fields ──────────────────────────────────────────────────────
@@ -1055,21 +1062,13 @@ const NewItem = () => {
       }
 
       // ── Reference lists ────────────────────────────────────────────────────
-      const brandsData: BrandEntry[]    = brandsRes.success    ? (brandsRes.data as Brand[]).map((b) => ({ id: b.id, name: b.name }))             : [];
-      const catsData: CategoryEntry[]   = catsRes.success      ? (catsRes.data as Category[]).map((c) => ({ id: c.id, name: c.name, parentId: c.parent_id })) : [];
-      const hsnData: BrandEntry[]       = hsnRes.success       ? (hsnRes.data as HsnCode[]).map((h) => ({ id: h.id, name: h.code }))              : [];
-      const gstData: BrandEntry[]       = gstRes.success       ? (gstRes.data as GstRate[]).map((g) => ({ id: g.id, name: g.label }))             : [];
-      const salesAccData: BrandEntry[]  = salesAccRes.success  ? (salesAccRes.data as Account[]).map((a) => ({ id: a.id, name: a.name }))         : [];
-      const purchAccData: BrandEntry[]  = purchaseAccRes.success ? (purchaseAccRes.data as Account[]).map((a) => ({ id: a.id, name: a.name }))    : [];
-      const invAccData: BrandEntry[]    = inventoryAccRes.success ? (inventoryAccRes.data as Account[]).map((a) => ({ id: a.id, name: a.name }))  : [];
-
-      setBrands(brandsData);
-      setCategories(catsData);
-      setHsnCodes(hsnData);
-      setGstValues(gstData);
-      setSalesAccounts(salesAccData);
-      setPurchaseAccounts(purchAccData);
-      setInventoryAccounts(invAccData);
+      setBrands(brandsData.map((b) => ({ id: b.id, name: b.name })));
+      setCategories(catsData.map((c) => ({ id: c.id, name: c.name, parentId: c.parent_id })));
+      setHsnCodes(hsnData.map((h) => ({ id: h.id, name: h.code })));
+      setGstValues(gstData.map((g) => ({ id: g.id, name: g.label })));
+      setSalesAccounts(salesAccData.map((a) => ({ id: a.id, name: a.name })));
+      setPurchaseAccounts(purchaseAccData.map((a) => ({ id: a.id, name: a.name })));
+      setInventoryAccounts(inventoryAccData.map((a) => ({ id: a.id, name: a.name })));
 
       // ── Edit mode: fetch item and pre-populate form ────────────────────────
       if (isEditMode && editId) {
@@ -1660,16 +1659,14 @@ const NewItem = () => {
             return res.data.data.map((it) => ({ value: `${it.id}|${it.name}`, label: it.name }));
           }
           if (lookupModule === "Account") {
-            const res = await fetchAccounts();
-            if (!res.success) return [];
-            return res.data
+            const data = await getAccounts().catch(() => [] as Account[]);
+            return data
               .filter((a) => a.name.toLowerCase().includes(q))
               .map((a) => ({ value: `${a.id}|${a.name}`, label: a.name }));
           }
           if (lookupModule === "Category") {
-            const res = await fetchCategories();
-            if (!res.success) return [];
-            return res.data
+            const data = await getCategories().catch(() => [] as Category[]);
+            return data
               .filter((c) => c.name.toLowerCase().includes(q))
               .map((c) => ({ value: `${c.id}|${c.name}`, label: c.name }));
           }
@@ -1900,6 +1897,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Brand).id, name: (res.data as Brand).name };
     setBrands((p) => [...p, entry]);
+    bustBrands();
     return entry;
   };
   const editBrand = async (id: number, name: string): Promise<boolean> => {
@@ -1907,6 +1905,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setBrands((p) => p.map((b) => (b.id === id ? { ...b, name } : b)));
     if (brandId === id) setBrand(name);
+    bustBrands();
     return true;
   };
   const removeBrand = async (id: number): Promise<boolean> => {
@@ -1914,6 +1913,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setBrands((p) => p.filter((b) => b.id !== id));
     if (brandId === id) { setBrand(""); setBrandId(null); }
+    bustBrands();
     return true;
   };
 
@@ -1923,6 +1923,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: CategoryEntry = { id: (res.data as Category).id, name: (res.data as Category).name, parentId: (res.data as Category).parent_id };
     setCategories((p) => [...p, entry]);
+    bustCategories();
     return entry;
   };
   const editCategory = async (id: number, name: string, parentId: number | null): Promise<boolean> => {
@@ -1930,6 +1931,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setCategories((p) => p.map((c) => (c.id === id ? { ...c, name, parentId } : c)));
     if (categoryId === id) setCategory(name);
+    bustCategories();
     return true;
   };
   const removeCategory = async (id: number): Promise<boolean> => {
@@ -1937,6 +1939,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setCategories((p) => p.filter((c) => c.id !== id));
     if (categoryId === id) { setCategory(""); setCategoryId(null); }
+    bustCategories();
     return true;
   };
 
@@ -1946,6 +1949,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as HsnCode).id, name: (res.data as HsnCode).code };
     setHsnCodes((p) => [...p, entry]);
+    bustHsnCodes();
     return entry;
   };
   const editHsn = async (id: number, code: string): Promise<boolean> => {
@@ -1953,6 +1957,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setHsnCodes((p) => p.map((h) => (h.id === id ? { ...h, name: code } : h)));
     if (hsnCodeId === id) setHsnCode(code);
+    bustHsnCodes();
     return true;
   };
   const removeHsn = async (id: number): Promise<boolean> => {
@@ -1960,6 +1965,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setHsnCodes((p) => p.filter((h) => h.id !== id));
     if (hsnCodeId === id) { setHsnCode(""); setHsnCodeId(null); }
+    bustHsnCodes();
     return true;
   };
 
@@ -1971,6 +1977,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as GstRate).id, name: (res.data as GstRate).label };
     setGstValues((p) => [...p, entry]);
+    bustGstRates();
     return entry;
   };
   const editGst = async (id: number, label: string): Promise<boolean> => {
@@ -1980,6 +1987,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setGstValues((p) => p.map((g) => (g.id === id ? { ...g, name: label } : g)));
     if (gstRateId === id) setGstValue(label);
+    bustGstRates();
     return true;
   };
   const removeGst = async (id: number): Promise<boolean> => {
@@ -1987,6 +1995,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setGstValues((p) => p.filter((g) => g.id !== id));
     if (gstRateId === id) { setGstValue(""); setGstRateId(null); }
+    bustGstRates();
     return true;
   };
 
@@ -1996,6 +2005,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Account).id, name: (res.data as Account).name };
     setSalesAccounts((p) => [...p, entry]);
+    bustAccounts();
     return entry;
   };
   const editSalesAcc = async (id: number, name: string): Promise<boolean> => {
@@ -2003,6 +2013,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setSalesAccounts((p) => p.map((a) => (a.id === id ? { ...a, name } : a)));
     if (salesAccountId === id) setSalesAccount(name);
+    bustAccounts();
     return true;
   };
 
@@ -2011,6 +2022,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Account).id, name: (res.data as Account).name };
     setPurchaseAccounts((p) => [...p, entry]);
+    bustAccounts();
     return entry;
   };
   const editPurchaseAcc = async (id: number, name: string): Promise<boolean> => {
@@ -2018,6 +2030,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setPurchaseAccounts((p) => p.map((a) => (a.id === id ? { ...a, name } : a)));
     if (purchaseAccountId === id) setPurchaseAccount(name);
+    bustAccounts();
     return true;
   };
 
@@ -2026,6 +2039,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Account).id, name: (res.data as Account).name };
     setInventoryAccounts((p) => [...p, entry]);
+    bustAccounts();
     return entry;
   };
   const editInventoryAcc = async (id: number, name: string): Promise<boolean> => {
@@ -2033,6 +2047,7 @@ const NewItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setInventoryAccounts((p) => p.map((a) => (a.id === id ? { ...a, name } : a)));
     if (inventoryAccountId === id) setInventoryAccount(name);
+    bustAccounts();
     return true;
   };
 
@@ -2186,6 +2201,9 @@ const NewItem = () => {
 
     if (res.success) {
       showToast("success", res.message || (isEditMode ? "Item updated successfully." : "Item saved successfully."));
+      // Bust the item cache so overview and list pages get fresh data
+      if (isEditMode && editId) bustItem(editId); else bustAllItemCache();
+      emitMutation("items:mutated");
       setTimeout(() => navigate(isEditMode ? `/items/${editId}` : "/items", { replace: true }), 1200);
     } else {
       showToast("danger", res.message || "Failed to save item.");

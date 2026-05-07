@@ -15,23 +15,33 @@ const Sidebar = () => {
   const Location = useLocation();
   const pathname = Location.pathname;
   const [subsidebar, setSubsidebar] = useState("");
-  
+
   // Track open state for each menu by label
   const [openMenus, setOpenMenus] = useState<{ [label: string]: boolean }>({});
+
+  const { enableCompositeItems, enablePriceLists } = useSelector(
+    (state: any) => state.productSettings
+  );
   const dispatch = useDispatch();
+
+  // Returns true when `link` is the current path OR the current path is a sub-page of `link`
+  // (e.g. /items/123 is a sub-page of /items). The trailing-slash guard prevents /items-new
+  // from accidentally matching /items.
+  const pathMatches = (link: string, currentPath: string) =>
+    link === currentPath || (link !== "#" && currentPath.startsWith(link + "/"));
 
   const getActiveMenus = (currentPath: string) => {
     const newOpenMenus: { [label: string]: boolean } = {};
     SidebarData.forEach((mainLabel) => {
       mainLabel.submenuItems?.forEach((title: any) => {
         const isActive =
-          title.link === currentPath ||
+          pathMatches(title.link, currentPath) ||
           (title.relatedRoutes && title.relatedRoutes.includes(currentPath)) ||
           (title.submenuItems && title.submenuItems.some((item: any) =>
-            item.link === currentPath ||
+            pathMatches(item.link, currentPath) ||
             (item.relatedRoutes && item.relatedRoutes.includes(currentPath)) ||
             (item.submenuItems && item.submenuItems.some((subitem: any) =>
-              subitem.link === currentPath ||
+              pathMatches(subitem.link, currentPath) ||
               (subitem.relatedRoutes && subitem.relatedRoutes.includes(currentPath))
             ))
           ));
@@ -43,11 +53,12 @@ const Sidebar = () => {
     return newOpenMenus;
   };
 
-  // On mount or pathname change, auto-open submenus with an active link (only when sidebar is expanded)
+  // On mount or pathname change, recompute which submenus are open based solely on the current path.
+  // Must replace (not merge) so menus from previous routes don't accumulate the subdrop class.
   useEffect(() => {
     const isMini = document.documentElement.getAttribute("data-layout") === "mini";
     if (!isMini) {
-      setOpenMenus((prev) => ({ ...prev, ...getActiveMenus(pathname) }));
+      setOpenMenus(getActiveMenus(pathname));
     }
   }, [pathname]);
 
@@ -219,22 +230,32 @@ const Sidebar = () => {
                     <li>
                       <ul>
                         {mainLabel?.submenuItems?.map((title: any, i) => {
+                          // Filter feature-gated submenu children
+                          const visibleChildren = (title?.submenuItems ?? []).filter((item: any) => {
+                            if (item.link === route.compositeItems) return enableCompositeItems;
+                            if (item.link === route.priceList)       return enablePriceLists;
+                            return true;
+                          });
+                          const titleWithFiltered = { ...title, submenuItems: visibleChildren };
+
                           // Check if any submenu or subsubmenu is active
                           const isSubmenuActive =
-                            (title?.submenuItems &&
-                              title.submenuItems.some(
-                                (item: any) =>
-                                  item?.link === Location.pathname ||
-                                  (item?.submenuItems &&
-                                    item.submenuItems.some(
-                                      (subitem: any) => subitem?.link === Location.pathname
-                                    ))
-                              )) ||
-                            false;
+                            visibleChildren.length > 0 &&
+                            visibleChildren.some(
+                              (item: any) =>
+                                pathMatches(item?.link, Location.pathname) ||
+                                (item?.relatedRoutes && item.relatedRoutes.includes(Location.pathname)) ||
+                                (item?.submenuItems &&
+                                  item.submenuItems.some(
+                                    (subitem: any) =>
+                                      pathMatches(subitem?.link, Location.pathname) ||
+                                      (subitem?.relatedRoutes && subitem.relatedRoutes.includes(Location.pathname))
+                                  ))
+                            );
 
                           const isActive =
                             (title.relatedRoutes && title.relatedRoutes.includes(Location.pathname)) ||
-                            title.link === Location.pathname ||
+                            pathMatches(title.link, Location.pathname) ||
                             isSubmenuActive;
 
                           const isMenuOpen = openMenus[title?.label] || false;
@@ -264,20 +285,21 @@ const Sidebar = () => {
                                   )}
                               </Link>
 
-                              {title?.submenu !== false && (
+                              {titleWithFiltered?.submenu !== false && (
                                 <ul style={{
                                   maxHeight: isMenuOpen ? "1000px" : "0",
                                   overflow: "hidden",
                                   transition: "max-height 0.35s ease-in-out",
                                   display: "block",
                                 }}>
-                                  {title?.submenuItems?.map(
+                                  {titleWithFiltered?.submenuItems?.map(
                                     (item: any, j: any) => {
                                       const isSubActive =
                                         item?.submenuItems
                                           ?.map((link: any) => link?.link)
                                           .includes(Location.pathname) ||
-                                        item?.link === Location.pathname;
+                                        pathMatches(item?.link, Location.pathname) ||
+                                        (item?.relatedRoutes && item.relatedRoutes.includes(Location.pathname));
 
                                       return (
                                         <li
@@ -331,8 +353,8 @@ const Sidebar = () => {
                                                       .includes(
                                                         Location.pathname
                                                       ) ||
-                                                    items?.link ===
-                                                      Location.pathname;
+                                                    pathMatches(items?.link, Location.pathname) ||
+                                                    (items?.relatedRoutes && items.relatedRoutes.includes(Location.pathname));
 
                                                   return (
                                                     <li

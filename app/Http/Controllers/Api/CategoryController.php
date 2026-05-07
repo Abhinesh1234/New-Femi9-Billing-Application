@@ -76,7 +76,19 @@ class CategoryController extends Controller
         $ctx = $this->buildCtx($request, 'CategoryController::destroy', ['category_id' => $category]);
 
         try {
-            Category::findOrFail($category)->delete();
+            $record = Category::findOrFail($category);
+
+            // Block deletion if this category has active children
+            $childCount = Category::where('parent_id', $category)->count();
+            if ($childCount > 0) {
+                return $this->errorResponse(
+                    "Cannot delete this category because it has {$childCount} sub-categor" .
+                    ($childCount === 1 ? 'y' : 'ies') . '. Remove or reassign them first.',
+                    422
+                );
+            }
+
+            $record->delete();
             Log::info('[CategoryController] Deleted', $ctx);
             return $this->successResponse(['message' => 'Category deleted.']);
 
@@ -94,6 +106,7 @@ class CategoryController extends Controller
 
         try {
             Category::onlyTrashed()->findOrFail($category)->restore();
+            Log::info('[CategoryController] Restored', array_merge($ctx, ['category_id' => $category]));
             return $this->successResponse(['message' => 'Category restored.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

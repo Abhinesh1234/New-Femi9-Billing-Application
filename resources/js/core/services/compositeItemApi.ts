@@ -85,6 +85,8 @@ export interface CompositeItemRecord {
   track_inventory: boolean;
   reorder_point:  number | null;
   created_at:     string;
+  updated_at:     string;
+  deleted_at:     string | null;
   components?:    CompositeComponentRecord[];
 }
 

@@ -87,6 +87,7 @@ class BrandController extends Controller
 
         try {
             Brand::onlyTrashed()->findOrFail($brand)->restore();
+            Log::info('[BrandController] Restored', array_merge($ctx, ['brand_id' => $brand]));
             return $this->successResponse(['message' => 'Brand restored.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {

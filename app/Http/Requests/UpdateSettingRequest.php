@@ -21,8 +21,8 @@ class UpdateSettingRequest extends FormRequest
         $module = $this->route('module');
 
         $this->logDebug('rules() called', __FILE__, __FUNCTION__, __LINE__, [
-            'module'  => $module,
-            'payload' => $this->all(),
+            'module'       => $module,
+            'payload_keys' => array_keys($this->all()),
         ]);
 
         try {
@@ -77,7 +77,6 @@ class UpdateSettingRequest extends FormRequest
             'failing_fields' => array_keys($errors),
             'errors'         => $errors,
             'payload_keys'   => array_keys($this->all()),
-            'payload'        => $this->all(),
         ]);
 
         throw new HttpResponseException(

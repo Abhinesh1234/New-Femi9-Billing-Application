@@ -208,6 +208,11 @@ export const all_routes = {
   priceListOverview: "/price-list/:id",
   editPriceList: "/price-list/:id/edit",
 
+  // customer routes
+  customerCategories:    "/customer-categories",
+  addCustomerCategory:   "/customer-categories/new",
+  editCustomerCategory:  "/customer-categories/:id/edit",
+
   // settings routes
   settingsHome: "/settings",
   productCustomField: "/app-settings/product-settings/add-custom-field",

@@ -285,6 +285,19 @@ $dropdown-menu-md-width: 250px;
 			&.active {
 				background-color: $primary !important;
 				color: $white !important;
+				i, .ti {
+					color: $white !important;
+				}
+			}
+			// Override Bootstrap utility color classes (e.g. text-danger) on hover —
+			// compound selector beats Bootstrap's single-class !important rule
+			&.text-danger:hover,
+			&.text-danger:focus,
+			&.text-danger:active {
+				color: $white !important;
+				i, .ti {
+					color: $white !important;
+				}
 			}
 		}
 	}

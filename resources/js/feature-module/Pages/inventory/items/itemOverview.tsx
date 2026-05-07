@@ -1,15 +1,22 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useLocation } from "react-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
-import { fetchItem, fetchItems, uploadItemImage, updateItem, type ItemListRecord } from "../../../../core/services/itemApi";
+import { restoreItem, deleteItem, uploadItemImage, updateItem, type ItemListRecord } from "../../../../core/services/itemApi";
 import { fetchSettings, type ProductConfiguration } from "../../../../core/services/settingApi";
-import { fetchItemAuditLogs, type AuditLogEntry } from "../../../../core/services/auditLogApi";
+import { type AuditLogEntry } from "../../../../core/services/auditLogApi";
 import { fetchCustomFields } from "../../../../core/services/customFieldApi";
 import { fetchLocations, type LocationListItem } from "../../../../core/services/locationApi";
 import { fetchItemStock, type ItemStockRow } from "../../../../core/services/openingStockApi";
+import {
+  readItemList, readItemDetail, readItemAuditLogs,
+  getItemList, getItemDetail, getItemAuditLogs,
+  bustItem, bustAllItemCache,
+  hydrateItemList,
+} from "../../../../core/cache/itemCache";
+import { emitMutation, onMutation } from "../../../../core/cache/mutationEvents";
 import { all_routes } from "../../../../routes/all_routes";
 
 const route = all_routes;
@@ -105,6 +112,16 @@ function DetailRow({ label, value, valueClass = "" }: { label: string; value: Re
   );
 }
 
+// ── Item info row (2-col grid inside cards) ───────────────────────────────────
+function ItemInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="d-flex align-items-center px-4 py-2">
+      <span className="text-muted fs-14 flex-shrink-0" style={{ width: "45%" }}>{label}</span>
+      <span className="fs-14 fw-medium">{value}</span>
+    </div>
+  );
+}
+
 // ── Upload placeholder box ─────────────────────────────────────────────────────
 function UploadBox({ label, icon = "ti-upload", img }: { label: string; icon?: string; img?: string | null }) {
   return (
@@ -132,11 +149,50 @@ function UploadBox({ label, icon = "ti-upload", img }: { label: string; icon?: s
   );
 }
 
+// ── Confirmation dialog ────────────────────────────────────────────────────────
+interface ConfirmConfig {
+  icon: string; iconColor: string; iconBg: string;
+  title: string; message: string;
+  confirmLabel: string; confirmColor: string;
+  onConfirm: () => Promise<void>;
+}
+
+function ConfirmDialog({ config, onClose }: { config: ConfirmConfig | null; onClose: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { setBusy(false); }, [config]);
+  if (!config) return null;
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await config.onConfirm(); } finally { setBusy(false); }
+    onClose();
+  };
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: config.iconBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
+        </div>
+        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>{config.title}</p>
+        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>{config.message}</p>
+        <div style={{ display: "flex", gap: 10, width: "100%" }}>
+          <button className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn flex-grow-1" style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }} onClick={handleConfirm} disabled={busy}>
+            {busy ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</> : config.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 const ItemOverview = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const navState = useLocation().state as { tab?: Tab } | null;
+  const navState = useRouterLocation().state as { tab?: Tab; listFilter?: "all" | "goods" | "service" | "deleted" } | null;
   const [item, setItem] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,9 +200,12 @@ const ItemOverview = () => {
 
   // ── Items list (left panel) ──
   const [allItems, setAllItems] = useState<ItemListRecord[]>([]);
-  const [listFilter, setListFilter] = useState<"all" | "goods" | "service">("all");
+  const [listFilter, setListFilter] = useState<"all" | "goods" | "service" | "deleted">(
+    navState?.listFilter ?? "all"
+  );
+  const [deletedItems,   setDeletedItems]   = useState<ItemListRecord[]>([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
   const [listSearch, setListSearch] = useState("");
-  const [showListSearch, setShowListSearch] = useState(false);
 
   // ── Image upload ──
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -161,6 +220,12 @@ const ItemOverview = () => {
   const [reorderPopoverOpen, setReorderPopoverOpen] = useState(false);
   const [reorderInput, setReorderInput] = useState("");
   const [reorderSaving, setReorderSaving] = useState(false);
+
+  // ── Confirmation dialog ──
+  const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
+
+  // ── Image lightbox ──
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   // ── Audit log (history tab) ──
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -178,8 +243,9 @@ const ItemOverview = () => {
   const [locationsLoaded, setLocationsLoaded] = useState(false);
 
   // ── Left panel scroll ──
-  const listScrollRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
+  // Stale-response guard — incremented on every id change
+  const detailFetchRef = useRef(0);
 
   // ── Toast ──
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
@@ -191,30 +257,115 @@ const ItemOverview = () => {
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
-  // Fetch current item detail
+  // Close lightbox on ESC
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setLightboxSrc(null); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightboxSrc]);
+
+  // ── Refresh ──
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!id || refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    try {
+      const numId = Number(id);
+      bustAllItemCache();
+
+      const fetches: Promise<void>[] = [
+        getItemList()
+          .then(data => setAllItems(data))
+          .catch(() => showToast("danger", "Failed to reload items list.")),
+        getItemDetail(numId)
+          .then(data => {
+            setItem(data);
+            setImagePreview(data?.image ? `/storage/${data.image}` : null);
+            setError(null);
+          })
+          .catch(() => showToast("danger", "Failed to reload item.")),
+      ];
+
+      if (listFilter === "deleted") {
+        fetches.push(
+          getItemList(true)
+            .then(data => setDeletedItems(data))
+            .catch(() => {})
+        );
+      }
+
+      if (activeTab === "history") {
+        fetches.push(
+          getItemAuditLogs(numId, auditPage)
+            .then(entry => {
+              setAuditLogs(entry.logs);
+              setAuditLastPage(entry.lastPage);
+              setAuditTotal(entry.total);
+            })
+            .catch(() => showToast("danger", "Failed to reload history."))
+        );
+      }
+
+      await Promise.all(fetches);
+    } catch {
+      showToast("danger", "Network error during refresh. Please try again.");
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }, [id, listFilter, activeTab, auditPage]);
+
+  // Fetch current item detail (cache-first, stale-response guarded)
   useEffect(() => {
     if (!id) return;
-    (async () => {
-      setLoading(true);
-      const res = await fetchItem(Number(id));
-      if (res.success) {
-        const data = (res as any).data;
+    const numId = Number(id);
+    const token = ++detailFetchRef.current;
+
+    const cached = readItemDetail(numId);
+    if (cached) {
+      if (token !== detailFetchRef.current) return;
+      setItem(cached);
+      setImagePreview(cached?.image ? `/storage/${cached.image}` : null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    getItemDetail(numId)
+      .then(data => {
+        if (token !== detailFetchRef.current) return;
         setItem(data);
         setImagePreview(data?.image ? `/storage/${data.image}` : null);
-      } else {
-        setError((res as any).message);
-      }
-      setLoading(false);
-    })();
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        if (token !== detailFetchRef.current) return;
+        setError(e.message ?? "Failed to load item.");
+        setLoading(false);
+      });
   }, [id]);
 
-  // Fetch all items for the left panel
+  // Reset audit page when item changes
+  useEffect(() => { setAuditPage(1); }, [id]);
+
+  // Fetch all items for the left panel (cache-first)
   useEffect(() => {
-    (async () => {
-      const res = await fetchItems({ per_page: 200 });
-      if (res.success) setAllItems((res as any).data.data);
-    })();
+    const cached = readItemList();
+    if (cached) { setAllItems(cached); return; }
+    getItemList()
+      .then(data => setAllItems(data))
+      .catch(() => showToast("danger", "Network error loading items list."));
   }, []);
+
+  // Listen for external mutations (e.g. edit page saves) and refresh
+  useEffect(() => {
+    return onMutation("items:mutated", handleRefresh);
+  }, [handleRefresh]);
 
   // Fetch product settings (for notify_reorder_point flag)
   useEffect(() => {
@@ -249,19 +400,31 @@ const ItemOverview = () => {
     })();
   }, [activeTab]);
 
-  // Load audit logs when history tab is opened or page changes
+  // Load audit logs when history tab is opened or page changes (cache-first)
   useEffect(() => {
     if (activeTab !== "history" || !id) return;
-    (async () => {
-      setAuditLoading(true);
-      const res = await fetchItemAuditLogs(Number(id), auditPage);
-      if (res.success) {
-        setAuditLogs(res.data.data);
-        setAuditLastPage(res.data.last_page);
-        setAuditTotal(res.data.total);
-      }
-      setAuditLoading(false);
-    })();
+    const numId = Number(id);
+
+    const cached = readItemAuditLogs(numId, auditPage);
+    if (cached) {
+      setAuditLogs(cached.logs);
+      setAuditLastPage(cached.lastPage);
+      setAuditTotal(cached.total);
+      return;
+    }
+
+    setAuditLoading(true);
+    getItemAuditLogs(numId, auditPage)
+      .then(entry => {
+        setAuditLogs(entry.logs);
+        setAuditLastPage(entry.lastPage);
+        setAuditTotal(entry.total);
+        setAuditLoading(false);
+      })
+      .catch(() => {
+        setAuditLoading(false);
+        showToast("danger", "Network error loading activity history.");
+      });
   }, [activeTab, id, auditPage]);
 
   // Load locations + current stock when locations tab first opened
@@ -293,14 +456,165 @@ const ItemOverview = () => {
     return () => clearTimeout(timer);
   }, [id, allItems]);
 
+  // Lazy-fetch deleted items when filter switches to "deleted" (cache-first)
+  useEffect(() => {
+    if (listFilter !== "deleted") return;
+    const cached = readItemList(true);
+    if (cached) { setDeletedItems(cached); return; }
+    setDeletedLoading(true);
+    getItemList(true)
+      .then(data => { setDeletedItems(data); setDeletedLoading(false); })
+      .catch(() => setDeletedLoading(false));
+  }, [listFilter]);
+
+  // Navigate to first item in the new view when filter changes
+  const pendingDeletedNav = useRef(false);
+  useEffect(() => {
+    if (listFilter === "deleted") {
+      if (deletedItems.length > 0) {
+        navigate(`/items/${deletedItems[0].id}`, { state: { listFilter: "deleted" } });
+      } else {
+        pendingDeletedNav.current = true;
+      }
+    } else {
+      const base = listFilter === "all" ? allItems : allItems.filter(i => i.item_type === listFilter);
+      if (base.length > 0) navigate(`/items/${base[0].id}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listFilter]);
+
+  // Once deleted items finish loading, navigate to first (if triggered by filter switch)
+  useEffect(() => {
+    if (!pendingDeletedNav.current) return;
+    if (listFilter === "deleted" && !deletedLoading && deletedItems.length > 0) {
+      pendingDeletedNav.current = false;
+      navigate(`/items/${deletedItems[0].id}`, { state: { listFilter: "deleted" } });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deletedItems, deletedLoading]);
+
+  const handleRestoreItem = async (itemId: number) => {
+    const res = await restoreItem(itemId);
+    if (res.success) {
+      bustItem(itemId);
+      emitMutation("items:mutated");
+      const remainingDeleted = deletedItems.filter(i => i.id !== itemId);
+      setDeletedItems(remainingDeleted);
+      showToast("success", "Item restored.");
+      if (listFilter === "deleted" && remainingDeleted.length === 0) {
+        // Last deleted item — switch to all items view
+        setListFilter("all");
+      } else if (String(itemId) === id) {
+        // Restored the currently viewed item but more deleted items remain
+        navigate(`/items/${remainingDeleted[0].id}`, { state: { listFilter: "deleted" } });
+      }
+    } else {
+      showToast("danger", (res as any).message ?? "Failed to restore item.");
+    }
+  };
+
+  const handleDeleteCurrentItem = () => {
+    if (!item) return;
+    setConfirmConfig({
+      icon: "ti-trash",
+      iconColor: "#e03131",
+      iconBg: "#fff0f0",
+      title: "Delete Item?",
+      message: `"${item.name}" will be soft-deleted and can be restored later.`,
+      confirmLabel: "Delete",
+      confirmColor: "#e03131",
+      onConfirm: async () => {
+        const numId = Number(id);
+        const res = await deleteItem(numId);
+        if (!res.success) { showToast("danger", (res as any).message ?? "Failed to delete item."); return; }
+        bustItem(numId);
+        emitMutation("items:mutated");
+        setAllItems(prev => prev.filter(i => i.id !== numId));
+        showToast("success", "Item deleted.");
+        const remaining = allItems.filter(i => i.id !== numId);
+        if (remaining.length > 0) navigate(`/items/${remaining[0].id}`);
+        else navigate(route.itemsList);
+      },
+    });
+  };
+
+  const handleRestoreCurrentItem = () => {
+    if (!item) return;
+    setConfirmConfig({
+      icon: "ti-refresh",
+      iconColor: "#2f9e44",
+      iconBg: "#ebfbee",
+      title: "Restore Item?",
+      message: `"${item.name}" will be restored and made active again.`,
+      confirmLabel: "Restore",
+      confirmColor: "#2f9e44",
+      onConfirm: async () => {
+        const numId = Number(id);
+        const res = await restoreItem(numId);
+        if (!res.success) { showToast("danger", (res as any).message ?? "Failed to restore item."); return; }
+
+        // Remove from deleted list
+        const remainingDeleted = deletedItems.filter(i => i.id !== numId);
+        setDeletedItems(remainingDeleted);
+
+        // Build an ItemListRecord from the detail object and add to active list
+        const restoredRecord: ItemListRecord = {
+          id:              numId,
+          name:            item.name,
+          item_type:       item.item_type,
+          form_type:       item.form_type,
+          sku:             item.sku ?? null,
+          selling_price:   item.selling_price ?? null,
+          cost_price:      item.cost_price ?? null,
+          image:           item.image ?? null,
+          refs:            item.refs ?? null,
+          track_inventory: !!item.track_inventory,
+          reorder_point:   item.reorder_point ?? null,
+          created_at:      item.created_at,
+          is_composite:    !!item.is_composite,
+          composite_type:  item.composite_type ?? null,
+          components:      item.components ?? [],
+        };
+        setAllItems(prev =>
+          prev.some(i => i.id === numId)
+            ? prev.map(i => i.id === numId ? restoredRecord : i)
+            : [...prev, restoredRecord]
+        );
+
+        // Update the detail panel in-place and sync cache
+        const restoredDetail = { ...item, deleted_at: null };
+        setItem(restoredDetail);
+        bustItem(numId);
+        hydrateItemList([...allItems.filter(i => i.id !== numId), restoredRecord]);
+        hydrateItemList(remainingDeleted, true);
+        emitMutation("items:mutated");
+
+        showToast("success", "Item restored.");
+
+        // Mirror locationOverview: if viewing deleted list and it's now empty, switch filter;
+        // otherwise stay on this item's detail page
+        if (listFilter === "deleted" && remainingDeleted.length === 0) {
+          setListFilter("all");
+        } else {
+          navigate(`/items/${numId}`);
+        }
+      },
+    });
+  };
+
   const filteredListItems = useMemo(() => {
+    if (listFilter === "deleted") {
+      if (!listSearch.trim()) return deletedItems;
+      const q = listSearch.toLowerCase();
+      return deletedItems.filter(i => i.name.toLowerCase().includes(q));
+    }
     let base = listFilter === "all" ? allItems : allItems.filter((i) => i.item_type === listFilter);
     if (listSearch.trim()) {
       const q = listSearch.toLowerCase();
       base = base.filter((i) => i.name.toLowerCase().includes(q));
     }
     return base;
-  }, [allItems, listFilter, listSearch]);
+  }, [allItems, deletedItems, listFilter, listSearch]);
 
   const fmtPrice = (val: any) =>
     val ? `₹${parseFloat(val).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—";
@@ -344,8 +658,6 @@ const ItemOverview = () => {
     { key: "history", label: "History" },
   ];
 
-  const filterLabel = listFilter === "all" ? "All Items" : listFilter === "goods" ? "Goods" : "Services";
-
   return (
     /* Override page-wrapper's min-height so it acts as a fixed viewport container */
     <div
@@ -357,73 +669,12 @@ const ItemOverview = () => {
         {/* ── Left: Items list panel ───────────────────────────────────────── */}
         <div
           className="d-none d-xl-flex"
-          style={{
-            width: 300,
-            minWidth: 300,
-            flexDirection: "column",
-            borderRight: "1px solid #dee2e6",
-            background: "#fff",
-            overflow: "hidden",
-          }}
+          style={{ width: 340, minWidth: 340, flexDirection: "column", borderRight: "1px solid #dee2e6", background: "#fff", overflow: "hidden" }}
         >
-          {/* Panel header */}
-          <div
-            className="d-flex align-items-center gap-2 px-3 py-2"
-            style={{ borderBottom: "1px solid #dee2e6", flexShrink: 0, minHeight: 48 }}
-          >
-            <div className="dropdown flex-grow-1">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-light border-0 fw-semibold fs-14 px-1 dropdown-toggle"
-                data-bs-toggle="dropdown"
-              >
-                {filterLabel}
-              </button>
-              <div className="dropdown-menu dropmenu-hover-primary">
-                <ul>
-                  <li><button className="dropdown-item" onClick={() => setListFilter("all")}>All Items</button></li>
-                  <li><button className="dropdown-item" onClick={() => setListFilter("goods")}>Goods</button></li>
-                  <li><button className="dropdown-item" onClick={() => setListFilter("service")}>Services</button></li>
-                </ul>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary px-2"
-              style={{ width: 28, height: 28, padding: 0, fontSize: 13 }}
-              title="New Item"
-              onClick={() => navigate(route.addItem)}
-            >
-              <i className="ti ti-plus" />
-            </button>
-            <div className="dropdown">
-              <button type="button" className="btn btn-icon btn-outline-light shadow" data-bs-toggle="dropdown" style={{ width: 28, height: 28, fontSize: 13 }}>
-                <i className="ti ti-dots" />
-              </button>
-              <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
-                <ul>
-                  <li>
-                    <button
-                      className="dropdown-item fs-13"
-                      onClick={() => setShowListSearch((v) => !v)}
-                    >
-                      <i className="ti ti-search me-2" />Search
-                    </button>
-                  </li>
-                  <li>
-                    <button className="dropdown-item fs-13" onClick={() => navigate(route.itemsList)}>
-                      <i className="ti ti-list me-2" />Full List View
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* Search box (toggle) */}
-          {showListSearch && (
-            <div className="px-3 py-2" style={{ borderBottom: "1px solid #dee2e6", flexShrink: 0 }}>
-              <div className="input-group input-group-sm">
+          {/* Search bar + filter */}
+          <div className="px-3 py-3" style={{ borderBottom: "1px solid #dee2e6", flexShrink: 0 }}>
+            <div className="d-flex align-items-center gap-2">
+              <div className="input-group flex-grow-1">
                 <span className="input-group-text border-end-0 bg-white">
                   <i className="ti ti-search text-muted fs-13" />
                 </span>
@@ -434,13 +685,87 @@ const ItemOverview = () => {
                   value={listSearch}
                   onChange={(e) => setListSearch(e.target.value)}
                 />
+                {listSearch && (
+                  <button type="button" className="btn btn-sm btn-outline-light border-start-0" onClick={() => setListSearch("")}>
+                    <i className="ti ti-x fs-12 text-muted" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter dropdown */}
+              <div className="dropdown flex-shrink-0">
+                <button
+                  type="button"
+                  className="btn btn-outline-light d-flex align-items-center justify-content-center"
+                  style={{ width: 38, height: 38, position: "relative" }}
+                  data-bs-toggle="dropdown"
+                  title="Filter"
+                >
+                  <i className="ti ti-filter fs-14 text-muted" />
+                  {listFilter !== "all" && (
+                    <span style={{
+                      position: "absolute", top: 5, right: 5,
+                      width: 7, height: 7, borderRadius: "50%",
+                      background: "#e03131", border: "1.5px solid #fff",
+                    }} />
+                  )}
+                </button>
+                <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary" style={{ minWidth: 180 }}>
+                  {(["all", "goods", "service", "deleted"] as const).map(f => (
+                    <button
+                      key={f}
+                      className="dropdown-item d-flex align-items-center gap-2 fs-13"
+                      style={{ fontWeight: listFilter === f ? 600 : 400, color: listFilter === f ? "#e03131" : undefined }}
+                      onClick={() => setListFilter(f)}
+                    >
+                      <i className={`ti ${f === "all" ? "ti-list" : f === "goods" ? "ti-box" : f === "service" ? "ti-settings" : "ti-trash"} fs-13`} />
+                      {f === "all" ? "All Items" : f === "goods" ? "Goods" : f === "service" ? "Services" : "Deleted Items"}
+                      {listFilter === f && <i className="ti ti-check ms-auto fs-12" style={{ color: "#e03131" }} />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Items list */}
-          <div ref={listScrollRef} style={{ overflowY: "auto", flex: 1 }}>
-            {filteredListItems.length === 0 ? (
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {listFilter === "deleted" ? (
+              deletedLoading ? (
+                <div className="text-center py-4 text-muted fs-13">
+                  <span className="spinner-border spinner-border-sm me-2" />Loading…
+                </div>
+              ) : filteredListItems.length === 0 ? (
+                <div className="text-center py-4 text-muted fs-13">
+                  <i className="ti ti-trash d-block fs-24 mb-1" />No deleted items
+                </div>
+              ) : (
+                filteredListItems.map(li => (
+                  <div key={li.id}
+                    className="d-flex align-items-center gap-2 px-3"
+                    style={{ paddingTop: 11, paddingBottom: 11, cursor: "pointer", borderBottom: "1px solid #f0f2f5" }}
+                    onClick={() => navigate(`/items/${li.id}`, { state: { listFilter: "deleted" } })}
+                    onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"}
+                    onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = "transparent"}
+                  >
+                    <div className="rounded border d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden"
+                      style={{ width: 28, height: 28, background: "#f5f5f5", opacity: 0.6 }}>
+                      <i className="ti ti-photo text-muted" style={{ fontSize: 12 }} />
+                    </div>
+                    <span className="flex-grow-1 text-truncate fs-14 text-muted">{li.name}</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm d-flex align-items-center gap-1 flex-shrink-0"
+                      style={{ fontSize: 11, padding: "2px 8px", background: "#fff4f4", color: "#e03131", border: "1px solid #fde8e8", borderRadius: 6 }}
+                      onClick={e => { e.stopPropagation(); handleRestoreItem(li.id); }}
+                      title="Restore"
+                    >
+                      <i className="ti ti-refresh" style={{ fontSize: 11 }} />Restore
+                    </button>
+                  </div>
+                ))
+              )
+            ) : filteredListItems.length === 0 ? (
               <div className="text-center py-4 text-muted fs-13">
                 <i className="ti ti-mood-empty d-block fs-24 mb-1" />
                 No items found
@@ -454,17 +779,16 @@ const ItemOverview = () => {
                     key={li.id}
                     ref={isActive ? activeItemRef : undefined}
                     onClick={() => navigate(`/items/${li.id}`)}
-                    className="d-flex align-items-center gap-2 px-3 py-2"
+                    className="d-flex align-items-center gap-2 px-3"
                     style={{
+                      paddingTop: 11, paddingBottom: 11,
                       cursor: "pointer",
                       background: isActive ? "#fff1f0" : "transparent",
-                      borderBottom: "1px solid #f0f2f5",
-                      transition: "background 0.12s",
+                      borderBottom: "1px solid #f5f5f5",
                     }}
                     onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = isActive ? "#fff1f0" : "transparent"; }}
                   >
-                    {/* Thumbnail */}
                     <div
                       className="rounded border d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden"
                       style={{ width: 28, height: 28, background: "#f5f5f5" }}
@@ -474,18 +798,12 @@ const ItemOverview = () => {
                         : <i className="ti ti-photo text-muted" style={{ fontSize: 12 }} />
                       }
                     </div>
-                    {/* Name */}
                     <span
                       className="flex-grow-1 text-truncate"
-                      style={{
-                        fontSize: 14,
-                        fontWeight: isActive ? 600 : 400,
-                        color: isActive ? "#e03131" : "#212529",
-                      }}
+                      style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, color: isActive ? "#e03131" : "#212529" }}
                     >
                       {li.name}
                     </span>
-                    {/* Price */}
                     {li.selling_price && (
                       <span className="fs-12 text-muted flex-shrink-0">
                         ₹{parseFloat(li.selling_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -498,349 +816,358 @@ const ItemOverview = () => {
           </div>
         </div>
 
-        {/* ── Right: Item overview detail ───────────────────────────────────── */}
-        {/* Right: independently scrollable detail panel */}
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", background: "#fff" }}>
-          <div style={{ padding: "1.25rem", flex: 1 }}>
+        {/* ── Right: Item detail ─────────────────────────────────────── */}
+        <div style={{ flex: 1, overflowY: "auto", background: "#fff" }}>
+          <div style={{ padding: "1.25rem" }}>
 
-            {/* ── Top action bar ── */}
-            <div className="d-flex align-items-start justify-content-between mb-2 flex-wrap gap-2">
-              <div>
-                <h4 className="fw-semibold mb-2 lh-sm">{item.name}</h4>
-                {item.is_returnable && (
-                  <span className="text-muted fs-13 d-flex align-items-center gap-1 mb-0" style={{ lineHeight: "1.5" }}>
-                    <i className="ti ti-refresh fs-14" />
-                    Returnable Item
-                  </span>
-                )}
-              </div>
-              <div className="d-flex align-items-center gap-2">
-                <Link
-                  to="#"
-                  className="btn btn-outline-light shadow"
-                  title="Edit"
-                  style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={(e) => { e.preventDefault(); navigate(item.is_composite ? `/composite-items/${id}/edit` : `/items/${id}/edit`); }}
-                >
-                  <i className="ti ti-pencil" />
-                </Link>
-                <button type="button" className="btn btn-primary" style={{ height: 36 }}>
-                  <i className="ti ti-adjustments-horizontal me-1" />
-                  Adjust Stock
-                </button>
-                <div className="dropdown">
-                  <button type="button" className="btn btn-outline-light dropdown-toggle shadow px-3" style={{ height: 36 }} data-bs-toggle="dropdown">
-                    More
-                  </button>
-                  <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
-                    <ul>
-                      <li><button className="dropdown-item"><i className="ti ti-copy me-2" />Duplicate</button></li>
-                      <li><button className="dropdown-item text-danger"><i className="ti ti-trash me-2" />Delete</button></li>
-                    </ul>
+            {/* ── Header ── */}
+            <div className="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+              <div className="d-flex align-items-start gap-3">
+                <div className="rounded border d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden"
+                  style={{ width: 56, height: 56, background: "#f5f5f5" }}>
+                  {img
+                    ? <img src={img} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 4 }} />
+                    : <i className="ti ti-package fs-24 text-muted" />
+                  }
+                </div>
+                <div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
+                    <h4 className="fw-bold mb-0 lh-sm">{item.name}</h4>
+                    {item.deleted_at ? (
+                      <span className="badge badge-soft-danger d-inline-flex align-items-center gap-1 fs-12">
+                        <i className="ti ti-trash" style={{ fontSize: 10 }} />Deleted
+                      </span>
+                    ) : (
+                      <span className={`badge d-inline-flex align-items-center gap-1 fs-12 ${item.is_active !== false ? "badge-soft-success" : "badge-soft-danger"}`}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: item.is_active !== false ? "#12b76a" : "#ef4444", display: "inline-block" }} />
+                        {item.is_active !== false ? "Active" : "Inactive"}
+                      </span>
+                    )}
+                    {item.is_returnable && (
+                      <span className="badge badge-soft-info fs-12">Returnable</span>
+                    )}
+                  </div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <span className="badge fs-12" style={{ background: "#f1f3f5", color: "#6c757d" }}>
+                      Type: {item.item_type === "goods" ? "Goods" : "Service"}
+                    </span>
+                    {item.unit && (
+                      <span className="badge fs-12" style={{ background: "#f1f3f5", color: "#6c757d" }}>
+                        Unit: {item.unit}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <Link to={route.itemsList} className="btn btn-outline-light shadow" title="Close"
-                  style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <i className="ti ti-x" />
-                </Link>
+              </div>
+
+              <div className="d-flex align-items-center gap-2">
+                {item.deleted_at ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline-light shadow d-flex align-items-center gap-1"
+                    style={{ height: 36 }}
+                    onClick={handleRestoreCurrentItem}
+                  >
+                    <i className="ti ti-refresh" style={{ fontSize: 14 }} />Restore
+                  </button>
+                ) : (
+                  <div className="dropdown">
+                    <button type="button" className="btn btn-outline-light dropdown-toggle shadow d-flex align-items-center gap-1"
+                      style={{ height: 36 }} data-bs-toggle="dropdown">
+                      Actions
+                    </button>
+                    <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
+                      <ul>
+                        <li>
+                          <button className="dropdown-item" onClick={() => navigate(item.is_composite ? `/composite-items/${id}/edit` : `/items/${id}/edit`)}>
+                            <i className="ti ti-pencil me-2" />Edit
+                          </button>
+                        </li>
+                        <li>
+                          <button className="dropdown-item" onClick={() => navigate(`/items/${id}/opening-stock`)}>
+                            <i className="ti ti-adjustments-horizontal me-2" />Adjust Stock
+                          </button>
+                        </li>
+                        <li>
+                          <button className="dropdown-item text-danger" onClick={handleDeleteCurrentItem}>
+                            <i className="ti ti-trash me-2" />Delete
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+                <button type="button" className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
+                  style={{ height: 36, width: 36 }} onClick={handleRefresh} disabled={refreshing} title="Refresh">
+                  <i className={`ti ti-refresh${refreshing ? " spin-animation" : ""}`} style={{ fontSize: 16 }} />
+                </button>
+                <button type="button" className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
+                  style={{ height: 36, width: 36 }} onClick={() => navigate(route.itemsList)} title="Close">
+                  <i className="ti ti-x" style={{ fontSize: 16 }} />
+                </button>
               </div>
             </div>
 
-            {/* ── Tab nav ── */}
-            <div className="border-bottom mb-3 mt-5 mt-md-4">
-              <ul className="nav" style={{ gap: 0, marginLeft: -10 }}>
-                {tabs.map((t) => (
-                  <li key={t.key} className="nav-item">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab(t.key)}
-                      className="nav-link border-0 bg-transparent"
+            {/* ── Tab nav (pill) ── */}
+            <div className="mb-4">
+              <div className="d-inline-flex rounded" style={{ background: "#f1f3f5", padding: 4, gap: 2 }}>
+                {tabs.map(t => {
+                  const isActive = activeTab === t.key;
+                  return (
+                    <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
                       style={{
-                        color: activeTab === t.key ? "#e03131" : "#6c757d",
-                        fontWeight: activeTab === t.key ? 600 : 400,
+                        padding: "6px 20px", borderRadius: 6, border: "none",
+                        background: isActive ? "#fff" : "transparent",
+                        color: isActive ? "#e03131" : "#6c757d",
+                        fontWeight: isActive ? 600 : 400,
                         fontSize: 14,
-                        lineHeight: "1.5",
-                        padding: "5px 10px",
-                        borderBottom: activeTab === t.key ? "2px solid #e03131" : "2px solid transparent",
-                        borderRadius: 0,
-                        marginBottom: -1,
-                        transition: "color 0.15s, border-color 0.15s",
-                      }}
-                    >
+                        boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
+                        transition: "all 0.15s", cursor: "pointer", whiteSpace: "nowrap",
+                      }}>
                       {t.label}
                     </button>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             </div>
 
             {/* ── Tab: Overview ── */}
             {activeTab === "overview" && (
-              <div className="row g-3">
+              <div>
 
-                {/* ── Left column ── */}
-                <div className="col-lg-6">
-
-                  {/* Primary Details */}
-                  <h6 className="fw-semibold mb-3">Primary Details</h6>
-                  <DetailRow
-                    label="Item Name"
-                    value={<span className="text-primary">{item.name}</span>}
-                  />
-                  <DetailRow
-                    label="Item Type"
-                    value={item.item_type === "goods" ? "Inventory Items" : "Service"}
-                  />
-                  <DetailRow label="Unit" value={fmt(item.unit)} />
-                  <DetailRow label="Created Source" value="User" />
-                  <DetailRow
-                    label="Inventory Account"
-                    value={fmt(item.inventory_account ?? item.account_name)}
-                  />
-                  {item.track_inventory && item.valuation_method && (
-                    <DetailRow
-                      label="Inventory Valuation Method"
-                      value={VALUATION_LABELS[item.valuation_method] ?? item.valuation_method}
-                    />
-                  )}
-
-                  {/* Purchase Information */}
-                  {(item.cost_price || item.purchase_account) && (
-                    <>
-                      <h6 className="fw-semibold mt-4 mb-3">Purchase Information</h6>
-                      <DetailRow label="Cost Price" value={fmtPrice(item.cost_price)} />
-                      <DetailRow label="Purchase Account" value={fmt(item.purchase_account ?? "Cost of Goods Sold")} />
-                    </>
-                  )}
-
-                  {/* Sales Information */}
-                  {(item.selling_price || item.sales_account) && (
-                    <>
-                      <h6 className="fw-semibold mt-4 mb-3">Sales Information</h6>
-                      <DetailRow label="Selling Price" value={fmtPrice(item.selling_price)} />
-                      <DetailRow label="Sales Account" value={fmt(item.sales_account ?? "Sales")} />
-                    </>
-                  )}
-
-                  {/* Reporting Tags */}
-                  <h6 className="fw-semibold mt-4 mb-3">Reporting Tags</h6>
-                  <p className="fs-14 text-muted mb-0">No reporting tag has been associated with this item.</p>
-
-                  {/* Associated Price Lists */}
-                  <div className="mt-4">
-                    <Link to="#" className="fs-14 text-primary d-flex align-items-center gap-1">
-                      Associated Price Lists
-                      <i className="ti ti-chevron-right fs-14" />
-                    </Link>
-                  </div>
-
-                </div>
-
-                {/* ── Right column ── */}
-                <div className="col-lg-6">
-
-                  {/* Image upload */}
-                  <label
-                    htmlFor="overview_image_input"
-                    className="border rounded d-flex flex-column align-items-center justify-content-center text-center mb-4 overflow-hidden position-relative"
-                    style={{ cursor: imageUploading ? "wait" : "pointer", background: "#fafafa", height: 280 }}
-                  >
-                    {imagePreview ? (
-                      <img
-                        src={imagePreview}
-                        alt={item.name}
-                        style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }}
-                      />
-                    ) : (
-                      <>
-                        <i className="ti ti-photo-up text-primary fs-32 mb-2" />
-                        <span className="fw-semibold fs-14">Item Image</span>
-                        <small className="text-muted mt-1">Click to upload — PNG, JPG up to 10 MB</small>
-                      </>
-                    )}
-                    {imageUploading && (
-                      <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: "rgba(255,255,255,0.7)" }}>
-                        <span className="spinner-border spinner-border-sm text-primary" />
+                {/* Item Information card */}
+                <div className="card border mb-3">
+                  <div className="card-body p-0">
+                    <div className="px-4 py-3 border-bottom">
+                      <h6 className="fw-semibold fs-15 mb-0">Item Information</h6>
+                    </div>
+                    <div className="row g-0 pt-2 pb-1">
+                      <div className="col-md-6">
+                        <ItemInfoRow label="Item Name" value={<span className="text-primary">{item.name}</span>} />
+                        <ItemInfoRow label="Item Type" value={
+                          <span className={`badge fs-12 ${item.item_type === "goods" ? "badge-soft-secondary" : "badge-soft-primary"}`}>
+                            {item.item_type === "goods" ? "Goods" : "Service"}
+                          </span>
+                        } />
+                        <ItemInfoRow label="Unit" value={fmt(item.unit)} />
+                        <ItemInfoRow label="Status" value={
+                          <span className={`badge fs-12 ${item.is_active !== false ? "badge-soft-success" : "badge-soft-danger"}`}>
+                            {item.is_active !== false ? "Active" : "Inactive"}
+                          </span>
+                        } />
+                        <ItemInfoRow label="Returnable" value={item.is_returnable ? "Yes" : "No"} />
+                        {item.track_inventory && item.valuation_method && (
+                          <ItemInfoRow label="Valuation Method" value={VALUATION_LABELS[item.valuation_method] ?? item.valuation_method} />
+                        )}
                       </div>
-                    )}
-                    {imagePreview && !imageUploading && (
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 p-1 lh-1"
-                        style={{ fontSize: 12, zIndex: 1 }}
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          const prevPreview = imagePreview;
-                          setImagePreview(null);
-                          setImageFile(null);
-                          const res = await updateItem(Number(id), { image: null } as any);
-                          if (!res.success) {
-                            setImagePreview(prevPreview);
-                            showToast("danger", res.message || "Failed to remove image.");
-                          } else {
-                            showToast("success", "Image removed successfully.");
-                          }
-                        }}
-                      >
-                        <i className="ti ti-x" />
-                      </button>
-                    )}
-                  </label>
-                  <input
-                    id="overview_image_input"
-                    type="file"
-                    accept="image/*"
-                    className="d-none"
-                    onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const prevPreview = imagePreview;
-                      setImagePreview(URL.createObjectURL(file));
-                      setImageFile(file);
-                      setImageUploading(true);
-                      const uploadRes = await uploadItemImage(file);
-                      if (!uploadRes.success) {
-                        setImageUploading(false);
-                        setImagePreview(prevPreview);
-                        setImageFile(null);
-                        showToast("danger", uploadRes.message || "Failed to upload image.");
-                        return;
-                      }
-                      const imagePath = (uploadRes as any).path as string;
-                      const updateRes = await updateItem(Number(id), { image: imagePath } as any);
-                      setImageUploading(false);
-                      if (!updateRes.success) {
-                        setImagePreview(prevPreview);
-                        setImageFile(null);
-                        showToast("danger", updateRes.message || "Failed to save image.");
-                      } else {
-                        showToast("success", "Image updated successfully.");
-                      }
-                    }}
-                  />
-
-                  <hr className="my-3" />
-
-                  {/* Opening stock */}
-                  <div className="d-flex align-items-center gap-2 mb-3">
-                    <i className="ti ti-building-warehouse fs-16 text-primary" />
-                    <Link to="#" className="fs-14 text-primary fw-medium">Opening Stock</Link>
-                    <i className="ti ti-info-circle fs-14 text-muted" />
-                    <span className="ms-auto fs-14 fw-semibold">: 0.00</span>
+                      <div className="col-md-6">
+                        <ItemInfoRow label="SKU" value={fmt(item.sku)} />
+                        <ItemInfoRow label="Selling Price" value={fmtPrice(item.selling_price)} />
+                        <ItemInfoRow label="Cost Price" value={fmtPrice(item.cost_price)} />
+                        <ItemInfoRow label="Inventory Account" value={fmt(item.inventory_account ?? item.account_name)} />
+                        <ItemInfoRow label="Created By" value={fmt(item.created_by?.name ?? item.created_by)} />
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center px-4 py-3 border-top" style={{ background: "#fafafa", borderRadius: "0 0 8px 8px" }}>
+                      <span className="text-muted fs-14 flex-shrink-0" style={{ width: "22.5%" }}>Created On</span>
+                      <span className="fs-14 fw-medium">
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) + ", " +
+                            new Date(item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+                          : "—"}
+                      </span>
+                    </div>
                   </div>
+                </div>
 
-                  {/* Stock */}
-                  <div className="d-flex align-items-center gap-1 mb-2">
-                    <span className="fs-14 fw-semibold">Stock</span>
-                    <i className="ti ti-info-circle fs-14 text-muted" />
-                  </div>
-                  <StockRow label="Stock on Hand" />
-                  <StockRow label="Committed Stock" />
-                  <StockRow label="Available for Sale" />
+                {/* Bottom cards */}
+                <div className="row g-3">
 
-                  <hr className="my-3" />
-
-                  {/* Reorder Point */}
-                  <p className="fs-14 fw-semibold mb-2" style={{ textDecorationLine: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
-                    Reorder Point
-                  </p>
-
-                  {notifyReorderEnabled ? (
-                    /* ── Enabled: show value or + Add ── */
-                    <div className="position-relative mb-4">
-                      {reorderPoint !== null ? (
-                        <div className="d-flex align-items-center gap-2">
-                          <span className="fs-15 fw-semibold">{parseFloat(String(reorderPoint)).toFixed(2)}</span>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
-                            style={{ width: 26, height: 26 }}
-                            onClick={() => { setReorderInput(String(reorderPoint)); setReorderPopoverOpen(true); }}
-                          >
-                            <i className="ti ti-pencil fs-12" />
-                          </button>
+                  {/* Image */}
+                  <div className="col-lg-6">
+                    <div className="card border h-100">
+                      <div className="card-body">
+                        <div className="d-flex align-items-center gap-2 mb-3">
+                          <i className="ti ti-photo text-muted fs-18" />
+                          <h6 className="fw-semibold fs-15 mb-0">Item Image</h6>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
-                          onClick={() => { setReorderInput(""); setReorderPopoverOpen(true); }}
-                        >
-                          + Add
-                        </button>
-                      )}
+                        <label htmlFor="overview_image_input"
+                          className="border rounded d-flex flex-column align-items-center justify-content-center text-center overflow-hidden position-relative"
+                          style={{ cursor: imageUploading ? "wait" : "pointer", background: "#fafafa", height: 180 }}>
+                          {imagePreview ? (
+                            <img src={imagePreview} alt={item.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }} />
+                          ) : (
+                            <>
+                              <i className="ti ti-photo-up text-primary fs-32 mb-2" />
+                              <span className="fw-semibold fs-14">Upload Image</span>
+                              <small className="text-muted mt-1">PNG, JPG up to 10 MB</small>
+                            </>
+                          )}
+                          {imageUploading && (
+                            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: "rgba(255,255,255,0.7)" }}>
+                              <span className="spinner-border spinner-border-sm text-primary" />
+                            </div>
+                          )}
+                          {imagePreview && !imageUploading && (
+                            <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 p-1 lh-1"
+                              style={{ fontSize: 12, zIndex: 1 }}
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                const prevPreview = imagePreview;
+                                setImagePreview(null); setImageFile(null);
+                                const res = await updateItem(Number(id), { image: null } as any);
+                                if (!res.success) { setImagePreview(prevPreview); showToast("danger", res.message || "Failed to remove image."); }
+                                else showToast("success", "Image removed successfully.");
+                              }}>
+                              <i className="ti ti-x" />
+                            </button>
+                          )}
+                        </label>
+                        <input id="overview_image_input" type="file" accept="image/*" className="d-none"
+                          onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const prevPreview = imagePreview;
+                            setImagePreview(URL.createObjectURL(file)); setImageFile(file); setImageUploading(true);
+                            const uploadRes = await uploadItemImage(file);
+                            if (!uploadRes.success) {
+                              setImageUploading(false); setImagePreview(prevPreview); setImageFile(null);
+                              showToast("danger", uploadRes.message || "Failed to upload image."); return;
+                            }
+                            const imagePath = (uploadRes as any).path as string;
+                            const updateRes = await updateItem(Number(id), { image: imagePath } as any);
+                            setImageUploading(false);
+                            if (!updateRes.success) { setImagePreview(prevPreview); setImageFile(null); showToast("danger", updateRes.message || "Failed to save image."); }
+                            else showToast("success", "Image updated successfully.");
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                      {/* Inline popover */}
-                      {reorderPopoverOpen && (
-                        <>
-                          <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 99 }} onClick={() => setReorderPopoverOpen(false)} />
+                  {/* Stock Summary */}
+                  <div className="col-lg-6">
+                    <div className="card border h-100">
+                      <div className="card-body position-relative">
+                        <div className="d-flex align-items-center gap-2 mb-3">
+                          <i className="ti ti-building-warehouse text-muted fs-18" />
+                          <h6 className="fw-semibold fs-15 mb-0">Stock Summary</h6>
+                        </div>
+
+                        {/* Opening Stock — shown separately */}
+                        <div className="d-flex align-items-center py-2 mb-1" style={{ background: "#f8f9fa", borderRadius: 6, padding: "8px 12px" }}>
+                          <span className="text-muted fs-14 flex-shrink-0" style={{ width: "60%" }}>Opening Stock</span>
+                          <span className="fs-14 fw-semibold">0.00</span>
+                        </div>
+
+                        <hr className="my-2" />
+
+                        {[
+                          { label: "Stock on Hand",      value: "0.00" },
+                          { label: "Committed Stock",    value: "0.00" },
+                          { label: "Available for Sale", value: "0.00" },
+                        ].map(row => (
+                          <div key={row.label} className="d-flex align-items-center py-2 border-bottom">
+                            <span className="text-muted fs-14 flex-shrink-0" style={{ width: "60%" }}>{row.label}</span>
+                            <span className="fs-14 fw-medium">{row.value}</span>
+                          </div>
+                        ))}
+
+                        <hr className="my-3" />
+
+                        <p className="fs-14 fw-semibold mb-2" style={{ textDecorationLine: "underline", textDecorationStyle: "dashed", textUnderlineOffset: 3 }}>
+                          Reorder Point
+                        </p>
+
+                        {notifyReorderEnabled ? (
+                          <div className="position-relative">
+                            {reorderPoint !== null ? (
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="fs-15 fw-semibold">{parseFloat(String(reorderPoint)).toFixed(2)}</span>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
+                                  style={{ width: 26, height: 26 }}
+                                  onClick={() => { setReorderInput(String(reorderPoint)); setReorderPopoverOpen(true); }}
+                                >
+                                  <i className="ti ti-pencil fs-12" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
+                                onClick={() => { setReorderInput(""); setReorderPopoverOpen(true); }}
+                              >
+                                + Add
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rounded p-3" style={{ background: "#fff8f0", border: "1px solid #fde8c8" }}>
+                            <p className="fs-14 mb-0" style={{ color: "#7a5c2e" }}>
+                              You have to enable reorder notification before setting reorder point for items.{" "}
+                              <Link to={`${route.projectSettings}?highlight=notify-reorder`} className="text-primary">Click here</Link>
+                            </p>
+                          </div>
+                        )}
+
+                        {reorderPopoverOpen && (
                           <div
-                            className="position-absolute border rounded shadow bg-white p-3"
-                            style={{ top: 32, left: 0, zIndex: 100, minWidth: 240 }}
+                            style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+                            onClick={e => { if (e.target === e.currentTarget) setReorderPopoverOpen(false); }}
                           >
-                          <p className="fs-14 fw-semibold mb-3">Reorder Point</p>
-                          <label className="fs-13 fw-medium text-danger mb-1">Set Reorder point*</label>
-                          <input
-                            type="number"
-                            className="form-control form-control-sm mb-3"
-                            min={0}
-                            step={0.01}
-                            value={reorderInput}
-                            onChange={(e) => setReorderInput(e.target.value)}
-                            autoFocus
-                          />
-                          <div className="d-flex gap-2">
-                            <button
-                              type="button"
-                              className="btn btn-danger me-2"
-                              disabled={reorderSaving || reorderInput.trim() === ""}
-                              onClick={async () => {
-                                const val = parseFloat(reorderInput);
-                                if (isNaN(val) || val < 0) return;
-                                setReorderSaving(true);
-                                const res = await updateItem(Number(id), { reorder_point: val } as any);
-                                setReorderSaving(false);
-                                if (res.success) {
-                                  setReorderPoint(val);
-                                  setReorderPopoverOpen(false);
-                                  showToast("success", "Reorder point updated.");
-                                } else {
-                                  showToast("danger", res.message || "Failed to update reorder point.");
-                                }
-                              }}
-                            >
-                              {reorderSaving ? <span className="spinner-border spinner-border-sm" /> : "Update"}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-outline-light"
-                              onClick={() => setReorderPopoverOpen(false)}
-                            >
-                              Cancel
-                            </button>
+                            <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
+                              <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Reorder Point</p>
+                              <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "#64748b", lineHeight: 1.55 }}>Set a reorder point for this item.</p>
+                              <label className="fs-13 fw-medium text-danger mb-1">Set Reorder point*</label>
+                              <input
+                                type="number"
+                                className="form-control mb-4"
+                                min={0}
+                                step={0.01}
+                                value={reorderInput}
+                                onChange={e => setReorderInput(e.target.value)}
+                                autoFocus
+                              />
+                              <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                                <button type="button" className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={() => setReorderPopoverOpen(false)} disabled={reorderSaving}>Cancel</button>
+                                <button
+                                  type="button"
+                                  className="btn flex-grow-1"
+                                  style={{ background: "#e03131", color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
+                                  disabled={reorderSaving || reorderInput.trim() === ""}
+                                  onClick={async () => {
+                                    const val = parseFloat(reorderInput);
+                                    if (isNaN(val) || val < 0) return;
+                                    setReorderSaving(true);
+                                    const res = await updateItem(Number(id), { reorder_point: val } as any);
+                                    setReorderSaving(false);
+                                    if (res.success) {
+                                      setReorderPoint(val);
+                                      setReorderPopoverOpen(false);
+                                      showToast("success", "Reorder point updated.");
+                                    } else {
+                                      showToast("danger", (res as any).message || "Failed to update reorder point.");
+                                    }
+                                  }}
+                                >
+                                  {reorderSaving ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />Saving…</> : "Update"}
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          </div>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    /* ── Disabled: prompt to enable in settings ── */
-                    <div className="rounded p-3 mb-4" style={{ background: "#fff8f0", border: "1px solid #fde8c8" }}>
-                      <p className="fs-14 mb-0" style={{ color: "#7a5c2e" }}>
-                        You have to enable reorder notification before setting reorder point for items.{" "}
-                        <Link to={`${route.projectSettings}?highlight=notify-reorder`} className="text-primary">Click here</Link>
-                      </p>
-                    </div>
-                  )}
-
+                  </div>
 
                 </div>
 
-                {/* ── Full-width: Associated Components (composite items only) ── */}
+                {/* Associated Components (composite items only) */}
                 {item.is_composite && Array.isArray(item.components) && (item.components as any[]).length > 0 && (
-                  <div className="col-12">
+                  <div className="mt-3">
                     <hr className="mt-0 mb-3" />
                     <h6 className="fw-semibold fs-14 mb-3">
                       Associated Products
@@ -848,10 +1175,7 @@ const ItemOverview = () => {
                         {item.composite_type === "assembly" ? "Assembly" : item.composite_type === "kit" ? "Kit" : ""}
                       </span>
                     </h6>
-
                     <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
-
-                      {/* Header */}
                       <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
                         <div className="d-flex align-items-center gap-2 mb-1">
                           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
@@ -859,19 +1183,18 @@ const ItemOverview = () => {
                         </div>
                         <p className="text-muted fs-13 mb-0">Items and services that make up this composite product.</p>
                       </div>
-
                       <div style={{ overflowX: "auto" }}>
                         <table className="table mb-0" style={{ minWidth: 640, width: "100%" }}>
                           <thead>
                             <tr>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 56, whiteSpace: "nowrap" }} />
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", whiteSpace: "nowrap" }}>Item Name</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 100, whiteSpace: "nowrap" }}>Type</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>SKU</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Unit</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80, whiteSpace: "nowrap" }}>Qty</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Selling (₹)</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120, whiteSpace: "nowrap" }}>Cost (₹)</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 56 }} />
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6" }}>Item Name</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 100 }}>Type</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>SKU</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80 }}>Unit</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80 }}>Qty</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Selling (₹)</th>
+                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Cost (₹)</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -883,42 +1206,30 @@ const ItemOverview = () => {
                               const cp  = comp.cost_price    != null ? parseFloat(comp.cost_price)    : null;
                               return (
                                 <tr key={comp.id} style={{ borderBottom: "1px solid #f5f5f5" }}>
-                                  {/* Thumbnail */}
                                   <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
-                                    <div
-                                      className="rounded border d-flex align-items-center justify-content-center overflow-hidden"
-                                      style={{ width: 36, height: 36, background: "#f8f9fa", flexShrink: 0 }}
-                                    >
-                                      {ciImg
-                                        ? <img src={ciImg} alt={ci.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                        : <i className="ti ti-photo text-muted" style={{ fontSize: 14 }} />
-                                      }
+                                    <div className="rounded border d-flex align-items-center justify-content-center overflow-hidden"
+                                      style={{ width: 36, height: 36, background: "#f8f9fa", flexShrink: 0 }}>
+                                      {ciImg ? <img src={ciImg} alt={ci.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                             : <i className="ti ti-photo text-muted" style={{ fontSize: 14 }} />}
                                     </div>
                                   </td>
-                                  {/* Name */}
                                   <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
                                     <div className="fw-medium fs-14">{ci.name ?? "—"}</div>
                                     {ci.sku && <div className="fs-12 text-muted">{ci.sku}</div>}
                                   </td>
-                                  {/* Type */}
                                   <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
                                     <span className={`badge ${comp.component_type === "service" ? "badge-soft-primary" : "badge-soft-secondary"} fs-12`}>
                                       {comp.component_type === "service" ? "Service" : "Item"}
                                     </span>
                                   </td>
-                                  {/* SKU */}
                                   <td className="fs-13 text-muted" style={{ padding: "10px 16px", verticalAlign: "middle" }}>{ci.sku ?? "—"}</td>
-                                  {/* Unit */}
                                   <td className="fs-13 text-muted" style={{ padding: "10px 16px", verticalAlign: "middle" }}>{ci.unit ?? "—"}</td>
-                                  {/* Qty */}
                                   <td className="fs-14 fw-medium text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
                                     {qty % 1 === 0 ? qty : qty.toFixed(2)}
                                   </td>
-                                  {/* Selling Price */}
                                   <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
                                     {sp != null ? `₹${sp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
                                   </td>
-                                  {/* Cost Price */}
                                   <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
                                     {cp != null ? `₹${cp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
                                   </td>
@@ -928,22 +1239,17 @@ const ItemOverview = () => {
                           </tbody>
                         </table>
                       </div>
-
                     </div>
                   </div>
                 )}
 
-                {/* ── Full-width: Sales Order Summary chart ── */}
-                <div className="col-12">
+                {/* Sales Order Summary chart */}
+                <div className="mt-3">
                   <hr className="mt-0 mb-3" />
                   <div className="d-flex align-items-center justify-content-between mb-2">
-                    <h6 className="fw-semibold mb-0 fs-14">
-                      Sales Order Summary <span className="text-muted fw-normal">(In INR)</span>
-                    </h6>
+                    <h6 className="fw-semibold mb-0 fs-14">Sales Order Summary <span className="text-muted fw-normal">(In INR)</span></h6>
                     <div className="dropdown">
-                      <button type="button" className="btn btn-sm btn-outline-light shadow dropdown-toggle px-2 fs-12" data-bs-toggle="dropdown">
-                        This Month
-                      </button>
+                      <button type="button" className="btn btn-sm btn-outline-light shadow dropdown-toggle px-2 fs-12" data-bs-toggle="dropdown">This Month</button>
                       <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                         <ul>
                           <li><button className="dropdown-item fs-13">This Week</button></li>
@@ -967,6 +1273,20 @@ const ItemOverview = () => {
                   </div>
                 </div>
 
+                {/* Last updated footer */}
+                <div className="d-inline-flex align-items-center gap-2 mt-4 px-3 py-2 rounded"
+                  style={{ background: "#f8f9fa", border: "1px solid #e9ecef" }}>
+                  <i className="ti ti-clock text-muted fs-14" />
+                  <span className="fs-14 text-muted">
+                    Last updated on{" "}
+                    <span className="fw-semibold" style={{ color: "#495057" }}>
+                      {new Date(item.updated_at ?? item.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+                      {", "}
+                      {new Date(item.updated_at ?? item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                    </span>
+                  </span>
+                </div>
+
               </div>
             )}
 
@@ -977,25 +1297,28 @@ const ItemOverview = () => {
                 <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                   <div className="d-flex align-items-center gap-2">
                     <h6 className="fw-semibold fs-15 mb-0">Stock Locations</h6>
-                    <div className="dropdown">
-                      <button
-                        type="button"
-                        className="btn btn-outline-light shadow"
-                        data-bs-toggle="dropdown"
-                        style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-                      >
-                        <i className="ti ti-settings fs-14" />
-                      </button>
-                      <div className="dropdown-menu dropdown-menu-start dropmenu-hover-primary">
-                        <ul>
-                          <li>
-                            <button className="dropdown-item fs-13" onClick={() => navigate(`/items/${id}/opening-stock`)}>
-                              <i className="ti ti-plus me-2" />Add Opening Stock
-                            </button>
-                          </li>
-                        </ul>
+                    {/* Hide opening stock for composite items — their stock is derived from components */}
+                    {!item.is_composite && (
+                      <div className="dropdown">
+                        <button
+                          type="button"
+                          className="btn btn-outline-light shadow"
+                          data-bs-toggle="dropdown"
+                          style={{ height: 36, width: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                        >
+                          <i className="ti ti-settings fs-14" />
+                        </button>
+                        <div className="dropdown-menu dropdown-menu-start dropmenu-hover-primary">
+                          <ul>
+                            <li>
+                              <button className="dropdown-item fs-13" onClick={() => navigate(`/items/${id}/opening-stock`)}>
+                                <i className="ti ti-plus me-2" />Add Opening Stock
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                 </div>
@@ -1104,13 +1427,26 @@ const ItemOverview = () => {
             {activeTab === "history" && (
               <div>
                 {/* Header row */}
-                <div className="d-flex align-items-center justify-content-between mb-3">
+                <div className="d-flex align-items-center justify-content-between mb-4">
                   <div>
-                    <h6 className="fw-semibold mb-0">Activity History</h6>
+                    <h6 className="fw-semibold mb-0 fs-15">Activity History</h6>
                     {!auditLoading && (
-                      <span className="fs-13 text-muted">{auditTotal} {auditTotal === 1 ? "entry" : "entries"}</span>
+                      <span className="fs-13 text-muted">{auditTotal} {auditTotal === 1 ? "record" : "records"}</span>
                     )}
                   </div>
+                  {!auditLoading && auditLastPage > 1 && (
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="fs-13 text-muted">Page {auditPage} of {auditLastPage}</span>
+                      <button type="button" className="btn btn-sm btn-outline-light shadow" disabled={auditPage <= 1}
+                        onClick={() => setAuditPage(p => p - 1)} style={{ width: 30, height: 30, padding: 0 }}>
+                        <i className="ti ti-chevron-left fs-14" />
+                      </button>
+                      <button type="button" className="btn btn-sm btn-outline-light shadow" disabled={auditPage >= auditLastPage}
+                        onClick={() => setAuditPage(p => p + 1)} style={{ width: 30, height: 30, padding: 0 }}>
+                        <i className="ti ti-chevron-right fs-14" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {auditLoading ? (
@@ -1120,43 +1456,30 @@ const ItemOverview = () => {
                   </div>
                 ) : auditLogs.length === 0 ? (
                   <div className="text-center py-5 text-muted">
-                    <i className="ti ti-history fs-40 d-block mb-2" />
-                    <p className="fs-14 mb-0">No history recorded yet.</p>
+                    <i className="ti ti-history fs-36 d-block mb-2" />
+                    <p className="fs-14 mb-0">No activity recorded yet.</p>
                   </div>
                 ) : (
-                  <div className="position-relative">
-                    {/* Single continuous spine line from first icon centre to last icon centre */}
-                    <div style={{ position: "absolute", left: 17, top: 18, bottom: 18, width: 2, background: "#dee2e6", zIndex: 0 }} />
+                  <div style={{ position: "relative", paddingLeft: 52 }}>
+                    {/* Continuous spine */}
+                    <div style={{ position: "absolute", left: 17, top: 0, bottom: 0, width: 2, background: "#e9ecef", zIndex: 0 }} />
                     {auditLogs.map((log, idx) => {
-                      const isLast = idx === auditLogs.length - 1;
-                      const eventColor: Record<string, string> = {
-                        created:              "bg-success",
-                        updated:              "bg-primary",
-                        deleted:              "bg-danger",
-                        restored:             "bg-warning",
-                        opening_stock_saved:  "bg-info",
-                      };
                       const eventIcon: Record<string, string> = {
-                        created:              "ti-plus",
-                        updated:              "ti-pencil",
-                        deleted:              "ti-trash",
-                        restored:             "ti-refresh",
-                        opening_stock_saved:  "ti-building-warehouse",
+                        created:             "ti-plus",
+                        updated:             "ti-pencil",
+                        deleted:             "ti-trash",
+                        restored:            "ti-refresh",
+                        opening_stock_saved: "ti-building-warehouse",
                       };
-                      const eventLabel: Record<string, string> = {
-                        created:              "Created",
-                        updated:              "Updated",
-                        deleted:              "Deleted",
-                        restored:             "Restored",
-                        opening_stock_saved:  "Opening Stock Saved",
-                      };
-                      const bgClass   = eventColor[log.event] ?? "bg-secondary";
-                      const iconClass = eventIcon[log.event]  ?? "ti-activity";
-                      const label     = eventLabel[log.event] ?? log.event.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                      const iconClass = eventIcon[log.event] ?? "ti-activity";
 
-                      const changedFields = log.new_values ? Object.keys(log.new_values) : [];
+                      const SKIP_FIELDS = new Set(["updated_at", "created_at", "deleted_at", "entries"]);
+                      const changedFields = Object.keys({ ...(log.old_values ?? {}), ...(log.new_values ?? {}) })
+                        .filter(f => !SKIP_FIELDS.has(f));
                       const actor = log.user?.name ?? log.user?.email ?? "System";
-                      const dateObj = new Date(log.created_at);
+                      const rawTs = log.created_at;
+                      const utcTs = /Z$|[+-]\d{2}:\d{2}$/.test(rawTs) ? rawTs : rawTs.replace(' ', 'T') + 'Z';
+                      const dateObj = new Date(utcTs);
                       const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
                       const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
@@ -1358,183 +1681,195 @@ const ItemOverview = () => {
                         }
 
                         // ── Scalar fields ─────────────────────────────────────────────────────
+                        const oldScalar = parseIfStr(log.old_values?.[field]);
+                        const newScalar = parseIfStr(log.new_values?.[field]);
+                        if (String(oldScalar ?? "") === String(newScalar ?? "")) return [];
                         return [{
                           key:    field,
                           label:  fieldLabel[field] ?? field,
-                          oldVal: parseIfStr(log.old_values?.[field]),
-                          newVal: parseIfStr(log.new_values?.[field]),
+                          oldVal: oldScalar,
+                          newVal: newScalar,
                         }];
                       });
 
                       // Skip phantom "updated" entries where nothing visible changed
                       if (log.event === "updated" && diffRows.length === 0) return null;
 
-                      // Opening stock entries for rendering
                       const openingEntries: { location_name: string; opening_stock: number; opening_stock_value: number }[] =
                         log.event === "opening_stock_saved" && Array.isArray(log.new_values?.entries)
-                          ? log.new_values.entries
-                          : [];
+                          ? log.new_values.entries : [];
+
+                      const eventMessages: Record<string, string> = {
+                        created:             "Created item",
+                        deleted:             "Deleted item",
+                        restored:            "Restored item",
+                        opening_stock_saved: `Opening stock set for ${openingEntries.length} location${openingEntries.length !== 1 ? "s" : ""}`,
+                      };
+                      let message = eventMessages[log.event];
+                      if (!message && log.event === "updated") {
+                        message = diffRows.length === 1
+                          ? `Changed ${diffRows[0].label.toLowerCase()}`
+                          : `Updated ${diffRows.length} fields`;
+                      }
+                      message = message ?? log.event.replace(/_/g, " ");
+
+                      const isLast = idx === auditLogs.filter(Boolean).length - 1;
+
+                      // ── Value formatter (string output for locationOverview-style spans) ──
+                      const leafKey = (key: string) => key.split(".").at(-1) ?? key;
+                      const boolFields  = new Set(["track_inventory", "is_returnable", "has_sales_info", "has_purchase_info"]);
+                      const priceFields = new Set(["selling_price", "cost_price"]);
+                      const enumMap: Record<string, Record<string, string>> = {
+                        item_type:        { goods: "Goods", service: "Service" },
+                        form_type:        { single: "Single Item", variants: "Variants" },
+                        valuation_method: { fifo: "FIFO", average: "Weighted Average" },
+                      };
+                      const longFields = new Set(["description", "sales_description", "purchase_description"]);
+
+                      const fmtVal = (v: any, key: string): string => {
+                        if (v === null || v === undefined || v === "") return "—";
+                        const lk = leafKey(key);
+                        if (boolFields.has(lk)) return (v === true || v === 1 || v === "1") ? "Yes" : "No";
+                        if (enumMap[lk]) return enumMap[lk][String(v)] ?? String(v);
+                        if (priceFields.has(lk)) { const n = parseFloat(String(v)); if (!isNaN(n)) return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+                        if (typeof v === "boolean") return v ? "Yes" : "No";
+                        if (longFields.has(key)) { const s = String(v); return s.length > 80 ? s.slice(0, 80) + "…" : s; }
+                        return String(v);
+                      };
 
                       return (
-                        <div key={log.id} className={`d-flex gap-3 align-items-center position-relative ${isLast ? "" : "mb-4"}`}>
-                          {/* Icon dot — sits on top of the spine line */}
-                          <div style={{ width: 36, flexShrink: 0, zIndex: 1 }}>
-                            <div
-                              className={`d-flex align-items-center justify-content-center rounded-circle ${bgClass} text-white`}
-                              style={{ width: 36, height: 36, fontSize: 15 }}
-                            >
-                              <i className={`ti ${iconClass}`} />
-                            </div>
+                        <div key={log.id} style={{ position: "relative", marginBottom: isLast ? 0 : 20 }}>
+
+                          {/* Red icon circle */}
+                          <div style={{
+                            position: "absolute", left: -52,
+                            top: "50%", transform: "translateY(-50%)",
+                            width: 36, height: 36, borderRadius: "50%",
+                            background: "#fff4f4", border: "1.5px solid #e03131",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            zIndex: 1,
+                          }}>
+                            <i className={`ti ${iconClass}`} style={{ fontSize: 14, color: "#e03131" }} />
                           </div>
 
-                          {/* Entry card */}
-                          <div className="flex-grow-1">
-                            <div className="card mb-0" style={{ borderRadius: 10, background: "#fff", border: "1px solid #e2e5ea" }}>
-                              <div className="card-body p-3">
-                                {/* Top row: event label + date/time */}
-                                <div className="d-flex align-items-start justify-content-between mb-2 flex-wrap gap-1">
-                                  <div className="d-flex align-items-center gap-2">
-                                    <span className={`badge ${bgClass} fs-12`}>{label}</span>
-                                    <span className="fs-14 fw-medium text-dark">
-                                      {log.event === "created"             ? "Item was created"  :
-                                       log.event === "deleted"             ? "Item was deleted"  :
-                                       log.event === "restored"            ? "Item was restored" :
-                                       log.event === "opening_stock_saved" ? `Opening stock set for ${openingEntries.length} location${openingEntries.length !== 1 ? "s" : ""}` :
-                                       diffRows.length === 1
-                                         ? `${diffRows[0].label} was changed`
-                                         : `${diffRows.length} field${diffRows.length !== 1 ? "s" : ""} updated`}
-                                    </span>
-                                  </div>
-                                  <div className="text-end flex-shrink-0">
-                                    <div className="fs-13 fw-medium text-muted">{dateStr}</div>
-                                    <div className="fs-12 text-muted">{timeStr}</div>
-                                  </div>
-                                </div>
+                          {/* Card */}
+                          <div className="card border" style={{ borderRadius: 10 }}>
+                            <div className="card-body" style={{ padding: "18px 20px" }}>
 
-                                {/* Actor */}
-                                <div className="d-flex align-items-center gap-2 mb-2">
-                                  <span
-                                    className="d-inline-flex align-items-center justify-content-center rounded-circle bg-light text-muted fw-semibold flex-shrink-0"
-                                    style={{ width: 26, height: 26, fontSize: 12 }}
-                                  >
-                                    {actor.charAt(0).toUpperCase()}
-                                  </span>
-                                  <span className="fs-13 text-muted">{actor}</span>
-                                  {log.ip_address && (
-                                    <span className="fs-12 text-muted ms-1">· {log.ip_address}</span>
-                                  )}
+                              {/* Title + date */}
+                              <div className="d-flex align-items-start justify-content-between gap-3 mb-3">
+                                <span className="fw-semibold fs-15" style={{ color: "#212529" }}>{message}</span>
+                                <div className="text-end flex-shrink-0">
+                                  <div className="fs-13 fw-medium" style={{ color: "#495057" }}>{dateStr}</div>
+                                  <div className="fs-12 text-muted">{timeStr}</div>
                                 </div>
+                              </div>
 
-                                {/* Opening stock entries */}
-                                {log.event === "opening_stock_saved" && openingEntries.length > 0 && (
-                                  <div className="mt-2 border-top pt-2">
-                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                      <thead>
-                                        <tr>
-                                          {["Location", "Opening Stock", "Value / Unit"].map((h) => (
-                                            <th key={h} className="fs-12 text-uppercase text-muted fw-semibold" style={{ padding: "4px 8px", borderBottom: "1px solid #f0f0f0" }}>{h}</th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {openingEntries.map((e, i) => (
-                                          <tr key={i}>
-                                            <td className="fs-13" style={{ padding: "4px 8px" }}>{e.location_name}</td>
-                                            <td className="fs-13 fw-medium" style={{ padding: "4px 8px" }}>{Number(e.opening_stock).toFixed(2)}</td>
-                                            <td className="fs-13 fw-medium" style={{ padding: "4px 8px" }}>₹{Number(e.opening_stock_value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                          </tr>
+                              {/* Opening stock table */}
+                              {log.event === "opening_stock_saved" && openingEntries.length > 0 && (
+                                <div className="rounded mb-3 overflow-hidden" style={{ border: "1px solid #e9ecef" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                    <thead>
+                                      <tr>
+                                        {["Location", "Opening Stock", "Value / Unit"].map(h => (
+                                          <th key={h} className="fs-12 text-uppercase text-muted fw-semibold"
+                                            style={{ padding: "8px 14px", borderBottom: "1px solid #f0f0f0", background: "#fafafa" }}>{h}</th>
                                         ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {openingEntries.map((e, i) => (
+                                        <tr key={i}>
+                                          <td className="fs-13" style={{ padding: "8px 14px" }}>{e.location_name}</td>
+                                          <td className="fs-13 fw-medium" style={{ padding: "8px 14px" }}>{Number(e.opening_stock).toFixed(2)}</td>
+                                          <td className="fs-13 fw-medium" style={{ padding: "8px 14px" }}>₹{Number(e.opening_stock_value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
 
-                                {/* Changed fields (updated event) */}
-                                {log.event === "updated" && diffRows.length > 0 && (
-                                  <div className="mt-2 border-top pt-2">
-                                    {diffRows.map((row) => {
-                                      // ── Add / Remove markers (variant add/remove) ──────────────
-                                      if (row.key.endsWith(".__add")) {
-                                        return (
-                                          <div key={row.key} className="d-flex align-items-center gap-2 py-1 flex-wrap">
-                                            <span className="fs-13 text-muted" style={{ minWidth: 150 }}>{row.label}</span>
-                                            <span className="badge badge-soft-success fs-12">Added</span>
-                                          </div>
-                                        );
-                                      }
-                                      if (row.key.endsWith(".__rem")) {
-                                        return (
-                                          <div key={row.key} className="d-flex align-items-center gap-2 py-1 flex-wrap">
-                                            <span className="fs-13 text-muted" style={{ minWidth: 150 }}>{row.label}</span>
-                                            <span className="badge badge-soft-danger fs-12">Removed</span>
-                                          </div>
-                                        );
-                                      }
-
-                                      // ── Field key helpers ─────────────────────────────────────
-                                      // e.g. "variants.Red-S.selling_price" → "selling_price"
-                                      const leafKey = row.key.split(".").at(-1) ?? row.key;
-
-                                      const boolFields  = new Set(["track_inventory", "is_returnable", "has_sales_info", "has_purchase_info"]);
-                                      const priceFields = new Set(["selling_price", "cost_price"]);
-                                      const enumMap: Record<string, Record<string, string>> = {
-                                        item_type:        { goods: "Goods", service: "Service" },
-                                        form_type:        { single: "Single Item", variants: "Variants" },
-                                        valuation_method: { fifo: "FIFO", average: "Weighted Average" },
+                              {/* Diff rows */}
+                              {log.event === "updated" && diffRows.length > 0 && (
+                                <div className="rounded mb-3 overflow-hidden" style={{ border: "1px solid #e9ecef" }}>
+                                  {diffRows.map((row, ri) => {
+                                    const rowBg = { padding: "10px 14px", background: ri % 2 === 0 ? "#fff" : "#fafafa", borderTop: ri > 0 ? "1px solid #f1f3f5" : "none" };
+                                    // Image field — render thumbnails instead of text
+                                    if (row.key === "image") {
+                                      const toSrc = (v: any) => {
+                                        if (!v) return null;
+                                        const s = String(v);
+                                        return s.startsWith("http") || s.startsWith("/") ? s : `/storage/${s}`;
                                       };
-                                      const longFields  = new Set(["description", "sales_description", "purchase_description"]);
-
-                                      const fmt = (v: any): React.ReactNode => {
-                                        if (v === null || v === undefined || v === "")
-                                          return <span className="text-muted fst-italic">empty</span>;
-
-                                        // Boolean fields — stored as 0/1 integers in raw audit values
-                                        if (boolFields.has(leafKey))
-                                          return (v === true || v === 1 || v === "1") ? "Yes" : "No";
-
-                                        // ENUM pretty labels
-                                        if (enumMap[row.key])
-                                          return enumMap[row.key][String(v)] ?? String(v);
-
-                                        // Price fields — stored as decimal strings e.g. "100.0000"
-                                        if (priceFields.has(leafKey)) {
-                                          const n = parseFloat(String(v));
-                                          if (!isNaN(n))
-                                            return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                        }
-
-                                        // Boolean (actual JS boolean)
-                                        if (typeof v === "boolean") return v ? "Yes" : "No";
-
-                                        // Image
-                                        if (row.key === "image") return (
-                                          <a href={`/storage/${v}`} target="_blank" rel="noreferrer" download
-                                            className="d-inline-flex align-items-center gap-1 fs-13 text-primary" style={{ textDecoration: "none" }}>
-                                            <i className="ti ti-photo fs-13" /> View image
-                                          </a>
-                                        );
-
-                                        // Long text — truncate descriptions
-                                        if (longFields.has(row.key)) {
-                                          const s = String(v);
-                                          return s.length > 80 ? s.slice(0, 80) + "…" : s;
-                                        }
-
-                                        return String(v);
-                                      };
-
+                                      const oldSrc = toSrc(row.oldVal);
+                                      const newSrc = toSrc(row.newVal);
                                       return (
-                                        <div key={row.key} className="d-flex align-items-center gap-2 py-1 flex-wrap">
-                                          <span className="fs-13 text-muted" style={{ minWidth: 150 }}>{row.label}</span>
-                                          <span className="fs-13 text-danger text-decoration-line-through">{fmt(row.oldVal)}</span>
-                                          <i className="ti ti-arrow-right fs-12 text-muted" />
-                                          <span className="fs-13 text-success fw-medium">{fmt(row.newVal)}</span>
+                                        <div key={row.key} className="d-flex align-items-center gap-3" style={{ ...rowBg, paddingTop: 12, paddingBottom: 12 }}>
+                                          <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>Image</span>
+                                          {oldSrc
+                                            ? (
+                                              <button type="button" onClick={() => setLightboxSrc(oldSrc)}
+                                                style={{ padding: 0, border: "none", background: "none", cursor: "zoom-in", borderRadius: 6, position: "relative", flexShrink: 0 }}
+                                                title="Click to enlarge">
+                                                <img src={oldSrc} alt="Previous image" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: "1px solid #dee2e6", opacity: 0.65, display: "block" }} />
+                                                <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: "rgba(0,0,0,0.18)" }}>
+                                                  <i className="ti ti-zoom-in" style={{ color: "#fff", fontSize: 16 }} />
+                                                </span>
+                                              </button>
+                                            )
+                                            : <span className="fs-13 text-muted">—</span>
+                                          }
+                                          <i className="ti ti-arrow-right flex-shrink-0" style={{ fontSize: 12, color: "#adb5bd" }} />
+                                          {newSrc
+                                            ? (
+                                              <button type="button" onClick={() => setLightboxSrc(newSrc)}
+                                                style={{ padding: 0, border: "none", background: "none", cursor: "zoom-in", borderRadius: 6, position: "relative", flexShrink: 0 }}
+                                                title="Click to enlarge">
+                                                <img src={newSrc} alt="New image" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: "1.5px solid #e03131", display: "block" }} />
+                                                <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: "rgba(0,0,0,0.18)" }}>
+                                                  <i className="ti ti-zoom-in" style={{ color: "#fff", fontSize: 16 }} />
+                                                </span>
+                                              </button>
+                                            )
+                                            : <span className="fs-13 text-muted">—</span>
+                                          }
                                         </div>
                                       );
-                                    })}
-                                  </div>
-                                )}
+                                    }
+                                    if (row.key.endsWith(".__add")) return (
+                                      <div key={row.key} className="d-flex align-items-center gap-3" style={rowBg}>
+                                        <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>{row.label}</span>
+                                        <span className="fs-13 fw-semibold px-2 py-1 rounded" style={{ background: "#f0fff4", color: "#2f9e44" }}>Added</span>
+                                      </div>
+                                    );
+                                    if (row.key.endsWith(".__rem")) return (
+                                      <div key={row.key} className="d-flex align-items-center gap-3" style={rowBg}>
+                                        <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>{row.label}</span>
+                                        <span className="fs-13 fw-semibold px-2 py-1 rounded" style={{ background: "#fff4f4", color: "#e03131" }}>Removed</span>
+                                      </div>
+                                    );
+                                    return (
+                                      <div key={row.key} className="d-flex align-items-center gap-3" style={rowBg}>
+                                        <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>{row.label}</span>
+                                        <span className="fs-13 px-2 py-1 rounded text-decoration-line-through flex-shrink-0" style={{ background: "#f1f3f5", color: "#9ca3af" }}>{fmtVal(row.oldVal, row.key)}</span>
+                                        <i className="ti ti-arrow-right flex-shrink-0" style={{ fontSize: 12, color: "#adb5bd" }} />
+                                        <span className="fs-13 fw-semibold px-2 py-1 rounded" style={{ background: "#fff4f4", color: "#e03131" }}>{fmtVal(row.newVal, row.key)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Actor */}
+                              <div className="d-flex align-items-center gap-2 border-top pt-3">
+                                <div className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 fw-semibold"
+                                  style={{ width: 24, height: 24, background: "#f1f3f5", fontSize: 11, color: "#6c757d" }}>
+                                  {actor.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="fs-13 text-muted">{actor}</span>
                               </div>
+
                             </div>
                           </div>
                         </div>
@@ -1542,36 +1877,13 @@ const ItemOverview = () => {
                     })}
                   </div>
                 )}
-
-                {/* Pagination */}
-                {!auditLoading && auditLastPage > 1 && (
-                  <div className="d-flex align-items-center justify-content-between mt-4 pt-3 border-top">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-light shadow"
-                      disabled={auditPage <= 1}
-                      onClick={() => setAuditPage((p) => p - 1)}
-                    >
-                      <i className="ti ti-chevron-left me-1" />Prev
-                    </button>
-                    <span className="fs-13 text-muted">Page {auditPage} of {auditLastPage}</span>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-light shadow"
-                      disabled={auditPage >= auditLastPage}
-                      onClick={() => setAuditPage((p) => p + 1)}
-                    >
-                      Next<i className="ti ti-chevron-right ms-1" />
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
           </div>
-          <Footer />
-        </div>{/* end right scroll area */}
+        </div>
       </div>{/* end two-pane shell */}
+      <Footer />
 
       {/* ── Toast Notifications ── */}
       <div className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
@@ -1594,6 +1906,47 @@ const ItemOverview = () => {
           </Toast.Body>
         </Toast>
       </div>
+
+      {/* ── Confirm Dialog ── */}
+      <ConfirmDialog config={confirmConfig} onClose={() => setConfirmConfig(null)} />
+
+      {/* ── Image Lightbox ── */}
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 10000,
+            background: "rgba(0,0,0,0.82)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "zoom-out",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxSrc(null)}
+            style={{
+              position: "absolute", top: 16, right: 20,
+              background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%",
+              width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", color: "#fff",
+            }}
+            title="Close"
+          >
+            <i className="ti ti-x" style={{ fontSize: 18 }} />
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Enlarged view"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "90vw", maxHeight: "88vh",
+              objectFit: "contain", borderRadius: 10,
+              boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+              cursor: "default",
+            }}
+          />
+        </div>
+      )}
 
     </div>
   );

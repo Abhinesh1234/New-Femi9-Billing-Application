@@ -4,8 +4,10 @@ import { useNavigate, useParams } from "react-router";
 import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
-import { fetchLocations, type LocationListItem } from "../../../../core/services/locationApi";
-import { fetchItem } from "../../../../core/services/itemApi";
+import type { LocationListItem } from "../../../../core/services/locationApi";
+import { getLocationList } from "../../../../core/cache/locationCache";
+import { readItemDetail, getItemDetail, bustItem } from "../../../../core/cache/itemCache";
+import { emitMutation } from "../../../../core/cache/mutationEvents";
 import { fetchOpeningStock, saveOpeningStock } from "../../../../core/services/openingStockApi";
 
 interface StockRow {
@@ -106,8 +108,6 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
   };
 
   const menu = open ? ReactDOM.createPortal(
-    // stopPropagation prevents the document mousedown close handler from
-    // firing when the user clicks inside the dropdown
     <div
       className="bg-white border rounded shadow-sm"
       style={menuStyle}
@@ -147,7 +147,7 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
                 onClick={() => { if (!isDisabled) select(loc); }}
               >
                 <span>{loc.name}</span>
-                {isDisabled && <span className="fs-11 text-muted ms-2">Already set</span>}
+                {isDisabled && <span className="fs-11 text-muted ms-2">Already used</span>}
               </div>
             );
           })
@@ -179,7 +179,7 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
   );
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Validation ────────────────────────────────────────────────────────────────
 function validateRows(rows: StockRow[]): { errors: Record<number, RowError>; valid: boolean } {
   const errors: Record<number, RowError> = {};
   const seenLocations = new Set<number>();
@@ -227,12 +227,15 @@ const AddOpeningStock = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [itemName, setItemName]         = useState<string>("");
-  const [locations, setLocations]       = useState<LocationListItem[]>([]);
-  const [rows, setRows]                 = useState<StockRow[]>([]);
-  const [rowErrors, setRowErrors]       = useState<Record<number, RowError>>({});
-  const [saving, setSaving]             = useState(false);
-  const [loading, setLoading]           = useState(true);
+  const [itemName, setItemName]     = useState<string>("");
+  const [locations, setLocations]   = useState<LocationListItem[]>([]);
+  const [rows, setRows]             = useState<StockRow[]>([]);
+  const [rowErrors, setRowErrors]   = useState<Record<number, RowError>>({});
+  const [saving, setSaving]         = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const [loadError, setLoadError]   = useState<string | null>(null);
+
+  const loadRef = useRef(0);
 
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -243,32 +246,49 @@ const AddOpeningStock = () => {
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
-  // Load item name
+  // ── Cache-first data load (item name + locations + existing stock) ──────────
   useEffect(() => {
-    if (id) {
-      fetchItem(Number(id)).then((res) => {
-        if (res.success) setItemName((res as any).data?.name ?? "");
-      });
+    const numId = Number(id);
+    if (!id || isNaN(numId) || numId <= 0) {
+      setLoadError("Invalid item ID.");
+      setLoading(false);
+      return;
     }
-  }, [id]);
 
-  // Load locations + existing opening stock
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const [locRes, stockRes] = await Promise.all([
-        fetchLocations({ active_only: true }),
-        id ? fetchOpeningStock(Number(id)) : Promise.resolve({ success: false }),
-      ]);
+    const token = ++loadRef.current;
+    setLoading(true);
+    setLoadError(null);
 
-      if (!locRes.success) { setLoading(false); return; }
+    // Sync cache hit for item name — avoid empty flash
+    const cachedItem = readItemDetail(numId);
+    if (cachedItem) setItemName(cachedItem.name ?? "");
 
-      const locs = (locRes as any).data as LocationListItem[];
+    Promise.all([
+      getItemDetail(numId).catch(() => null),
+      getLocationList().catch(() => [] as LocationListItem[]),
+      fetchOpeningStock(numId),
+    ]).then(([itemData, allLocs, stockRes]) => {
+      if (token !== loadRef.current) return;
+
+      // Item name (fallback if not already set from sync cache)
+      if (itemData && !cachedItem) setItemName((itemData as any).name ?? "");
+
+      // Active locations only — locked locations still show even if inactive
+      const locs = allLocs.filter((l) => l.is_active !== false);
+
+      if (locs.length === 0) {
+        setLoadError("No active locations found. Please add an active location first.");
+        setLoading(false);
+        return;
+      }
       setLocations(locs);
 
+      // Pre-populate from existing saved stock, or default to first row
       if (stockRes.success && Array.isArray((stockRes as any).data) && (stockRes as any).data.length > 0) {
-        // Pre-populate from saved opening stock
-        const existing = (stockRes as any).data as { location_id: number; location_name: string; opening_stock: number; opening_stock_value: number }[];
+        const existing = (stockRes as any).data as {
+          location_id: number; location_name: string;
+          opening_stock: number; opening_stock_value: number;
+        }[];
         setRows(existing.map((e) => ({
           id: _nextRowId++,
           location_id: e.location_id,
@@ -278,8 +298,7 @@ const AddOpeningStock = () => {
           locked: true,
         })));
       } else {
-        // Default: first row pre-selected with primary location
-        const primary = locs.find((l) => !!l.is_primary) ?? locs[0] ?? null;
+        const primary = locs.find((l) => !!l.is_primary) ?? locs[0];
         setRows([{
           id: _nextRowId++,
           location_id: primary?.id ?? null,
@@ -291,7 +310,11 @@ const AddOpeningStock = () => {
       }
 
       setLoading(false);
-    })();
+    }).catch(() => {
+      if (token !== loadRef.current) return;
+      setLoadError("Failed to load page data. Please refresh and try again.");
+      setLoading(false);
+    });
   }, [id]);
 
   const updateRow = (rowId: number, field: keyof StockRow, val: any) => {
@@ -320,6 +343,7 @@ const AddOpeningStock = () => {
   };
 
   const handleSave = async () => {
+    const numId   = Number(id);
     const newRows = rows.filter((r) => !r.locked);
     if (newRows.length === 0) return;
 
@@ -329,7 +353,7 @@ const AddOpeningStock = () => {
 
     setSaving(true);
     try {
-      const result = await saveOpeningStock(Number(id), {
+      const result = await saveOpeningStock(numId, {
         entries: newRows.map((r) => ({
           location_id: r.location_id!,
           opening_stock: Number(r.opening_stock),
@@ -338,27 +362,32 @@ const AddOpeningStock = () => {
       });
 
       if (result.success) {
+        // Invalidate item cache so overview/list pages reflect the new stock
+        bustItem(numId);
+        emitMutation("items:mutated");
         navigate(`/items/${id}`, { state: { tab: "locations" } });
         return;
-      } else {
-        showToast("danger", (result as any).message ?? "Failed to save opening stock.");
-        const serverErrors = (result as any).errors as Record<string, string[]> | undefined;
-        if (serverErrors) {
-          const mapped: Record<number, RowError> = {};
-          Object.entries(serverErrors).forEach(([key, msgs]) => {
-            const match = key.match(/^entries\.(\d+)\.(\w+)$/);
-            if (match) {
-              const idx   = parseInt(match[1], 10);
-              const field = match[2] as keyof RowError;
-              const row   = rows[idx];
-              if (row) {
-                if (!mapped[row.id]) mapped[row.id] = {};
-                mapped[row.id][field] = msgs[0];
-              }
+      }
+
+      showToast("danger", (result as any).message ?? "Failed to save opening stock.");
+
+      // Map server-side field errors back to row IDs
+      const serverErrors = (result as any).errors as Record<string, string[]> | undefined;
+      if (serverErrors) {
+        const mapped: Record<number, RowError> = {};
+        Object.entries(serverErrors).forEach(([key, msgs]) => {
+          const match = key.match(/^entries\.(\d+)\.(\w+)$/);
+          if (match) {
+            const idx   = parseInt(match[1], 10);
+            const field = match[2] as keyof RowError;
+            const row   = newRows[idx];
+            if (row) {
+              if (!mapped[row.id]) mapped[row.id] = {};
+              mapped[row.id][field] = msgs[0];
             }
-          });
-          if (Object.keys(mapped).length > 0) setRowErrors(mapped);
-        }
+          }
+        });
+        if (Object.keys(mapped).length > 0) setRowErrors(mapped);
       }
     } finally {
       setSaving(false);
@@ -386,6 +415,18 @@ const AddOpeningStock = () => {
 
             {loading ? (
               <div className="text-center py-4 text-muted fs-14">Loading…</div>
+            ) : loadError ? (
+              <div className="d-flex flex-column align-items-center justify-content-center py-5 text-center">
+                <i className="ti ti-alert-circle fs-36 text-danger mb-2" />
+                <p className="fs-14 text-muted mb-3">{loadError}</p>
+                <button
+                  type="button"
+                  className="btn btn-outline-light btn-sm"
+                  onClick={() => navigate(`/items/${id}`)}
+                >
+                  Back to Item
+                </button>
+              </div>
             ) : (
               <>
                 <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>
@@ -398,7 +439,7 @@ const AddOpeningStock = () => {
                       </div>
                       <div style={{ flex: 2 }}>
                         <span className="fw-semibold fs-12 text-uppercase">Opening Stock</span>
-                        {rows.length > 1 && (
+                        {rows.filter((r) => !r.locked).length > 1 && (
                           <div>
                             <button type="button" className="btn btn-link p-0 fs-12 text-danger mt-1" style={{ textDecoration: "none" }} onClick={copyStockToAll}>
                               Copy to All
@@ -408,7 +449,7 @@ const AddOpeningStock = () => {
                       </div>
                       <div style={{ flex: 2 }}>
                         <span className="fw-semibold fs-12 text-uppercase">Opening Stock Value Per Unit</span>
-                        {rows.length > 1 && (
+                        {rows.filter((r) => !r.locked).length > 1 && (
                           <div>
                             <button type="button" className="btn btn-link p-0 fs-12 text-danger mt-1" style={{ textDecoration: "none" }} onClick={copyValueToAll}>
                               Copy to All
@@ -421,7 +462,8 @@ const AddOpeningStock = () => {
 
                     {/* Rows */}
                     {(() => {
-                      const lockedIds = rows.filter((r) => r.locked && r.location_id).map((r) => r.location_id!);
+                      // Locked rows' IDs + other unlocked rows' IDs are disabled per-row
+                      const lockedIds    = rows.filter((r) => r.locked && r.location_id).map((r) => r.location_id!);
                       const unlockedCount = rows.filter((r) => !r.locked).length;
                       return rows.map((row) => {
                         const err = rowErrors[row.id] ?? {};
@@ -442,6 +484,13 @@ const AddOpeningStock = () => {
                             </div>
                           );
                         }
+
+                        // Disable locked IDs + every other unlocked row's selected location
+                        const otherUnlockedIds = rows
+                          .filter((r) => !r.locked && r.id !== row.id && r.location_id !== null)
+                          .map((r) => r.location_id!);
+                        const disabledIds = [...lockedIds, ...otherUnlockedIds];
+
                         return (
                           <div key={row.id} className="d-flex align-items-start px-3 py-3 border-bottom" style={{ gap: 12 }}>
                             <div style={{ flex: 3 }}>
@@ -449,7 +498,7 @@ const AddOpeningStock = () => {
                                 value={row.location_name}
                                 locations={locations}
                                 error={err.location_id}
-                                disabledIds={lockedIds.filter((lid) => lid !== row.location_id)}
+                                disabledIds={disabledIds}
                                 onChange={(name, locId) => {
                                   setRows((prev) => prev.map((r) =>
                                     r.id === row.id ? { ...r, location_id: locId, location_name: name } : r
@@ -495,7 +544,7 @@ const AddOpeningStock = () => {
                               <button
                                 type="button"
                                 className="btn p-0 border-0 bg-transparent text-danger"
-                                title="Remove"
+                                title="Remove row"
                                 disabled={unlockedCount === 1}
                                 onClick={() => setRows((prev) => prev.filter((r) => r.id !== row.id))}
                               >
@@ -536,7 +585,7 @@ const AddOpeningStock = () => {
 
       </div>
 
-      {/* ── Sticky bottom bar — inside page-wrapper so it respects sidebar bounds ── */}
+      {/* ── Sticky bottom bar ─────────────────────────────────────────────────── */}
       <div
         className="bg-white border-top d-flex align-items-center gap-2 px-4"
         style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
@@ -544,7 +593,7 @@ const AddOpeningStock = () => {
         <button
           type="button"
           className="btn btn-danger me-2"
-          disabled={saving || loading || rows.every((r) => r.locked)}
+          disabled={saving || loading || !!loadError || rows.every((r) => r.locked)}
           onClick={handleSave}
         >
           {saving ? (
@@ -561,8 +610,11 @@ const AddOpeningStock = () => {
         </button>
       </div>
 
-      {/* ── Toast ── */}
+      {/* ── Toast ─────────────────────────────────────────────────────────────── */}
       <div
+        role="region"
+        aria-live="polite"
+        aria-atomic="true"
         className="position-fixed top-0 start-50 translate-middle-x pt-4"
         style={{ zIndex: 9999, pointerEvents: "none" }}
       >

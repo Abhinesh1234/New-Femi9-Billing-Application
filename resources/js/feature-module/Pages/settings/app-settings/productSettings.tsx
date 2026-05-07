@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDispatch } from "react-redux";
+import { setProductSettings } from "../../../../core/redux/productSettingsSlice";
 import dayjs, { Dayjs } from "dayjs";
 import { Modal, OverlayTrigger, Toast, Tooltip } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
@@ -9,12 +11,14 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { Input_Type, Module } from "../../../../core/json/selectOption";
 import { all_routes } from "../../../../routes/all_routes";
 import {
-  fetchSettings,
-  saveSettings,
   validateProductSettings,
   type ProductConfiguration,
   type ValidationErrors,
 } from "../../../../core/services/settingApi";
+import {
+  getSettings,
+  updateSettings,
+} from "../../../../core/cache/settingCache";
 import {
   fetchCustomFields,
   updateCustomField,
@@ -117,13 +121,21 @@ const DEFAULTS: ProductConfiguration = {
 };
 
 const ProjectSettings = () => {
+  const dispatch = useDispatch();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"general" | "field">(
     searchParams.get("tab") === "field" ? "field" : "general"
   );
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
+
+  const handleTabChange = useCallback((tab: "general" | "field") => {
+    setActiveTab(tab);
+    setFieldErrors({});
+  }, []);
+
+  const [loading, setLoading]         = useState(true);
+  const [loadError, setLoadError]     = useState<string | null>(null);
+  const [saving, setSaving]           = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ValidationErrors>({});
 
   // ── Toast state ──────────────────────────────────────────────────────────
@@ -171,7 +183,7 @@ const ProjectSettings = () => {
   const [allowDiffSellingPrice, setAllowDiffSellingPrice] = useState(false);
 
   // ── Reorder point notification ───────────────────────────────────────────
-  const [notifyToEmail, setNotifyToEmail] = useState("abhikongu1@gmail.com");
+  const [notifyToEmail, setNotifyToEmail] = useState("");
   const [flashReorder, setFlashReorder] = useState(false);
 
   // ── Custom Fields tab ────────────────────────────────────────────────────
@@ -187,7 +199,7 @@ const ProjectSettings = () => {
 
 
   // ── Load custom fields when Field Customization tab is opened ───────────
-  const loadCustomFields = async () => {
+  const loadCustomFields = useCallback(async () => {
     setCfLoading(true);
     setCfFetchError(null);
     const res = await fetchCustomFields("products");
@@ -197,13 +209,13 @@ const ProjectSettings = () => {
       setCfFetchError(res.message);
     }
     setCfLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "field") return;
     if (customFields.length > 0 && !cfFetchError) return;
     loadCustomFields();
-  }, [activeTab]);
+  }, [activeTab, loadCustomFields]);
 
   // ── Scroll + flash highlight when arriving from reorder point link ────────
   // Run only after settings have loaded (element is in the DOM)
@@ -220,40 +232,51 @@ const ProjectSettings = () => {
     return () => clearTimeout(t);
   }, [loading, searchParams]);
 
-  // ── Load saved settings on mount ────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const res = await fetchSettings<ProductConfiguration>("products");
-      if (res.success && res.configuration) {
-        const c = res.configuration;
-        setDecimalRate(c.decimal_rate);
-        setDimensionUnit(c.dimension_unit);
-        setWeightUnit(c.weight_unit);
-        setBarcodeScanUsing(c.barcode_scan_using);
-        setAllowDuplicateNames(c.allow_duplicate_names ?? false);
-        setEnhancedSearch(c.enhanced_search ?? false);
-        setEnablePriceLists(c.enable_price_lists ?? false);
-        setApplyPriceListLineItem(c.apply_price_list_line_item ?? false);
-        setEnableCompositeItems(c.enable_composite_items ?? false);
-        setInventoryStartDate(dayjs(c.inventory_start_date));
-        setEnableSerialTracking(c.enable_serial_tracking ?? false);
-        setEnableBatchTracking(c.enable_batch_tracking ?? false);
-        setTrackedInValue(c.tracking_preference ?? "packages");
-        setMandatoryTracking(c.mandate_tracking ?? true);
-        setAllowDuplicateBatch(c.allow_duplicate_batch ?? false);
-        setAllowQtyToSoldBatch(c.allow_qty_to_sold_batch ?? false);
-        setAllowDiffSellingPrice(c.allow_diff_selling_price ?? false);
-        setPreventBelowZero(c.prevent_stock_below_zero ?? true);
-        setStockLevel(c.stock_level ?? "org");
-        setOutOfStockWarning(c.out_of_stock_warning ?? false);
-        setNotifyReorderPoint(c.notify_reorder_point ?? false);
-        setNotifyToEmail(c.notify_to_email);
-        setTrackLandedCost(c.track_landed_cost);
-      }
-      setLoading(false);
-    })();
+  // ── Load saved settings ──────────────────────────────────────────────────
+  const applyConfig = useCallback((c: ProductConfiguration) => {
+    setDecimalRate(c.decimal_rate);
+    setDimensionUnit(c.dimension_unit);
+    setWeightUnit(c.weight_unit);
+    setBarcodeScanUsing(c.barcode_scan_using);
+    setAllowDuplicateNames(c.allow_duplicate_names ?? false);
+    setEnhancedSearch(c.enhanced_search ?? false);
+    setEnablePriceLists(c.enable_price_lists ?? false);
+    setApplyPriceListLineItem(c.apply_price_list_line_item ?? false);
+    setEnableCompositeItems(c.enable_composite_items ?? false);
+    setInventoryStartDate(dayjs(c.inventory_start_date));
+    setEnableSerialTracking(c.enable_serial_tracking ?? false);
+    setEnableBatchTracking(c.enable_batch_tracking ?? false);
+    setTrackedInValue(c.tracking_preference ?? "packages");
+    setMandatoryTracking(c.mandate_tracking ?? true);
+    setAllowDuplicateBatch(c.allow_duplicate_batch ?? false);
+    setAllowQtyToSoldBatch(c.allow_qty_to_sold_batch ?? false);
+    setAllowDiffSellingPrice(c.allow_diff_selling_price ?? false);
+    setPreventBelowZero(c.prevent_stock_below_zero ?? true);
+    setStockLevel(c.stock_level ?? "org");
+    setOutOfStockWarning(c.out_of_stock_warning ?? false);
+    setNotifyReorderPoint(c.notify_reorder_point ?? false);
+    setNotifyToEmail(c.notify_to_email ?? "");
+    setTrackLandedCost(c.track_landed_cost);
   }, []);
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const c = await getSettings<ProductConfiguration>("products");
+      applyConfig(c);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load settings.");
+    }
+    setLoading(false);
+  }, [applyConfig]);
+
+  useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  const handleRefresh = useCallback(() => {
+    if (activeTab === "field") return loadCustomFields();
+    return loadSettings();
+  }, [activeTab, loadCustomFields, loadSettings]);
 
   // ── Custom field action handlers ─────────────────────────────────────────
 
@@ -332,8 +355,15 @@ const ProjectSettings = () => {
     setFieldErrors({});
     setSaving(true);
 
-    const res = await saveSettings<ProductConfiguration>("products", payload);
+    const res = await updateSettings<ProductConfiguration>("products", payload);
     if (res.success) {
+      if (res.configuration) {
+        applyConfig(res.configuration);
+        dispatch(setProductSettings({
+          enableCompositeItems: res.configuration.enable_composite_items ?? false,
+          enablePriceLists:     res.configuration.enable_price_lists     ?? false,
+        }));
+      }
       setSaving(false);
       showToast("success", res.message ?? "Product settings saved successfully.");
     } else {
@@ -359,6 +389,7 @@ const ProjectSettings = () => {
             badgeCount={false}
             showModuleTile={false}
             showExport={false}
+            onRefresh={handleRefresh}
           />
           <div className="row">
             <div className="col-12">
@@ -371,7 +402,7 @@ const ProjectSettings = () => {
                       <li className="nav-item me-3">
                         <button
                           className={`nav-link px-0 pb-3 border-0 rounded-0 fw-medium bg-transparent ${activeTab === "general" ? "active text-primary border-bottom border-3 border-primary" : "text-muted"}`}
-                          onClick={() => setActiveTab("general")}
+                          onClick={() => handleTabChange("general")}
                         >
                           General
                         </button>
@@ -379,7 +410,7 @@ const ProjectSettings = () => {
                       <li className="nav-item">
                         <button
                           className={`nav-link px-0 pb-3 border-0 rounded-0 fw-medium bg-transparent ${activeTab === "field" ? "active text-primary border-bottom border-3 border-primary" : "text-muted"}`}
-                          onClick={() => setActiveTab("field")}
+                          onClick={() => handleTabChange("field")}
                         >
                           Field Customization
                         </button>
@@ -395,8 +426,23 @@ const ProjectSettings = () => {
                     </div>
                   )}
 
+                  {/* Settings load error */}
+                  {!loading && loadError && (
+                    <div className="m-4 alert alert-danger d-flex align-items-center gap-2 py-2">
+                      <i className="ti ti-alert-circle fs-16 flex-shrink-0" />
+                      <span className="flex-grow-1">{loadError}</span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger ms-auto"
+                        onClick={loadSettings}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
                   {/* General Tab */}
-                  {!loading && activeTab === "general" && (
+                  {!loading && !loadError && activeTab === "general" && (
                     <div className="p-4">
 
                       {/* Settings Rows */}
@@ -822,7 +868,7 @@ const ProjectSettings = () => {
                   )}
 
                   {/* Field Customization Tab */}
-                  {!loading && activeTab === "field" && (
+                  {!loading && !loadError && activeTab === "field" && (
                     <div className="p-4">
                       <div className="border-bottom mb-3 pb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
                         <h5 className="mb-0 fs-17">Custom Fields</h5>
@@ -893,6 +939,7 @@ const ProjectSettings = () => {
                                         ? c.label
                                         : <span className="text-primary">{c.label}</span>
                                       }
+                                      <div className="text-muted" style={{ fontSize: "11px" }}>{c.field_key}</div>
                                     </td>
                                     <td>{DATA_TYPE_LABELS[c.data_type] ?? c.data_type}</td>
                                     <td>
@@ -916,47 +963,52 @@ const ProjectSettings = () => {
                                       </span>
                                     </td>
                                     <td>
-                                      <div className="dropdown table-action">
-                                        <Link
-                                          to="#"
-                                          className="action-icon btn btn-xs shadow d-inline-flex btn-outline-light"
+                                      <div className="dropdown">
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-light d-flex align-items-center justify-content-center"
+                                          style={{ width: 38, height: 38 }}
                                           data-bs-toggle="dropdown"
-                                          aria-expanded="false"
                                         >
-                                          <i className="ti ti-chevron-down" />
-                                        </Link>
-                                        <div className="dropdown-menu dropdown-menu-right dropmenu-item-danger">
+                                          <i className="ti ti-dots-vertical fs-14 text-muted" />
+                                        </button>
+                                        <div className="dropdown-menu dropdown-menu-right dropmenu-hover-primary">
                                           {!c.is_system && (
                                             <button
-                                              className="dropdown-item d-flex align-items-center"
+                                              className="dropdown-item d-flex align-items-center gap-2 fs-13"
                                               onClick={() => navigate(all_routes.productCustomFieldEdit.replace(":id", String(cf.id)))}
                                               disabled={isActing}
                                             >
-                                              Edit
+                                              <i className="ti ti-edit fs-13" /> Edit
                                             </button>
                                           )}
                                           <button
-                                            className="dropdown-item d-flex align-items-center"
+                                            className="dropdown-item d-flex align-items-center gap-2 fs-13"
                                             onClick={() => handleCfAction(cf, { is_active: !c.is_active })}
                                             disabled={isActing}
                                           >
+                                            <i className={`ti ${c.is_active ? "ti-circle-x" : "ti-circle-check"} fs-13`} />
                                             {c.is_active ? "Mark as Inactive" : "Mark as Active"}
                                           </button>
                                           <button
-                                            className="dropdown-item d-flex align-items-center"
+                                            className="dropdown-item d-flex align-items-center gap-2 fs-13"
                                             onClick={() => handleCfAction(cf, { show_in_all_pdfs: !c.show_in_all_pdfs })}
                                             disabled={isActing}
                                           >
-                                            {c.show_in_all_pdfs ? "Hide in all PDF" : "Show in All PDFs"}
+                                            <i className={`ti ${c.show_in_all_pdfs ? "ti-eye-off" : "ti-eye"} fs-13`} />
+                                            {c.show_in_all_pdfs ? "Hide in All PDFs" : "Show in All PDFs"}
                                           </button>
                                           {!c.is_system && (
-                                            <button
-                                              className="dropdown-item d-flex align-items-center"
-                                              onClick={() => openDeleteModal(cf)}
-                                              disabled={isActing}
-                                            >
-                                              Delete
-                                            </button>
+                                            <>
+                                              <hr className="dropdown-divider m-1" />
+                                              <button
+                                                className="dropdown-item d-flex align-items-center gap-2 fs-13 text-danger"
+                                                onClick={() => openDeleteModal(cf)}
+                                                disabled={isActing}
+                                              >
+                                                <i className="ti ti-trash fs-13" /> Delete
+                                              </button>
+                                            </>
                                           )}
                                         </div>
                                       </div>
@@ -985,9 +1037,9 @@ const ProjectSettings = () => {
           >
             <button
               type="button"
-              className="btn btn-danger me-2"
+              className="btn btn-primary me-2"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || loading}
             >
               {saving ? (
                 <>

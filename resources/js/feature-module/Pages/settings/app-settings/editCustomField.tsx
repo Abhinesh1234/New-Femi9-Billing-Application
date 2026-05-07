@@ -707,6 +707,22 @@ const EditCustomField = () => {
                     </div>
                   </div>
 
+                  {/* Field Key (API name) — read-only on edit */}
+                  <div className="row mb-3 align-items-center">
+                    <label className="col-sm-4 col-form-label fw-medium fs-14 d-flex align-items-center gap-1">
+                      Field Key (API name)
+                      <OverlayTrigger placement="right" overlay={<Tooltip>The unique identifier used when accessing this field via the API. Cannot be changed after creation.</Tooltip>}>
+                        <i className="ti ti-help-circle text-muted" />
+                      </OverlayTrigger>
+                    </label>
+                    <div className="col-sm-8">
+                      <div className="form-control bg-light font-monospace text-muted" style={{ cursor: "default" }}>
+                        {originalFieldKey}
+                      </div>
+                      <small className="text-muted">Field key cannot be changed after creation.</small>
+                    </div>
+                  </div>
+
                   {/* Data Type — disabled on edit */}
                   <div className="row mb-3 align-items-start">
                     <label className="col-sm-4 col-form-label fw-medium fs-14">Data Type</label>

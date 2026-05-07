@@ -10,6 +10,15 @@ export interface AuthUser {
   permissions: Record<string, Record<string, boolean>> | null;
 }
 
+export interface UserListItem {
+  id: number;
+  name: string;
+  email: string | null;
+  avatar: string | null;
+  user_type: "super_admin" | "admin" | "staff";
+  is_active: boolean;
+}
+
 // Shapes match the flat response from Controller::successResponse()
 // i.e. { success: true, ...payload }
 interface LoginResponse   { success: true;  token: string; token_type: string; user: AuthUser }
@@ -73,5 +82,17 @@ export async function changePassword(
     return data;
   } catch (e) {
     return handleError(e);
+  }
+}
+
+// ── GET /api/users ────────────────────────────────────────────────────────────
+interface UsersListResponse { success: true; data: UserListItem[]; }
+
+export async function fetchUsers(params?: { search?: string; all?: boolean }): Promise<UsersListResponse | { success: false; message: string }> {
+  try {
+    const { data } = await axios.get<UsersListResponse>("/api/users", { params });
+    return data;
+  } catch (e) {
+    return handleError(e) as any;
   }
 }

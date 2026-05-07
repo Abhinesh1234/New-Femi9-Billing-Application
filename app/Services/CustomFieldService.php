@@ -31,11 +31,14 @@ class CustomFieldService
 
     /**
      * Check whether a field_key already exists for a module.
+     * Checks including soft-deleted rows so a deleted key cannot be re-used
+     * (a restored record would otherwise create a duplicate key).
      * Optionally exclude a specific ID (for update uniqueness check).
      */
     public function fieldKeyExists(string $module, string $fieldKey, ?int $excludeId = null): bool
     {
-        return CustomField::where('module', $module)
+        return CustomField::withTrashed()
+            ->where('module', $module)
             ->where('config->field_key', $fieldKey)
             ->when($excludeId !== null, fn ($q) => $q->where('id', '!=', $excludeId))
             ->exists();
@@ -93,6 +96,14 @@ class CustomFieldService
             return DB::transaction(function () use ($field, $config) {
                 // Preserve is_system — value comes from the existing record, not API input.
                 $config['is_system'] = $field->config['is_system'] ?? false;
+
+                // For system fields, lock immutable schema properties so no API call
+                // can change what the field fundamentally is.
+                if ($config['is_system']) {
+                    $config['data_type']  = $field->config['data_type'];
+                    $config['field_key']  = $field->config['field_key'];
+                    $config['label']      = $field->config['label'];
+                }
 
                 $old = $field->config;
                 $field->update(['config' => $this->normalizeConfig($config)]);

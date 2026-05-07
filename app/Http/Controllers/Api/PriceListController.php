@@ -25,22 +25,28 @@ class PriceListController extends Controller
         $ctx = $this->buildCtx($request, 'PriceListController::index');
 
         try {
-            $query = PriceList::select([
+            $onlyTrashed = $request->boolean('trashed');
+
+            $query = $onlyTrashed
+                ? PriceList::onlyTrashed()
+                : PriceList::query();
+
+            $query->select([
                     'id', 'name', 'transaction_type', 'price_list_type',
-                    'customer_category_id', 'is_active', 'created_at', 'updated_at',
+                    'customer_category_id', 'is_active', 'created_at', 'updated_at', 'deleted_at',
                 ])
                 ->when($request->filled('search'), function ($q) use ($request) {
                     $q->where('name', 'like', '%' . $request->query('search') . '%');
                 })
-                ->when($request->filled('transaction_type'), function ($q) use ($request) {
+                ->when(!$onlyTrashed && $request->filled('transaction_type'), function ($q) use ($request) {
                     $q->where('transaction_type', $request->query('transaction_type'));
                 })
-                ->when($request->filled('price_list_type'), function ($q) use ($request) {
+                ->when(!$onlyTrashed && $request->filled('price_list_type'), function ($q) use ($request) {
                     $q->where('price_list_type', $request->query('price_list_type'));
                 })
                 ->latest();
 
-            $perPage = max(1, min((int) $request->query('per_page', 20), 100));
+            $perPage = max(1, min((int) $request->query('per_page', 20), 1000));
             $lists   = $query->paginate($perPage);
 
             return $this->successResponse(['data' => $lists]);
@@ -108,7 +114,7 @@ class PriceListController extends Controller
         $ctx = $this->buildCtx($request, 'PriceListController::show', ['price_list_id' => $priceList]);
 
         try {
-            $record = PriceList::with('items')->findOrFail($priceList);
+            $record = PriceList::withTrashed()->with(['items', 'createdBy:id,name,email'])->findOrFail($priceList);
             return $this->successResponse(['data' => $record]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             return $this->errorResponse('Price list not found.', 404);
@@ -274,6 +280,26 @@ class PriceListController extends Controller
             'old_values'     => ['price_list_items' => $oldLog],
             'new_values'     => ['price_list_items' => $newLog],
         ]);
+    }
+
+    /**
+     * POST /api/price-lists/{priceList}/restore
+     */
+    public function restore(Request $request, int $priceList): JsonResponse
+    {
+        $ctx = $this->buildCtx($request, 'PriceListController::restore', ['price_list_id' => $priceList]);
+
+        try {
+            $record = PriceList::onlyTrashed()->findOrFail($priceList);
+            $record->restore();
+            Log::info('[PriceListController] Restored', $ctx);
+            return $this->successResponse(['message' => 'Price list restored successfully.']);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return $this->errorResponse('Price list not found.', 404);
+        } catch (Throwable $e) {
+            $this->logException('PriceListController::restore', $e, $ctx);
+            return $this->errorResponse('Failed to restore price list.', 500);
+        }
     }
 
     /** Normalise a PriceListItem model or raw request array into a plain snapshot. */

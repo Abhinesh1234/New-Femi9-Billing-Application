@@ -124,10 +124,10 @@ $pag-size: 34px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
     gap: 12px;
     margin-top: 4px;
     margin-bottom: 12px;
+    overflow-x: auto;
 }
 
 // ── Show-entries Select ────────────────────────────────────────────────────────
