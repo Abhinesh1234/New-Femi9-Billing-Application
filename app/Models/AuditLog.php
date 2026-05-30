@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\PartyUser;
 
 class AuditLog extends Model
 {
@@ -16,6 +17,7 @@ class AuditLog extends Model
         'auditable_id',
         'event',
         'user_id',
+        'party_user_id',
         'ip_address',
         'user_agent',
         'old_values',
@@ -33,6 +35,11 @@ class AuditLog extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function partyUser(): BelongsTo
+    {
+        return $this->belongsTo(PartyUser::class);
     }
 
     // ── Scopes ────────────────────────────────────────────────────────────────

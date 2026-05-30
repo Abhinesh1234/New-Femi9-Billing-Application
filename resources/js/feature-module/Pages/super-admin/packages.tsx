@@ -547,16 +547,16 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Name<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Name<span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Type<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Type<span>*</span>
                       </label>
                       <CommonSelect
                         options={PlanType}
@@ -567,8 +567,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Position<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Position<span>*</span>
                       </label>
                       <CommonSelect
                         options={Plan_Position}
@@ -579,8 +579,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Currency<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Currency<span>*</span>
                       </label>
                       <CommonSelect
                         options={Plan_Currency}
@@ -592,8 +592,8 @@ const Packages = () => {
                   <div className="col-md-6">
                     <div className="mb-3">
                       <div className="d-flex justify-content-between">
-                        <label className="form-label">
-                          Plan Currency<span className="text-danger"> *</span>
+                        <label className="form-label text-danger">
+                          Plan Currency<span>*</span>
                         </label>
                         <span className="text-primary d-md-flex align-items-center">
                           <i className="ti ti-info-circle-filled text-danger me-1" />
@@ -609,8 +609,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-3">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Discount Type<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Discount Type<span>*</span>
                       </label>
                       <div className="pass-group">
                         <CommonSelect
@@ -623,8 +623,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-3">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Discount<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Discount<span>*</span>
                       </label>
                       <div className="pass-group">
                         <input type="text" className="form-control" />
@@ -833,8 +833,8 @@ const Packages = () => {
                     </div>
                     <div className="col-md-6">
                       <div className="mb-3">
-                        <label className="form-label">
-                          Status<span className="text-danger"> *</span>
+                        <label className="form-label text-danger">
+                          Status<span>*</span>
                         </label>
                         <CommonSelect
                           options={StatusActive}
@@ -926,8 +926,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Name<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Name<span>*</span>
                       </label>
                       <input
                         type="text"
@@ -938,8 +938,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Type<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Type<span>*</span>
                       </label>
                       <CommonSelect
                         options={PlanType}
@@ -950,8 +950,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Position<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Position<span>*</span>
                       </label>
                       <CommonSelect
                         options={Plan_Position}
@@ -962,8 +962,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Currency<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Currency<span>*</span>
                       </label>
                       <CommonSelect
                         options={Plan_Currency}
@@ -975,8 +975,8 @@ const Packages = () => {
                   <div className="col-md-6">
                     <div className="mb-3">
                       <div className="d-flex justify-content-between">
-                        <label className="form-label">
-                          Plan Currency<span className="text-danger"> *</span>
+                        <label className="form-label text-danger">
+                          Plan Currency<span>*</span>
                         </label>
                         <span className="text-primary d-md-flex align-items-center">
                           <i className="ti ti-info-circle-filled text-danger me-1" />
@@ -992,8 +992,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-3">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Discount Type<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Discount Type<span>*</span>
                       </label>
                       <div className="pass-group">
                         <CommonSelect
@@ -1006,8 +1006,8 @@ const Packages = () => {
                   </div>
                   <div className="col-md-3">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Discount<span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Discount<span>*</span>
                       </label>
                       <div className="pass-group">
                         <input
@@ -1220,8 +1220,8 @@ const Packages = () => {
                     </div>
                     <div className="col-md-6">
                       <div className="mb-3">
-                        <label className="form-label">
-                          Status<span className="text-danger"> *</span>
+                        <label className="form-label text-danger">
+                          Status<span>*</span>
                         </label>
                         <CommonSelect
                           options={StatusActive}

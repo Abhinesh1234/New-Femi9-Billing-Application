@@ -301,8 +301,8 @@ const ModalLeads = () => {
             <div className="row">
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Lead Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Lead Name<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -365,16 +365,16 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Value <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Value <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Currency <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Currency <span>*</span>
                   </label>
                   <CommonSelect
                     options={Currency}
@@ -385,8 +385,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Phone <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Phone <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -403,8 +403,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Source <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Source <span>*</span>
                   </label>
                   <CommonSelect
                     options={Source}
@@ -415,8 +415,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Industry <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Industry <span>*</span>
                   </label>
                   <CommonSelect
                     options={Industry}
@@ -447,8 +447,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Description <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Description <span>*</span>
                   </label>
                   <textarea
                     className="form-control"
@@ -593,8 +593,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-12">
                         <div className="mb-3">
-                          <label className="form-label">
-                            Company Name<span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Company Name<span>*</span>
                           </label>
                           <input type="text" className="form-control" />
                         </div>
@@ -697,8 +697,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-6">
                         <div className="mb-3">
-                          <label className="form-label">
-                            Source <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Source <span>*</span>
                           </label>
                           <CommonSelect
                             options={Source}
@@ -709,8 +709,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-6">
                         <div className="mb-3">
-                          <label className="form-label">
-                            Industry <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Industry <span>*</span>
                           </label>
                           <CommonSelect
                             options={Industry}
@@ -721,8 +721,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-12">
                         <div className="mb-3">
-                          <label className="form-label">
-                            Contacts <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Contacts <span>*</span>
                           </label>
                           <MultipleSelect
                             value={selectedItems2}
@@ -734,8 +734,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-6">
                         <div className="mb-3">
-                          <label className="form-label">
-                            Currency <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Currency <span>*</span>
                           </label>
                           <CommonSelect
                             options={Currency}
@@ -746,8 +746,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-6">
                         <div className="mb-3">
-                          <label className="form-label">
-                            Language <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Language <span>*</span>
                           </label>
                           <CommonSelect
                             options={Language}
@@ -758,8 +758,8 @@ const ModalLeads = () => {
                       </div>
                       <div className="col-md-12">
                         <div className="mb-0">
-                          <label className="form-label">
-                            Description <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Description <span>*</span>
                           </label>
                           <textarea
                             className="form-control"
@@ -1026,8 +1026,8 @@ const ModalLeads = () => {
             <div className="row">
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Lead Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Lead Name<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -1095,8 +1095,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Value <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Value <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -1107,8 +1107,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Currency <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Currency <span>*</span>
                   </label>
                   <CommonSelect
                     options={Currency}
@@ -1119,8 +1119,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Phone <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Phone <span>*</span>
                   </label>
                   <CommonPhoneInput
                     value={phone}
@@ -1141,8 +1141,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Source <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Source <span>*</span>
                   </label>
                   <CommonSelect
                     options={Source}
@@ -1153,8 +1153,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Industry <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Industry <span>*</span>
                   </label>
                   <CommonSelect
                     options={Industry}
@@ -1185,8 +1185,8 @@ const ModalLeads = () => {
               </div>
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Description <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Description <span>*</span>
                   </label>
                   <textarea
                     className="form-control"

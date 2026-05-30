@@ -247,20 +247,20 @@ const Testimonials = () => {
                     </div>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      User Name <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      User Name <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Designation <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Designation <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Ratings <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Ratings <span>*</span>
                     </label>
                      <CommonSelect
                             options={Ratings}
@@ -269,8 +269,8 @@ const Testimonials = () => {
                           />
                   </div>
                   <div className="mb-0">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <div className="d-flex align-items-center">
                       <div className="me-2">
@@ -350,8 +350,8 @@ const Testimonials = () => {
                     </div>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      User Name <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      User Name <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -360,8 +360,8 @@ const Testimonials = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Designation <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Designation <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -370,8 +370,8 @@ const Testimonials = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Ratings <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Ratings <span>*</span>
                     </label>
                       <CommonSelect
                             options={Ratings}
@@ -380,8 +380,8 @@ const Testimonials = () => {
                           />
                   </div>
                   <div className="mb-0">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <div className="d-flex align-items-center">
                       <div className="me-2">

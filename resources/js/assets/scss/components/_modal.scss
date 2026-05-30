@@ -67,7 +67,27 @@
 }
 
 .modal-backdrop {
-    backdrop-filter: blur(10px);
+    --bs-backdrop-bg: rgb(15, 23, 42);
+    --bs-backdrop-opacity: 0.45;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+
+.blurred-backdrop {
+    background-color: rgba(15, 23, 42, 0.45) !important;
+    backdrop-filter: blur(3px) !important;
+    -webkit-backdrop-filter: blur(3px) !important;
+    opacity: 1 !important;
+}
+
+.modal-dialog {
+    transition: none !important;
+    transform: none !important;
+}
+
+.modal.fade,
+.modal-backdrop.fade {
+    transition: none !important;
 }
 
 .modal-header {

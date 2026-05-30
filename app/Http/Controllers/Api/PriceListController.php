@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePriceListRequest;
 use App\Http\Requests\UpdatePriceListRequest;
+use App\Http\Traits\EnforcesPartyScope;
 use App\Models\AuditLog;
 use App\Models\Item;
 use App\Models\PriceList;
@@ -17,6 +18,7 @@ use Throwable;
 
 class PriceListController extends Controller
 {
+    use EnforcesPartyScope;
     /**
      * GET /api/price-lists
      */
@@ -26,6 +28,13 @@ class PriceListController extends Controller
 
         try {
             $onlyTrashed = $request->boolean('trashed');
+            $isParty     = $this->isPartyUser();
+            $partyId     = $this->partyScopeId();
+
+            // Party users cannot browse deleted price lists
+            if ($isParty && $onlyTrashed) {
+                return $this->errorResponse('Access denied.', 403);
+            }
 
             $query = $onlyTrashed
                 ? PriceList::onlyTrashed()
@@ -33,8 +42,9 @@ class PriceListController extends Controller
 
             $query->select([
                     'id', 'name', 'transaction_type', 'price_list_type',
-                    'customer_category_id', 'is_active', 'created_at', 'updated_at', 'deleted_at',
+                    'customer_category_id', 'party_id', 'is_active', 'created_at', 'updated_at', 'deleted_at',
                 ])
+                ->with(['customerCategory:id,name'])
                 ->when($request->filled('search'), function ($q) use ($request) {
                     $q->where('name', 'like', '%' . $request->query('search') . '%');
                 })
@@ -44,10 +54,29 @@ class PriceListController extends Controller
                 ->when(!$onlyTrashed && $request->filled('price_list_type'), function ($q) use ($request) {
                     $q->where('price_list_type', $request->query('price_list_type'));
                 })
+                ->when(!$onlyTrashed, function ($q) {
+                    $q->where('is_active', true);
+                })
+                // Company users see only company-level pricelists (party_id IS NULL)
+                // Party users see their own party's pricelists + company pricelists
+                ->when(!$isParty, fn ($q) => $q->whereNull('party_id'))
+                ->when($isParty, fn ($q) => $q->where(function ($sub) use ($partyId) {
+                    $sub->where('party_id', $partyId)->orWhereNull('party_id');
+                }))
                 ->latest();
 
-            $perPage = max(1, min((int) $request->query('per_page', 20), 1000));
+            $perPage = max(1, min((int) $request->query('per_page', 1000), 1000));
             $lists   = $query->paginate($perPage);
+
+            // Flatten customer_category_name and add is_company_list flag for party users
+            $lists->getCollection()->transform(function ($pl) use ($isParty) {
+                $pl->customer_category_name = $pl->customerCategory?->name;
+                unset($pl->customerCategory);
+                if ($isParty) {
+                    $pl->is_company_list = is_null($pl->party_id);
+                }
+                return $pl;
+            });
 
             return $this->successResponse(['data' => $lists]);
 
@@ -69,7 +98,15 @@ class PriceListController extends Controller
             $rows  = $data['items'] ?? [];
             unset($data['items']);
 
-            $data['created_by'] = $request->user()?->id;
+            // Only reference users table for company users; party users have no row there
+            $data['created_by'] = ($request->user() instanceof \App\Models\User)
+                ? $request->user()->id
+                : null;
+
+            // Stamp party_id so the pricelist is scoped to this party (not treated as company-level)
+            if ($this->isPartyUser()) {
+                $data['party_id'] = $this->partyScopeId();
+            }
 
             DB::beginTransaction();
 
@@ -114,8 +151,35 @@ class PriceListController extends Controller
         $ctx = $this->buildCtx($request, 'PriceListController::show', ['price_list_id' => $priceList]);
 
         try {
-            $record = PriceList::withTrashed()->with(['items', 'createdBy:id,name,email'])->findOrFail($priceList);
-            return $this->successResponse(['data' => $record]);
+            $record  = PriceList::withTrashed()->with(['items'])->findOrFail($priceList);
+            $partyId = $this->partyScopeId();
+
+            if ($partyId !== null) {
+                // Party users may only view their own pricelists, not company-level ones
+                if ($record->party_id !== $partyId) {
+                    return $this->errorResponse('Access denied.', 403);
+                }
+            }
+
+            // Build response array and explicitly resolve creator to avoid the
+            // FK column / relation key conflict during Eloquent serialisation.
+            $data = $record->toArray();
+            $creatorId = $record->getRawOriginal('created_by');
+            if ($creatorId) {
+                $data['created_by'] = \App\Models\User::select('id', 'name', 'email')->find($creatorId)?->toArray();
+            } else {
+                // For party-created lists, resolve creator from the "created" audit log entry
+                $createdLog = \App\Models\AuditLog::where('auditable_type', 'price_lists')
+                    ->where('auditable_id', $record->id)
+                    ->where('event', 'created')
+                    ->whereNotNull('party_user_id')
+                    ->first();
+                $data['created_by'] = $createdLog
+                    ? \App\Models\PartyUser::select('id', 'name', 'email')->find($createdLog->party_user_id)?->toArray()
+                    : null;
+            }
+
+            return $this->successResponse(['data' => $data]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             return $this->errorResponse('Price list not found.', 404);
         } catch (Throwable $e) {
@@ -269,16 +333,18 @@ class PriceListController extends Controller
 
         if (empty($oldLog) && empty($newLog)) return;
 
-        $req = request();
+        $req      = request();
+        $authUser = $req->user();
         AuditLog::create([
-            'auditable_type' => 'price_lists',
-            'auditable_id'   => $priceList->id,
-            'event'          => 'updated',
-            'user_id'        => $req->user()?->id,
-            'ip_address'     => $req->ip(),
-            'user_agent'     => $req->userAgent(),
-            'old_values'     => ['price_list_items' => $oldLog],
-            'new_values'     => ['price_list_items' => $newLog],
+            'auditable_type'  => 'price_lists',
+            'auditable_id'    => $priceList->id,
+            'event'           => 'updated',
+            'user_id'         => ($authUser instanceof \App\Models\User) ? $authUser->id : null,
+            'party_user_id'   => ($authUser instanceof \App\Models\PartyUser) ? $authUser->id : null,
+            'ip_address'      => $req->ip(),
+            'user_agent'      => $req->userAgent(),
+            'old_values'      => ['price_list_items' => $oldLog],
+            'new_values'      => ['price_list_items' => $newLog],
         ]);
     }
 

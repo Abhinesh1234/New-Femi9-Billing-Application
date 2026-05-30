@@ -1,5 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
+import { useDispatch, useSelector } from "react-redux";
+import type { RootState } from "../../../../core/redux/store";
+import { usePermission } from "../../../../core/hooks/usePermission";
+import { startLoading, stopLoading } from "../../../../core/redux/loaderSlice";
+import { Link, useNavigate, useParams, useLocation as useRouterLocation, useSearchParams } from "react-router";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Toast } from "react-bootstrap";
@@ -9,7 +13,7 @@ import { fetchSettings, type ProductConfiguration } from "../../../../core/servi
 import { type AuditLogEntry } from "../../../../core/services/auditLogApi";
 import { fetchCustomFields } from "../../../../core/services/customFieldApi";
 import { fetchLocations, type LocationListItem } from "../../../../core/services/locationApi";
-import { fetchItemStock, type ItemStockRow } from "../../../../core/services/openingStockApi";
+import { fetchItemStock, fetchOpeningStock, type ItemStockRow } from "../../../../core/services/openingStockApi";
 import {
   readItemList, readItemDetail, readItemAuditLogs,
   getItemList, getItemDetail, getItemAuditLogs,
@@ -18,6 +22,11 @@ import {
 } from "../../../../core/cache/itemCache";
 import { emitMutation, onMutation } from "../../../../core/cache/mutationEvents";
 import { all_routes } from "../../../../routes/all_routes";
+import ConfirmDialog, { type ConfirmConfig } from "../../../../components/confirm-dialog/ConfirmDialog";
+import { fetchPartyReorderPoint, savePartyReorderPoint } from "../../../../core/services/partyReorderApi";
+import { fetchItemSalesChart, type SalesPeriod, type SalesChartData } from "../../../../core/services/itemSalesChartApi";
+import { fetchItemTransactions, type TransactionRow, type TransactionMeta } from "../../../../core/services/itemTransactionsApi";
+import axios from "axios";
 
 const route = all_routes;
 
@@ -28,13 +37,8 @@ const VALUATION_LABELS: Record<string, string> = {
   average: "Weighted Average",
 };
 
-// ── Sales summary chart ────────────────────────────────────────────────────────
-const xLabels = Array.from({ length: 15 }, (_, i) => {
-  const d = i * 2 + 1;
-  return `${String(d).padStart(2, "0")} Apr`;
-});
-
-const chartOptions: ApexOptions = {
+// ── Sales summary chart — base options (categories and yAxis are computed dynamically) ──
+const BASE_CHART_OPTIONS: ApexOptions = {
   chart: {
     type: "area",
     height: 200,
@@ -55,7 +59,6 @@ const chartOptions: ApexOptions = {
     padding: { left: 4, right: 4 },
   },
   xaxis: {
-    categories: xLabels,
     labels: { style: { fontSize: "10px", colors: "#9aa0ac" } },
     axisBorder: { show: false },
     axisTicks: { show: false },
@@ -63,17 +66,14 @@ const chartOptions: ApexOptions = {
   yaxis: {
     labels: {
       style: { fontSize: "10px", colors: "#9aa0ac" },
-      formatter: (v: number) => (v >= 1000 ? `${v / 1000}K` : String(v)),
+      formatter: (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)),
     },
     min: 0,
-    max: 5000,
     tickAmount: 5,
   },
-  tooltip: { y: { formatter: (v: number) => `₹${v.toLocaleString("en-IN")}` } },
+  tooltip: { y: { formatter: (v: number) => `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` } },
   legend: { show: false },
 };
-
-const chartSeries = [{ name: "Direct Sales", data: Array(15).fill(0) }];
 
 // ── Stock row helper ───────────────────────────────────────────────────────────
 function StockRow({ label, value = "0.00" }: { label: string; value?: string }) {
@@ -149,57 +149,74 @@ function UploadBox({ label, icon = "ti-upload", img }: { label: string; icon?: s
   );
 }
 
-// ── Confirmation dialog ────────────────────────────────────────────────────────
-interface ConfirmConfig {
-  icon: string; iconColor: string; iconBg: string;
-  title: string; message: string;
-  confirmLabel: string; confirmColor: string;
-  onConfirm: () => Promise<void>;
-}
-
-function ConfirmDialog({ config, onClose }: { config: ConfirmConfig | null; onClose: () => void }) {
-  const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { setBusy(false); }, [config]);
-  if (!config) return null;
-  const handleConfirm = async () => {
-    setBusy(true);
-    try { await config.onConfirm(); } finally { setBusy(false); }
-    onClose();
-  };
-  return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
-      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
-    >
-      <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div style={{ width: 56, height: 56, borderRadius: "50%", background: config.iconBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
-        </div>
-        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>{config.title}</p>
-        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>{config.message}</p>
-        <div style={{ display: "flex", gap: 10, width: "100%" }}>
-          <button className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn flex-grow-1" style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }} onClick={handleConfirm} disabled={busy}>
-            {busy ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</> : config.confirmLabel}
-          </button>
-        </div>
+// ── History image thumbnail — defined outside main component so useState works ──
+const HistoryImgThumb = ({
+  src, isOld, onLightbox,
+}: { src: string; isOld: boolean; onLightbox: (s: string) => void }) => {
+  const [broken, setBroken] = React.useState(false);
+  if (broken) {
+    return (
+      <div style={{
+        width: 60, height: 60, display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#f8f9fa",
+        borderRadius: 6, border: "1px solid #dee2e6", flexShrink: 0,
+      }}>
+        <i className="ti ti-photo-off" style={{ fontSize: 18, color: "#adb5bd" }} />
       </div>
-    </div>
+    );
+  }
+  return (
+    <button type="button" onClick={() => onLightbox(src)}
+      style={{ padding: 0, border: "none", background: "none", cursor: "zoom-in",
+        borderRadius: 6, position: "relative", flexShrink: 0 }}
+      title="Click to enlarge">
+      <img src={src} alt={isOld ? "Previous image" : "New image"}
+        onError={() => setBroken(true)}
+        style={{
+          width: 60, height: 60, objectFit: "cover", borderRadius: 6,
+          border: isOld ? "1px solid #dee2e6" : "1.5px solid #e03131",
+          opacity: isOld ? 0.65 : 1, display: "block",
+        }} />
+      <span style={{ position: "absolute", inset: 0, display: "flex",
+        alignItems: "center", justifyContent: "center", borderRadius: 6,
+        background: "rgba(0,0,0,0.18)" }}>
+        <i className="ti ti-zoom-in" style={{ color: "#fff", fontSize: 16 }} />
+      </span>
+    </button>
   );
-}
+};
 
 // ── Main component ─────────────────────────────────────────────────────────────
 const ItemOverview = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const authUser  = useSelector((state: RootState) => state.auth.user);
+  const isParty   = authUser?.user_type === "party";
+  const canEdit   = usePermission("items", "edit");
+  const canDelete = usePermission("items", "delete");
   const navState = useRouterLocation().state as { tab?: Tab; listFilter?: "all" | "goods" | "service" | "deleted" } | null;
-  const [item, setItem] = useState<Record<string, any> | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [searchParams] = useSearchParams();
+  const [item, setItem] = useState<Record<string, any> | null>(() => { const n = Number(id); return isNaN(n) ? null : readItemDetail(n) ?? null; });
+  const [loading, setLoading] = useState(() => { const n = Number(id); return isNaN(n) ? false : readItemDetail(n) == null; });
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>(navState?.tab ?? "overview");
+  const [activeTab, setActiveTab] = useState<Tab>(
+    navState?.tab ?? (searchParams.get("tab") as Tab | null) ?? "overview"
+  );
+
+  // ── Sales chart ──
+  const [salesPeriod,       setSalesPeriod]       = useState<SalesPeriod>("month");
+  const [salesChart,        setSalesChart]         = useState<SalesChartData | null>(null);
+  const [salesChartLoading, setSalesChartLoading]  = useState(false);
+
+  // ── Transactions tab ──────────────────────────────────────────────────────
+  const [txnRows,     setTxnRows]     = useState<TransactionRow[]>([]);
+  const [txnMeta,     setTxnMeta]     = useState<TransactionMeta | null>(null);
+  const [txnLoading,  setTxnLoading]  = useState(false);
+  const [txnPage,     setTxnPage]     = useState(1);
 
   // ── Items list (left panel) ──
-  const [allItems, setAllItems] = useState<ItemListRecord[]>([]);
+  const [allItems, setAllItems] = useState<ItemListRecord[]>(() => readItemList() ?? []);
   const [listFilter, setListFilter] = useState<"all" | "goods" | "service" | "deleted">(
     navState?.listFilter ?? "all"
   );
@@ -208,18 +225,24 @@ const ItemOverview = () => {
   const [listSearch, setListSearch] = useState("");
 
   // ── Image upload ──
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(() => { const n = Number(id); const c = isNaN(n) ? null : readItemDetail(n); return c?.image ? `/storage/${c.image}` : null; });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
 
   // ── Product settings ──
   const [notifyReorderEnabled, setNotifyReorderEnabled] = useState(false);
 
-  // ── Reorder point inline edit ──
+  // ── Reorder point inline edit (admin) ──
   const [reorderPoint, setReorderPoint] = useState<number | null>(null);
   const [reorderPopoverOpen, setReorderPopoverOpen] = useState(false);
   const [reorderInput, setReorderInput] = useState("");
   const [reorderSaving, setReorderSaving] = useState(false);
+
+  // ── Party reorder point ──
+  const [partyReorderPoint, setPartyReorderPoint] = useState<number | null>(null);
+  const [partyReorderPopoverOpen, setPartyReorderPopoverOpen] = useState(false);
+  const [partyReorderInput, setPartyReorderInput] = useState("");
+  const [partyReorderSaving, setPartyReorderSaving] = useState(false);
 
   // ── Confirmation dialog ──
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
@@ -236,11 +259,13 @@ const ItemOverview = () => {
   // field_key → human-readable label for custom fields (module=products)
   const [cfLabels, setCfLabels] = useState<Record<string, string>>({});
 
+  // ── Stock summary (overview tab) ──
+  const [stockSummary, setStockSummary] = useState({ openingStock: 0, stockOnHand: 0, committedStock: 0, availableForSale: 0 });
+
   // ── Locations tab ──
   const [locations, setLocations] = useState<LocationListItem[]>([]);
   const [stockMap, setStockMap] = useState<Record<number, ItemStockRow>>({});
   const [locationsLoading, setLocationsLoading] = useState(false);
-  const [locationsLoaded, setLocationsLoaded] = useState(false);
 
   // ── Left panel scroll ──
   const activeItemRef = useRef<HTMLDivElement>(null);
@@ -288,6 +313,13 @@ const ItemOverview = () => {
             setError(null);
           })
           .catch(() => showToast("danger", "Failed to reload item.")),
+        Promise.all([fetchItemStock(numId), fetchOpeningStock(numId)]).then(([stockRes, openingRes]) => {
+          const stockOnHand      = stockRes.success   ? stockRes.data.reduce((s, r) => s + Number(r.stock_on_hand),      0) : 0;
+          const committedStock   = stockRes.success   ? stockRes.data.reduce((s, r) => s + Number(r.committed_stock),    0) : 0;
+          const availableForSale = stockRes.success   ? stockRes.data.reduce((s, r) => s + Number(r.available_for_sale), 0) : 0;
+          const openingStock     = openingRes.success ? openingRes.data.reduce((s, r) => s + Number(r.opening_stock),    0) : 0;
+          setStockSummary({ openingStock, stockOnHand, committedStock, availableForSale });
+        }).catch(() => {}),
       ];
 
       if (listFilter === "deleted") {
@@ -335,6 +367,7 @@ const ItemOverview = () => {
     }
 
     setLoading(true);
+    dispatch(startLoading("item-detail"));
     setError(null);
     getItemDetail(numId)
       .then(data => {
@@ -342,16 +375,34 @@ const ItemOverview = () => {
         setItem(data);
         setImagePreview(data?.image ? `/storage/${data.image}` : null);
         setLoading(false);
+        dispatch(stopLoading("item-detail"));
       })
       .catch((e: Error) => {
         if (token !== detailFetchRef.current) return;
         setError(e.message ?? "Failed to load item.");
         setLoading(false);
+        dispatch(stopLoading("item-detail"));
       });
+
+    return () => { dispatch(stopLoading("item-detail")); };
   }, [id]);
 
   // Reset audit page when item changes
   useEffect(() => { setAuditPage(1); }, [id]);
+
+  // Fetch stock summary whenever the item changes
+  useEffect(() => {
+    if (!id) return;
+    const numId = Number(id);
+    setStockSummary({ openingStock: 0, stockOnHand: 0, committedStock: 0, availableForSale: 0 });
+    Promise.all([fetchItemStock(numId), fetchOpeningStock(numId)]).then(([stockRes, openingRes]) => {
+      const stockOnHand      = stockRes.success    ? stockRes.data.reduce((s, r) => s + Number(r.stock_on_hand),      0) : 0;
+      const committedStock   = stockRes.success    ? stockRes.data.reduce((s, r) => s + Number(r.committed_stock),    0) : 0;
+      const availableForSale = stockRes.success    ? stockRes.data.reduce((s, r) => s + Number(r.available_for_sale), 0) : 0;
+      const openingStock     = openingRes.success  ? openingRes.data.reduce((s, r) => s + Number(r.opening_stock),    0) : 0;
+      setStockSummary({ openingStock, stockOnHand, committedStock, availableForSale });
+    }).catch(() => {});
+  }, [id]);
 
   // Fetch all items for the left panel (cache-first)
   useEffect(() => {
@@ -367,20 +418,44 @@ const ItemOverview = () => {
     return onMutation("items:mutated", handleRefresh);
   }, [handleRefresh]);
 
-  // Fetch product settings (for notify_reorder_point flag)
+  // Fetch notify_reorder_point flag.
+  // Admin users call the full settings endpoint (requires perm:settings,view).
+  // Party users call the lightweight public endpoint (no perm check).
   useEffect(() => {
     (async () => {
-      const res = await fetchSettings<ProductConfiguration>("products");
-      if (res.success && res.configuration) {
-        setNotifyReorderEnabled(res.configuration.notify_reorder_point ?? false);
+      if (isParty) {
+        try {
+          const { data } = await axios.get<{ success: boolean; enabled: boolean }>(
+            "/api/settings/reorder-notification-enabled"
+          );
+          setNotifyReorderEnabled(data?.enabled ?? false);
+        } catch {
+          setNotifyReorderEnabled(false);
+        }
+      } else {
+        const res = await fetchSettings<ProductConfiguration>("products");
+        if (res.success && res.configuration) {
+          setNotifyReorderEnabled(res.configuration.notify_reorder_point ?? false);
+        }
       }
     })();
-  }, []);
+  }, [isParty]);
 
   // Sync reorder point from item data
   useEffect(() => {
     if (item) setReorderPoint(item.reorder_point ?? null);
   }, [item]);
+
+  // Fetch party's own reorder point when item changes
+  useEffect(() => {
+    if (!isParty || !id) return;
+    const numId = Number(id);
+    if (isNaN(numId)) return;
+    setPartyReorderPoint(null);
+    fetchPartyReorderPoint(numId).then(res => {
+      if (res.success && res.data) setPartyReorderPoint(res.data.reorder_point);
+    });
+  }, [id, isParty]);
 
   // Load custom field definitions once when history tab is first opened
   useEffect(() => {
@@ -427,25 +502,52 @@ const ItemOverview = () => {
       });
   }, [activeTab, id, auditPage]);
 
-  // Load locations + current stock when locations tab first opened
+  // Reload locations + stock whenever the tab is open or the viewed item changes
   useEffect(() => {
-    if (activeTab !== "locations" || locationsLoaded) return;
+    if (activeTab !== "locations") return;
+    let cancelled = false;
     (async () => {
       setLocationsLoading(true);
+      setStockMap({});
+
       const [locRes, stockRes] = await Promise.all([
         fetchLocations({ active_only: true }),
         fetchItemStock(Number(id)),
       ]);
-      if (locRes.success) setLocations(locRes.data);
+      if (cancelled) return;
+
       if (stockRes.success) {
         const map: Record<number, ItemStockRow> = {};
         stockRes.data.forEach((r) => { map[r.location_id] = r; });
         setStockMap(map);
       }
-      setLocationsLoaded(true);
+
+      if (locRes.success) {
+        setLocations(locRes.data);
+      } else if (stockRes.success && stockRes.data.length > 0) {
+        // fetchLocations blocked (e.g. no perm:locations,view) — build list from stock rows
+        // which already carry location_name from the enriched stock endpoint.
+        const synthetic: LocationListItem[] = stockRes.data.map((r) => ({
+          id: r.location_id,
+          name: r.location_name,
+          party_id: null,
+          type: "warehouse" as const,
+          parent_id: null,
+          logo_type: "",
+          logo_path: null,
+          is_active: true,
+          is_primary: false,
+          created_at: "",
+          txn_series_id: null,
+          default_txn_series_id: null,
+        }));
+        setLocations(synthetic);
+      }
+
       setLocationsLoading(false);
     })();
-  }, [activeTab]);
+    return () => { cancelled = true; };
+  }, [activeTab, id]);
 
   // Scroll active item into view in left panel
   useEffect(() => {
@@ -468,8 +570,12 @@ const ItemOverview = () => {
   }, [listFilter]);
 
   // Navigate to first item in the new view when filter changes
-  const pendingDeletedNav = useRef(false);
+  const pendingDeletedNav  = useRef(false);
+  const suppressFilterNav  = useRef(false);
+  const filterNavMounted   = useRef(false);
   useEffect(() => {
+    if (!filterNavMounted.current) { filterNavMounted.current = true; return; }
+    if (suppressFilterNav.current) { suppressFilterNav.current = false; return; }
     if (listFilter === "deleted") {
       if (deletedItems.length > 0) {
         navigate(`/items/${deletedItems[0].id}`, { state: { listFilter: "deleted" } });
@@ -493,6 +599,35 @@ const ItemOverview = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deletedItems, deletedLoading]);
 
+  // ── Sales chart fetch ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const itemId = Number(id);
+    if (isNaN(itemId)) return;
+    let cancelled = false;
+    setSalesChartLoading(true);
+    fetchItemSalesChart(itemId, salesPeriod).then(res => {
+      if (cancelled) return;
+      if (res.success) setSalesChart(res);
+      setSalesChartLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [id, salesPeriod]);
+
+  // ── Transactions fetch ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== "transactions") return;
+    const itemId = Number(id);
+    if (isNaN(itemId)) return;
+    let cancelled = false;
+    setTxnLoading(true);
+    fetchItemTransactions(itemId, { page: txnPage, per_page: 50 }).then(res => {
+      if (cancelled) return;
+      if (res.success) { setTxnRows(res.data); setTxnMeta(res.meta); }
+      setTxnLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [activeTab, id, txnPage]);
+
   const handleRestoreItem = async (itemId: number) => {
     const res = await restoreItem(itemId);
     if (res.success) {
@@ -502,8 +637,11 @@ const ItemOverview = () => {
       setDeletedItems(remainingDeleted);
       showToast("success", "Item restored.");
       if (listFilter === "deleted" && remainingDeleted.length === 0) {
-        // Last deleted item — switch to all items view
+        // Last deleted item — refresh active list, suppress auto-nav, go straight to restored item
+        getItemList().then(data => { if (data) hydrateItemList(data); });
+        suppressFilterNav.current = true;
         setListFilter("all");
+        navigate(`/items/${itemId}`);
       } else if (String(itemId) === id) {
         // Restored the currently viewed item but more deleted items remain
         navigate(`/items/${remainingDeleted[0].id}`, { state: { listFilter: "deleted" } });
@@ -594,10 +732,10 @@ const ItemOverview = () => {
         // Mirror locationOverview: if viewing deleted list and it's now empty, switch filter;
         // otherwise stay on this item's detail page
         if (listFilter === "deleted" && remainingDeleted.length === 0) {
+          suppressFilterNav.current = true;
           setListFilter("all");
-        } else {
-          navigate(`/items/${numId}`);
         }
+        navigate(`/items/${numId}`);
       },
     });
   };
@@ -624,38 +762,32 @@ const ItemOverview = () => {
 
   const img = useMemo(() => item?.image ? `/storage/${item.image}` : null, [item]);
 
-  // ── Loading / Error (shown in full-width, no two-pane needed yet) ──
-  if (loading) {
-    return (
-      <div className="page-wrapper">
-        <div className="content d-flex align-items-center justify-content-center" style={{ minHeight: 300 }}>
-          <span className="spinner-border spinner-border-sm me-2 text-primary" />
-          <span className="text-muted">Loading item…</span>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
+  const salesChartOptions = useMemo((): ApexOptions => {
+    const amounts = salesChart?.amounts ?? [];
+    const maxVal  = amounts.length > 0 ? Math.max(...amounts) : 0;
+    const yMax    = maxVal === 0 ? 1000 : Math.ceil(maxVal * 1.25 / 1000) * 1000;
+    return {
+      ...BASE_CHART_OPTIONS,
+      xaxis: {
+        ...(BASE_CHART_OPTIONS.xaxis ?? {}),
+        categories: salesChart?.labels ?? [],
+      },
+      yaxis: {
+        ...(BASE_CHART_OPTIONS.yaxis as object ?? {}),
+        max: yMax,
+      },
+    };
+  }, [salesChart]);
 
-  if (error || !item) {
-    return (
-      <div className="page-wrapper">
-        <div className="content">
-          <div className="alert alert-danger">{error ?? "Item not found."}</div>
-          <Link to={route.itemsList} className="btn btn-outline-light">
-            <i className="ti ti-arrow-left me-1" /> Back to Items
-          </Link>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
+  const salesChartSeries = useMemo(() => [
+    { name: "Paid Invoices", data: salesChart?.amounts ?? [] },
+  ], [salesChart]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "overview", label: "Overview" },
     { key: "locations", label: "Locations" },
     { key: "transactions", label: "Transactions" },
-    { key: "history", label: "History" },
+    ...(!isParty ? [{ key: "history" as Tab, label: "History" }] : []),
   ];
 
   return (
@@ -818,6 +950,14 @@ const ItemOverview = () => {
 
         {/* ── Right: Item detail ─────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: "auto", background: "#fff" }}>
+          {!item ? (
+            <div style={{ padding: "1.25rem" }}>
+              <div className="alert alert-danger">{error ?? "Item not found."}</div>
+              <Link to={route.itemsList} className="btn btn-outline-light">
+                <i className="ti ti-arrow-left me-1" /> Back to Items
+              </Link>
+            </div>
+          ) : (
           <div style={{ padding: "1.25rem" }}>
 
             {/* ── Header ── */}
@@ -878,21 +1018,25 @@ const ItemOverview = () => {
                     </button>
                     <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                       <ul>
-                        <li>
-                          <button className="dropdown-item" onClick={() => navigate(item.is_composite ? `/composite-items/${id}/edit` : `/items/${id}/edit`)}>
-                            <i className="ti ti-pencil me-2" />Edit
-                          </button>
-                        </li>
+                        {canEdit && (
+                          <li>
+                            <button className="dropdown-item" onClick={() => navigate(item.is_composite ? `/composite-items/${id}/edit` : `/items/${id}/edit`)}>
+                              <i className="ti ti-pencil me-2" />Edit
+                            </button>
+                          </li>
+                        )}
                         <li>
                           <button className="dropdown-item" onClick={() => navigate(`/items/${id}/opening-stock`)}>
-                            <i className="ti ti-adjustments-horizontal me-2" />Adjust Stock
+                            <i className="ti ti-adjustments-horizontal me-2" />Set Opening Stock
                           </button>
                         </li>
-                        <li>
-                          <button className="dropdown-item text-danger" onClick={handleDeleteCurrentItem}>
-                            <i className="ti ti-trash me-2" />Delete
-                          </button>
-                        </li>
+                        {canDelete && (
+                          <li>
+                            <button className="dropdown-item text-danger" onClick={handleDeleteCurrentItem}>
+                              <i className="ti ti-trash me-2" />Delete
+                            </button>
+                          </li>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -909,7 +1053,7 @@ const ItemOverview = () => {
             </div>
 
             {/* ── Tab nav (pill) ── */}
-            <div className="mb-4">
+            <div className="mb-4 scrollbar-hidden" style={{ overflowX: "auto" }}>
               <div className="d-inline-flex rounded" style={{ background: "#f1f3f5", padding: 4, gap: 2 }}>
                 {tabs.map(t => {
                   const isActive = activeTab === t.key;
@@ -963,7 +1107,7 @@ const ItemOverview = () => {
                       <div className="col-md-6">
                         <ItemInfoRow label="SKU" value={fmt(item.sku)} />
                         <ItemInfoRow label="Selling Price" value={fmtPrice(item.selling_price)} />
-                        <ItemInfoRow label="Cost Price" value={fmtPrice(item.cost_price)} />
+                        {!isParty && <ItemInfoRow label="Cost Price" value={fmtPrice(item.cost_price)} />}
                         <ItemInfoRow label="Inventory Account" value={fmt(item.inventory_account ?? item.account_name)} />
                         <ItemInfoRow label="Created By" value={fmt(item.created_by?.name ?? item.created_by)} />
                       </div>
@@ -991,57 +1135,74 @@ const ItemOverview = () => {
                           <i className="ti ti-photo text-muted fs-18" />
                           <h6 className="fw-semibold fs-15 mb-0">Item Image</h6>
                         </div>
-                        <label htmlFor="overview_image_input"
-                          className="border rounded d-flex flex-column align-items-center justify-content-center text-center overflow-hidden position-relative"
-                          style={{ cursor: imageUploading ? "wait" : "pointer", background: "#fafafa", height: 180 }}>
-                          {imagePreview ? (
-                            <img src={imagePreview} alt={item.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }} />
-                          ) : (
-                            <>
-                              <i className="ti ti-photo-up text-primary fs-32 mb-2" />
-                              <span className="fw-semibold fs-14">Upload Image</span>
-                              <small className="text-muted mt-1">PNG, JPG up to 10 MB</small>
-                            </>
-                          )}
-                          {imageUploading && (
-                            <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: "rgba(255,255,255,0.7)" }}>
-                              <span className="spinner-border spinner-border-sm text-primary" />
-                            </div>
-                          )}
-                          {imagePreview && !imageUploading && (
-                            <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 p-1 lh-1"
-                              style={{ fontSize: 12, zIndex: 1 }}
-                              onClick={async (e) => {
-                                e.preventDefault();
+                        {canEdit ? (
+                          <>
+                            <label htmlFor="overview_image_input"
+                              className="border rounded d-flex flex-column align-items-center justify-content-center text-center overflow-hidden position-relative"
+                              style={{ cursor: imageUploading ? "wait" : "pointer", background: "#fafafa", height: 180 }}>
+                              {imagePreview ? (
+                                <img src={imagePreview} alt={item.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }} />
+                              ) : (
+                                <>
+                                  <i className="ti ti-photo-up text-primary fs-32 mb-2" />
+                                  <span className="fw-semibold fs-14">Upload Image</span>
+                                  <small className="text-muted mt-1">PNG, JPG up to 10 MB</small>
+                                </>
+                              )}
+                              {imageUploading && (
+                                <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: "rgba(255,255,255,0.7)" }}>
+                                  <span className="spinner-border spinner-border-sm text-primary" />
+                                </div>
+                              )}
+                              {imagePreview && !imageUploading && (
+                                <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2 p-1 lh-1"
+                                  style={{ fontSize: 12, zIndex: 1 }}
+                                  onClick={async (e) => {
+                                    e.preventDefault();
+                                    const prevPreview = imagePreview;
+                                    setImagePreview(null); setImageFile(null);
+                                    const res = await updateItem(Number(id), { image: null } as any);
+                                    if (!res.success) { setImagePreview(prevPreview); showToast("danger", res.message || "Failed to remove image."); }
+                                    else showToast("success", "Image removed successfully.");
+                                  }}>
+                                  <i className="ti ti-x" />
+                                </button>
+                              )}
+                            </label>
+                            <input id="overview_image_input" type="file" accept="image/*" className="d-none"
+                              onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
                                 const prevPreview = imagePreview;
-                                setImagePreview(null); setImageFile(null);
-                                const res = await updateItem(Number(id), { image: null } as any);
-                                if (!res.success) { setImagePreview(prevPreview); showToast("danger", res.message || "Failed to remove image."); }
-                                else showToast("success", "Image removed successfully.");
-                              }}>
-                              <i className="ti ti-x" />
-                            </button>
-                          )}
-                        </label>
-                        <input id="overview_image_input" type="file" accept="image/*" className="d-none"
-                          onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const prevPreview = imagePreview;
-                            setImagePreview(URL.createObjectURL(file)); setImageFile(file); setImageUploading(true);
-                            const uploadRes = await uploadItemImage(file);
-                            if (!uploadRes.success) {
-                              setImageUploading(false); setImagePreview(prevPreview); setImageFile(null);
-                              showToast("danger", uploadRes.message || "Failed to upload image."); return;
-                            }
-                            const imagePath = (uploadRes as any).path as string;
-                            const updateRes = await updateItem(Number(id), { image: imagePath } as any);
-                            setImageUploading(false);
-                            if (!updateRes.success) { setImagePreview(prevPreview); setImageFile(null); showToast("danger", updateRes.message || "Failed to save image."); }
-                            else showToast("success", "Image updated successfully.");
-                          }}
-                        />
+                                setImagePreview(URL.createObjectURL(file)); setImageFile(file); setImageUploading(true);
+                                const uploadRes = await uploadItemImage(file);
+                                if (!uploadRes.success) {
+                                  setImageUploading(false); setImagePreview(prevPreview); setImageFile(null);
+                                  showToast("danger", uploadRes.message || "Failed to upload image."); return;
+                                }
+                                const imagePath = (uploadRes as any).path as string;
+                                const updateRes = await updateItem(Number(id), { image: imagePath } as any);
+                                setImageUploading(false);
+                                if (!updateRes.success) { setImagePreview(prevPreview); setImageFile(null); showToast("danger", updateRes.message || "Failed to save image."); }
+                                else showToast("success", "Image updated successfully.");
+                              }}
+                            />
+                          </>
+                        ) : (
+                          <div className="border rounded d-flex flex-column align-items-center justify-content-center text-center overflow-hidden position-relative"
+                            style={{ background: "#fafafa", height: 180 }}>
+                            {imagePreview ? (
+                              <img src={imagePreview} alt={item.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", padding: 12 }} />
+                            ) : (
+                              <>
+                                <i className="ti ti-photo text-muted fs-32 mb-2" />
+                                <span className="fw-semibold fs-14 text-muted">No Image</span>
+                                <small className="text-muted mt-1">You don&apos;t have permission to upload</small>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1058,19 +1219,19 @@ const ItemOverview = () => {
                         {/* Opening Stock — shown separately */}
                         <div className="d-flex align-items-center py-2 mb-1" style={{ background: "#f8f9fa", borderRadius: 6, padding: "8px 12px" }}>
                           <span className="text-muted fs-14 flex-shrink-0" style={{ width: "60%" }}>Opening Stock</span>
-                          <span className="fs-14 fw-semibold">0.00</span>
+                          <span className="fs-14 fw-semibold">{stockSummary.openingStock.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
 
                         <hr className="my-2" />
 
                         {[
-                          { label: "Stock on Hand",      value: "0.00" },
-                          { label: "Committed Stock",    value: "0.00" },
-                          { label: "Available for Sale", value: "0.00" },
+                          { label: "Stock on Hand",      value: stockSummary.stockOnHand },
+                          { label: "Committed Stock",    value: stockSummary.committedStock },
+                          { label: "Available for Sale", value: stockSummary.availableForSale },
                         ].map(row => (
                           <div key={row.label} className="d-flex align-items-center py-2 border-bottom">
                             <span className="text-muted fs-14 flex-shrink-0" style={{ width: "60%" }}>{row.label}</span>
-                            <span className="fs-14 fw-medium">{row.value}</span>
+                            <span className="fs-14 fw-medium">{row.value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                         ))}
 
@@ -1080,40 +1241,78 @@ const ItemOverview = () => {
                           Reorder Point
                         </p>
 
-                        {notifyReorderEnabled ? (
-                          <div className="position-relative">
-                            {reorderPoint !== null ? (
-                              <div className="d-flex align-items-center gap-2">
-                                <span className="fs-15 fw-semibold">{parseFloat(String(reorderPoint)).toFixed(2)}</span>
+                        {isParty ? (
+                          /* ── Party reorder point ── */
+                          notifyReorderEnabled ? (
+                            <div className="position-relative">
+                              {partyReorderPoint !== null ? (
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="fs-15 fw-semibold">{parseFloat(String(partyReorderPoint)).toFixed(2)}</span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
+                                    style={{ width: 26, height: 26 }}
+                                    onClick={() => { setPartyReorderInput(String(partyReorderPoint)); setPartyReorderPopoverOpen(true); }}
+                                  >
+                                    <i className="ti ti-pencil fs-12" />
+                                  </button>
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
-                                  className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
-                                  style={{ width: 26, height: 26 }}
-                                  onClick={() => { setReorderInput(String(reorderPoint)); setReorderPopoverOpen(true); }}
+                                  className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
+                                  onClick={() => { setPartyReorderInput(""); setPartyReorderPopoverOpen(true); }}
                                 >
-                                  <i className="ti ti-pencil fs-12" />
+                                  + Add
                                 </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
-                                onClick={() => { setReorderInput(""); setReorderPopoverOpen(true); }}
-                              >
-                                + Add
-                              </button>
-                            )}
-                          </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded p-3" style={{ background: "#f0f4ff", border: "1px solid #c7d8f8" }}>
+                              <p className="fs-14 mb-0" style={{ color: "#3a4d7a" }}>
+                                <i className="ti ti-lock me-1" />
+                                Reorder notifications are disabled. Contact your admin to enable them.
+                              </p>
+                            </div>
+                          )
                         ) : (
-                          <div className="rounded p-3" style={{ background: "#fff8f0", border: "1px solid #fde8c8" }}>
-                            <p className="fs-14 mb-0" style={{ color: "#7a5c2e" }}>
-                              You have to enable reorder notification before setting reorder point for items.{" "}
-                              <Link to={`${route.projectSettings}?highlight=notify-reorder`} className="text-primary">Click here</Link>
-                            </p>
-                          </div>
+                          /* ── Admin reorder point ── */
+                          notifyReorderEnabled ? (
+                            <div className="position-relative">
+                              {reorderPoint !== null ? (
+                                <div className="d-flex align-items-center gap-2">
+                                  <span className="fs-15 fw-semibold">{parseFloat(String(reorderPoint)).toFixed(2)}</span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-light border shadow-sm p-1 lh-1"
+                                    style={{ width: 26, height: 26 }}
+                                    onClick={() => { setReorderInput(String(reorderPoint)); setReorderPopoverOpen(true); }}
+                                  >
+                                    <i className="ti ti-pencil fs-12" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-link p-0 fs-14 text-primary text-decoration-none"
+                                  onClick={() => { setReorderInput(""); setReorderPopoverOpen(true); }}
+                                >
+                                  + Add
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded p-3" style={{ background: "#fff8f0", border: "1px solid #fde8c8" }}>
+                              <p className="fs-14 mb-0" style={{ color: "#7a5c2e" }}>
+                                You have to enable reorder notification before setting reorder point for items.{" "}
+                                <Link to={`${route.projectSettings}?highlight=notify-reorder`} className="text-primary">Click here</Link>
+                              </p>
+                            </div>
+                          )
                         )}
 
-                        {reorderPopoverOpen && (
+                        {/* Admin reorder point modal */}
+                        {!isParty && reorderPopoverOpen && (
                           <div
                             style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
                             onClick={e => { if (e.target === e.currentTarget) setReorderPopoverOpen(false); }}
@@ -1159,6 +1358,56 @@ const ItemOverview = () => {
                             </div>
                           </div>
                         )}
+
+                        {/* Party reorder point modal */}
+                        {isParty && partyReorderPopoverOpen && (
+                          <div
+                            style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+                            onClick={e => { if (e.target === e.currentTarget) setPartyReorderPopoverOpen(false); }}
+                          >
+                            <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
+                              <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>My Reorder Point</p>
+                              <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "#64748b", lineHeight: 1.55 }}>
+                                Set your own reorder alert for this item. You'll be notified by email and in-app when your stock drops to this level.
+                              </p>
+                              <label className="fs-13 fw-medium text-danger mb-1">Reorder quantity*</label>
+                              <input
+                                type="number"
+                                className="form-control mb-4"
+                                min={0}
+                                step={0.01}
+                                value={partyReorderInput}
+                                onChange={e => setPartyReorderInput(e.target.value)}
+                                autoFocus
+                              />
+                              <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                                <button type="button" className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={() => setPartyReorderPopoverOpen(false)} disabled={partyReorderSaving}>Cancel</button>
+                                <button
+                                  type="button"
+                                  className="btn flex-grow-1"
+                                  style={{ background: "#e03131", color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
+                                  disabled={partyReorderSaving || partyReorderInput.trim() === ""}
+                                  onClick={async () => {
+                                    const val = parseFloat(partyReorderInput);
+                                    if (isNaN(val) || val < 0) return;
+                                    setPartyReorderSaving(true);
+                                    const res = await savePartyReorderPoint(Number(id), val);
+                                    setPartyReorderSaving(false);
+                                    if (res.success) {
+                                      setPartyReorderPoint(val);
+                                      setPartyReorderPopoverOpen(false);
+                                      showToast("success", "Reorder point saved.");
+                                    } else {
+                                      showToast("danger", (res as any).message || "Failed to save reorder point.");
+                                    }
+                                  }}
+                                >
+                                  {partyReorderSaving ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />Saving…</> : "Save"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1194,7 +1443,7 @@ const ItemOverview = () => {
                               <th className="text-uppercase fs-12 fw-semibold text-muted" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80 }}>Unit</th>
                               <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 80 }}>Qty</th>
                               <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Selling (₹)</th>
-                              <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Cost (₹)</th>
+                              {!isParty && <th className="text-uppercase fs-12 fw-semibold text-muted text-end" style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", width: 120 }}>Cost (₹)</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -1230,9 +1479,11 @@ const ItemOverview = () => {
                                   <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
                                     {sp != null ? `₹${sp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
                                   </td>
-                                  <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
-                                    {cp != null ? `₹${cp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
-                                  </td>
+                                  {!isParty && (
+                                    <td className="fs-14 text-end" style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                                      {cp != null ? `₹${cp.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>}
+                                    </td>
+                                  )}
                                 </tr>
                               );
                             })}
@@ -1247,29 +1498,50 @@ const ItemOverview = () => {
                 <div className="mt-3">
                   <hr className="mt-0 mb-3" />
                   <div className="d-flex align-items-center justify-content-between mb-2">
-                    <h6 className="fw-semibold mb-0 fs-14">Sales Order Summary <span className="text-muted fw-normal">(In INR)</span></h6>
+                    <h6 className="fw-semibold mb-0 fs-14">
+                      Sales Order Summary
+                      <span className="text-muted fw-normal"> (Paid Invoices, In INR)</span>
+                    </h6>
                     <div className="dropdown">
-                      <button type="button" className="btn btn-sm btn-outline-light shadow dropdown-toggle px-2 fs-12" data-bs-toggle="dropdown">This Month</button>
+                      <button type="button" className="btn btn-sm btn-outline-light shadow dropdown-toggle px-2 fs-12" data-bs-toggle="dropdown">
+                        {{ week: "This Week", month: "This Month", quarter: "This Quarter", year: "This Year" }[salesPeriod]}
+                      </button>
                       <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                         <ul>
-                          <li><button className="dropdown-item fs-13">This Week</button></li>
-                          <li><button className="dropdown-item fs-13">This Month</button></li>
-                          <li><button className="dropdown-item fs-13">This Quarter</button></li>
-                          <li><button className="dropdown-item fs-13">This Year</button></li>
+                          {(["week", "month", "quarter", "year"] as SalesPeriod[]).map(p => (
+                            <li key={p}>
+                              <button
+                                className={`dropdown-item fs-13${salesPeriod === p ? " active" : ""}`}
+                                onClick={() => setSalesPeriod(p)}
+                              >
+                                {{ week: "This Week", month: "This Month", quarter: "This Quarter", year: "This Year" }[p]}
+                              </button>
+                            </li>
+                          ))}
                         </ul>
                       </div>
                     </div>
                   </div>
-                  <Chart options={chartOptions} series={chartSeries} type="area" height={300} />
+                  <div className="position-relative">
+                    {salesChartLoading && (
+                      <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+                        style={{ background: "rgba(255,255,255,0.7)", zIndex: 2, borderRadius: 8 }}>
+                        <span className="spinner-border spinner-border-sm text-primary" />
+                      </div>
+                    )}
+                    <Chart options={salesChartOptions} series={salesChartSeries} type="area" height={300} />
+                  </div>
                   <div className="border rounded px-3 py-2 mt-2 d-flex align-items-center justify-content-between">
                     <div>
                       <p className="fs-12 text-muted mb-1">Total Sales</p>
                       <div className="d-flex align-items-center gap-2">
                         <span className="rounded-circle flex-shrink-0" style={{ width: 8, height: 8, background: "#0d6efd", display: "inline-block" }} />
-                        <span className="fs-13 text-muted">Direct Sales</span>
+                        <span className="fs-13 text-muted">Paid Invoices</span>
                       </div>
                     </div>
-                    <span className="fs-16 fw-semibold">₹0.00</span>
+                    <span className="fs-16 fw-semibold">
+                      ₹{(salesChart?.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </div>
                 </div>
 
@@ -1297,8 +1569,8 @@ const ItemOverview = () => {
                 <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                   <div className="d-flex align-items-center gap-2">
                     <h6 className="fw-semibold fs-15 mb-0">Stock Locations</h6>
-                    {/* Hide opening stock for composite items — their stock is derived from components */}
-                    {!item.is_composite && (
+                    {/* Show opening stock for regular items and assembly composite items (kits derive stock from components) */}
+                    {(!item.is_composite || item.composite_type === "assembly") && (
                       <div className="dropdown">
                         <button
                           type="button"
@@ -1346,7 +1618,8 @@ const ItemOverview = () => {
                       <p className="text-muted fs-13 mb-0">Stock levels across all active locations for this item.</p>
                     </div>
 
-                    <table className="table mb-0" style={{ width: "100%" }}>
+                    <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                    <table className="table mb-0" style={{ minWidth: 520, width: "100%" }}>
                       <thead>
                         <tr>
                           <th
@@ -1407,6 +1680,7 @@ const ItemOverview = () => {
                         })}
                       </tbody>
                     </table>
+                    </div>
 
                   </div>
                 )}
@@ -1415,11 +1689,116 @@ const ItemOverview = () => {
 
             {/* ── Tab: Transactions ── */}
             {activeTab === "transactions" && (
-              <div className="card border">
-                <div className="card-body text-center py-5 text-muted">
-                  <i className="ti ti-receipt fs-32 d-block mb-2" />
-                  <p className="mb-0 fs-14">Transactions — coming soon</p>
-                </div>
+              <div>
+                {txnLoading ? (
+                  <div className="text-center py-5 text-muted">
+                    <span className="spinner-border spinner-border-sm text-primary me-2" />
+                    <span className="fs-14">Loading transactions…</span>
+                  </div>
+                ) : (
+                  <div style={{ border: "1px solid #dee2e6", borderRadius: 8, overflow: "hidden" }}>
+
+                    {/* Header */}
+                    <div style={{ background: "#fff0f2", padding: "12px 16px", borderBottom: "1px solid #dee2e6" }}>
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#E41F07", display: "inline-block", flexShrink: 0 }} />
+                        <span className="fw-semibold fs-14">{txnMeta?.total ?? 0} transaction(s)</span>
+                      </div>
+                      <p className="text-muted fs-13 mb-0">Invoice transactions for this item.</p>
+                    </div>
+
+                    {txnRows.length === 0 ? (
+                      <div className="text-center py-5 text-muted">
+                        <i className="ti ti-receipt fs-32 d-block mb-2" />
+                        <p className="fs-14 mb-0">No transactions found for this item.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                          <table className="table mb-0" style={{ minWidth: 680, width: "100%" }}>
+                            <thead>
+                              <tr>
+                                {(["Date", "Invoice #", "Customer Name", "Qty Sold", "Unit Price", "Total", "Status"] as const).map(h => (
+                                  <th
+                                    key={h}
+                                    className="text-uppercase fs-12 fw-semibold text-muted"
+                                    style={{ padding: "10px 16px", borderBottom: "1px solid #dee2e6", whiteSpace: "nowrap" }}
+                                  >
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {txnRows.map((row, i) => {
+                                const TXN_STATUS_LABELS: Record<string, string> = {
+                                  draft:          "Draft",
+                                  sent:           "Sent",
+                                  paid:           "Paid",
+                                  partially_paid: "Partially Paid",
+                                  overdue:        "Overdue",
+                                  void:           "Void",
+                                };
+                                const TXN_STATUS_BADGE: Record<string, string> = {
+                                  draft:          "badge-soft-secondary",
+                                  sent:           "badge-soft-info",
+                                  paid:           "badge-soft-success",
+                                  partially_paid: "badge-soft-warning",
+                                  overdue:        "badge-soft-danger",
+                                  void:           "badge-soft-secondary",
+                                };
+                                return (
+                                  <tr key={`${row.invoice_id}-${i}`} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                                    <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                                      {new Date(row.invoice_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                    </td>
+                                    <td className="fs-14 fw-medium" style={{ padding: "12px 16px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                                      {row.invoice_number}
+                                    </td>
+                                    <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                      {row.customer_name}
+                                    </td>
+                                    <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                      {Number(row.quantity).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                                    </td>
+                                    <td className="fs-14" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                      ₹{Number(row.unit_price).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="fs-14 fw-semibold" style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                      ₹{Number(row.total).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                                      <span className={`badge ${TXN_STATUS_BADGE[row.status] ?? "badge-soft-secondary"}`}>
+                                        {TXN_STATUS_LABELS[row.status] ?? row.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Pagination */}
+                        {txnMeta && txnMeta.last_page > 1 && (
+                          <div className="d-flex align-items-center justify-content-between px-3 py-2 border-top" style={{ background: "#fafafa" }}>
+                            <span className="fs-12 text-muted">
+                              Showing {((txnMeta.current_page - 1) * txnMeta.per_page) + 1}–{Math.min(txnMeta.current_page * txnMeta.per_page, txnMeta.total)} of {txnMeta.total}
+                            </span>
+                            <div className="d-flex gap-1">
+                              <button className="btn btn-sm btn-outline-light" disabled={txnMeta.current_page <= 1} onClick={() => setTxnPage(p => p - 1)}>
+                                <i className="ti ti-chevron-left fs-13" />
+                              </button>
+                              <button className="btn btn-sm btn-outline-light" disabled={txnMeta.current_page >= txnMeta.last_page} onClick={() => setTxnPage(p => p + 1)}>
+                                <i className="ti ti-chevron-right fs-13" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1478,7 +1857,7 @@ const ItemOverview = () => {
                         .filter(f => !SKIP_FIELDS.has(f));
                       const actor = log.user?.name ?? log.user?.email ?? "System";
                       const rawTs = log.created_at;
-                      const utcTs = /Z$|[+-]\d{2}:\d{2}$/.test(rawTs) ? rawTs : rawTs.replace(' ', 'T') + 'Z';
+                      const utcTs = rawTs.replace(' ', 'T').replace(/Z$|[+-]\d{2}:\d{2}$/, '');
                       const dateObj = new Date(utcTs);
                       const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
                       const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -1808,30 +2187,12 @@ const ItemOverview = () => {
                                         <div key={row.key} className="d-flex align-items-center gap-3" style={{ ...rowBg, paddingTop: 12, paddingBottom: 12 }}>
                                           <span className="text-muted fs-13 flex-shrink-0" style={{ width: 150 }}>Image</span>
                                           {oldSrc
-                                            ? (
-                                              <button type="button" onClick={() => setLightboxSrc(oldSrc)}
-                                                style={{ padding: 0, border: "none", background: "none", cursor: "zoom-in", borderRadius: 6, position: "relative", flexShrink: 0 }}
-                                                title="Click to enlarge">
-                                                <img src={oldSrc} alt="Previous image" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: "1px solid #dee2e6", opacity: 0.65, display: "block" }} />
-                                                <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: "rgba(0,0,0,0.18)" }}>
-                                                  <i className="ti ti-zoom-in" style={{ color: "#fff", fontSize: 16 }} />
-                                                </span>
-                                              </button>
-                                            )
+                                            ? <HistoryImgThumb src={oldSrc} isOld={true} onLightbox={setLightboxSrc} />
                                             : <span className="fs-13 text-muted">—</span>
                                           }
                                           <i className="ti ti-arrow-right flex-shrink-0" style={{ fontSize: 12, color: "#adb5bd" }} />
                                           {newSrc
-                                            ? (
-                                              <button type="button" onClick={() => setLightboxSrc(newSrc)}
-                                                style={{ padding: 0, border: "none", background: "none", cursor: "zoom-in", borderRadius: 6, position: "relative", flexShrink: 0 }}
-                                                title="Click to enlarge">
-                                                <img src={newSrc} alt="New image" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: "1.5px solid #e03131", display: "block" }} />
-                                                <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: "rgba(0,0,0,0.18)" }}>
-                                                  <i className="ti ti-zoom-in" style={{ color: "#fff", fontSize: 16 }} />
-                                                </span>
-                                              </button>
-                                            )
+                                            ? <HistoryImgThumb src={newSrc} isOld={false} onLightbox={setLightboxSrc} />
                                             : <span className="fs-13 text-muted">—</span>
                                           }
                                         </div>
@@ -1881,6 +2242,7 @@ const ItemOverview = () => {
             )}
 
           </div>
+          )}
         </div>
       </div>{/* end two-pane shell */}
       <Footer />

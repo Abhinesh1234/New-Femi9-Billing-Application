@@ -2,7 +2,12 @@ import axios, { AxiosError } from "axios";
 
 const BASE = "/api/categories";
 
-export interface Category { id: number; name: string; parent_id: number | null; parent?: { id: number; name: string } | null; }
+export interface Category {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  parent?: { id: number; name: string } | null;
+}
 
 interface ListResponse  { success: true;  data: Category[]; }
 interface ItemResponse  { success: true;  message: string; data: Category; }
@@ -25,9 +30,14 @@ export async function fetchCategories(): Promise<CategoryListResult> {
   catch (e) { return handleError(e); }
 }
 
-export async function storeCategory(name: string, parent_id: number | null): Promise<CategoryItemResult> {
-  try { const { data } = await axios.post<ItemResponse>(BASE, { name, parent_id }); return data; }
-  catch (e) { return handleError(e); }
+export async function storeCategory(
+  name: string,
+  parent_id: number | null,
+): Promise<CategoryItemResult> {
+  try {
+    const { data } = await axios.post<ItemResponse>(BASE, { name, parent_id });
+    return data;
+  } catch (e) { return handleError(e); }
 }
 
 export async function updateCategory(id: number, name: string, parent_id: number | null): Promise<CategoryItemResult> {

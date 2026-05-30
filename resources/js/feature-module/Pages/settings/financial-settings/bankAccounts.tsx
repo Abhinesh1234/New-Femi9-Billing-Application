@@ -303,8 +303,8 @@ const BankAccounts = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3 ">
-                  <label className="form-label">
-                    Bank Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Bank Name<span>*</span>
                   </label>
                    <CommonSelect
                             options={Bank_Name}
@@ -313,26 +313,26 @@ const BankAccounts = () => {
                           />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Account Holder Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Account Holder Name<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Account Number<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Account Number<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Branch Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Branch Name<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    ABA Number<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    ABA Number<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -374,8 +374,8 @@ const BankAccounts = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3 ">
-                  <label className="form-label">
-                    Bank Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Bank Name<span>*</span>
                   </label>
                  <CommonSelect
                             options={Bank_Name}
@@ -384,8 +384,8 @@ const BankAccounts = () => {
                           />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Account Holder Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Account Holder Name<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -394,8 +394,8 @@ const BankAccounts = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Account Number<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Account Number<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -404,8 +404,8 @@ const BankAccounts = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Branch Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Branch Name<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -414,8 +414,8 @@ const BankAccounts = () => {
                   />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    ABA Number<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    ABA Number<span>*</span>
                   </label>
                   <input
                     type="text"

@@ -59,7 +59,7 @@ const SECTIONS: Section[] = [
         icon: "ti ti-layout-list",
         title: "General",
         items: [
-          { icon: "ti ti-users", label: "Customers and Vendors", description: "Manage customer and vendor preferences",  to: "#" },
+          { icon: "ti ti-users", label: "Customers", description: "Manage customer and vendor preferences",  to: route.customerSettings },
           { icon: "ti ti-box",   label: "Items",                 description: "Configure item defaults and preferences", to: route.projectSettings },
         ],
       },
@@ -80,8 +80,8 @@ const SECTIONS: Section[] = [
         items: [
           { icon: "ti ti-file-invoice",   label: "Sales Orders",      description: "Configure sales order defaults and workflows", to: "#" },
           { icon: "ti ti-truck-delivery", label: "Delivery Challans", description: "Set delivery challan preferences",              to: "#" },
-          { icon: "ti ti-receipt",        label: "Invoices",          description: "Manage invoice templates and numbering",        to: "#" },
-          { icon: "ti ti-cash",           label: "Payments Received", description: "Configure payment receipt preferences",         to: "#" },
+          { icon: "ti ti-receipt",        label: "Invoices",          description: "Manage invoice templates and numbering",        to: route.invoiceSettings },
+          { icon: "ti ti-cash",           label: "Payments Received", description: "Configure payment receipt preferences",         to: route.paymentReceivedSettings },
           { icon: "ti ti-arrow-back-up",  label: "Sales Returns",     description: "Set sales return policies and workflows",       to: "#" },
           { icon: "ti ti-file-text",      label: "Credit Notes",      description: "Manage credit note templates and settings",     to: "#" },
         ],
@@ -105,6 +105,7 @@ const SECTIONS: Section[] = [
 
 const ItemCard = ({ item }: { item: CardItem }) => {
   const isDisabled = item.to === "#";
+  const [hovered, setHovered] = useState(false);
 
   return (
     <Link
@@ -115,15 +116,16 @@ const ItemCard = ({ item }: { item: CardItem }) => {
     >
       <div
         className="w-100 d-flex flex-column"
-        onMouseEnter={e => { if (!isDisabled) e.currentTarget.style.borderColor = "var(--primary)"; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-color)"; }}
+        onMouseEnter={() => { if (!isDisabled) setHovered(true);  }}
+        onMouseLeave={() => setHovered(false)}
         style={{
-          border: "1px solid var(--border-color)",
+          border: `1px solid ${!isDisabled && hovered ? "var(--primary)" : "var(--border-color)"}`,
           borderRadius: 10,
           overflow: "hidden",
           cursor: isDisabled ? "default" : "pointer",
           boxShadow: "var(--box-shadow)",
           background: "var(--white)",
+          transition: "border-color 0.15s ease",
         }}
       >
         {/* Body */}
@@ -220,6 +222,16 @@ const SettingsHome = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
 
+  // navigate(-1) is a no-op when settings is the entry page (e.g. direct URL);
+  // fall back to the dashboard root so the user is never stranded.
+  const handleClose = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
+
   const filteredSections = search.trim() === ""
     ? SECTIONS
     : SECTIONS
@@ -247,7 +259,7 @@ const SettingsHome = () => {
           showExport={false}
           badgeCount={false}
           showClose={true}
-          onClose={() => navigate(-1)}
+          onClose={handleClose}
         />
 
         {/* Search */}

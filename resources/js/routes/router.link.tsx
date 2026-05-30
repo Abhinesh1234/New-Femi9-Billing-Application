@@ -1,232 +1,267 @@
+import { lazy } from "react";
 import { Navigate, Route } from "react-router";
 import { all_routes } from "./all_routes";
-import Login from "../feature-module/Authentication/login/login";
-import Contacts from "../feature-module/Pages/crm-module/contacts/contacts";
-import UiAccordion from "../feature-module/Pages/ui-module/base-ui/uiAccordion";
-import UiAlerts from "../feature-module/Pages/ui-module/base-ui/uiAlerts";
-import UiAvatar from "../feature-module/Pages/ui-module/base-ui/uiAvatar";
-import UiBadges from "../feature-module/Pages/ui-module/base-ui/uiBadges";
-import UiBreadcrumb from "../feature-module/Pages/ui-module/base-ui/uiBreadcrumb";
-import UiButtons from "../feature-module/Pages/ui-module/base-ui/uiButtons";
-import UiButtonsGroup from "../feature-module/Pages/ui-module/base-ui/uiButtonsGroup";
-import UiCards from "../feature-module/Pages/ui-module/base-ui/uiCards";
-import UiCarousel from "../feature-module/Pages/ui-module/base-ui/uiCarousel";
-import UiCollapse from "../feature-module/Pages/ui-module/base-ui/uiCollapse";
-import UiDropdowns from "../feature-module/Pages/ui-module/base-ui/uiDropdowns";
-import UiGrid from "../feature-module/Pages/ui-module/base-ui/uiGrid";
-import UiRatio from "../feature-module/Pages/ui-module/base-ui/uiRatio";
-import UiImages from "../feature-module/Pages/ui-module/base-ui/uiImages";
-import UiLinks from "../feature-module/Pages/ui-module/base-ui/uiLinks";
-import UiListGroup from "../feature-module/Pages/ui-module/base-ui/uiListGroup";
-import UiModals from "../feature-module/Pages/ui-module/base-ui/uiModals";
-import UiOffcanvas from "../feature-module/Pages/ui-module/base-ui/uiOffcanvas";
-import UiPagination from "../feature-module/Pages/ui-module/base-ui/uiPagination";
-import UiPlaceholders from "../feature-module/Pages/ui-module/base-ui/uiPlaceholders";
-import UiPopovers from "../feature-module/Pages/ui-module/base-ui/uiPopovers";
-import UiProgress from "../feature-module/Pages/ui-module/base-ui/uiProgress";
-import UiSpinner from "../feature-module/Pages/ui-module/base-ui/uiSpinner";
-import UiNavTabs from "../feature-module/Pages/ui-module/base-ui/uiNavTabs";
-import UiToasts from "../feature-module/Pages/ui-module/base-ui/uiToasts";
-import UiTooltips from "../feature-module/Pages/ui-module/base-ui/uiTooltips";
-import UiTypography from "../feature-module/Pages/ui-module/base-ui/uiTypography";
-import UiUtilities from "../feature-module/Pages/ui-module/base-ui/uiUtilities";
-import UiDragula from "../feature-module/Pages/ui-module/ui-advance/dragula/dragula";
-import UiClipBoard from "../feature-module/Pages/ui-module/ui-advance/uiClipboard";
-import UiRangeSlides from "../feature-module/Pages/ui-module/ui-advance/uiRangeslider";
-import UiLightboxes from "../feature-module/Pages/ui-module/ui-advance/uiLightbox";
-import UiRating from "../feature-module/Pages/ui-module/ui-advance/uiRating";
-import UiScrollbar from "../feature-module/Pages/ui-module/ui-advance/uiScrollbar";
-import UiScrollspy from "../feature-module/Pages/ui-module/base-ui/uiScrollspy";
-import FormBasicInputs from "../feature-module/Pages/ui-module/forms/form-elements/formBasicInputs";
-import FormCheckboxRadios from "../feature-module/Pages/ui-module/forms/form-elements/formCheckboxRadios";
-import FormInputGroups from "../feature-module/Pages/ui-module/forms/form-elements/formInputGroups";
-import FormGridGutters from "../feature-module/Pages/ui-module/forms/form-elements/formGridGutters";
-import FormMask from "../feature-module/Pages/ui-module/forms/input-masks/inputMasks";
-import FormFileupload from "../feature-module/Pages/ui-module/forms/form-elements/formFileupload";
-import FormHorizontal from "../feature-module/Pages/ui-module/forms/form-layouts/formHorizontal";
-import FormVertical from "../feature-module/Pages/ui-module/forms/form-layouts/formVertical";
-import FormFloatingLabels from "../feature-module/Pages/ui-module/forms/form-layouts/formFloatingLabels";
-import FormValidation from "../feature-module/Pages/ui-module/forms/form-validation/formValidation";
+const Login = lazy(() => import("../feature-module/Authentication/login/login"));
+const Contacts = lazy(() => import("../feature-module/Pages/crm-module/contacts/contacts"));
+const UiAccordion = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiAccordion"));
+const UiAlerts = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiAlerts"));
+const UiAvatar = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiAvatar"));
+const UiBadges = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiBadges"));
+const UiBreadcrumb = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiBreadcrumb"));
+const UiButtons = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiButtons"));
+const UiButtonsGroup = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiButtonsGroup"));
+const UiCards = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiCards"));
+const UiCarousel = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiCarousel"));
+const UiCollapse = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiCollapse"));
+const UiDropdowns = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiDropdowns"));
+const UiGrid = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiGrid"));
+const UiRatio = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiRatio"));
+const UiImages = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiImages"));
+const UiLinks = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiLinks"));
+const UiListGroup = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiListGroup"));
+const UiModals = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiModals"));
+const UiOffcanvas = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiOffcanvas"));
+const UiPagination = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiPagination"));
+const UiPlaceholders = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiPlaceholders"));
+const UiPopovers = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiPopovers"));
+const UiProgress = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiProgress"));
+const UiSpinner = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiSpinner"));
+const UiNavTabs = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiNavTabs"));
+const UiToasts = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiToasts"));
+const UiTooltips = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiTooltips"));
+const UiTypography = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiTypography"));
+const UiUtilities = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiUtilities"));
+const UiDragula = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/dragula/dragula"));
+const UiClipBoard = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/uiClipboard"));
+const UiRangeSlides = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/uiRangeslider"));
+const UiLightboxes = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/uiLightbox"));
+const UiRating = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/uiRating"));
+const UiScrollbar = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/uiScrollbar"));
+const UiScrollspy = lazy(() => import("../feature-module/Pages/ui-module/base-ui/uiScrollspy"));
+const FormBasicInputs = lazy(() => import("../feature-module/Pages/ui-module/forms/form-elements/formBasicInputs"));
+const FormCheckboxRadios = lazy(() => import("../feature-module/Pages/ui-module/forms/form-elements/formCheckboxRadios"));
+const FormInputGroups = lazy(() => import("../feature-module/Pages/ui-module/forms/form-elements/formInputGroups"));
+const FormGridGutters = lazy(() => import("../feature-module/Pages/ui-module/forms/form-elements/formGridGutters"));
+const FormMask = lazy(() => import("../feature-module/Pages/ui-module/forms/input-masks/inputMasks"));
+const FormFileupload = lazy(() => import("../feature-module/Pages/ui-module/forms/form-elements/formFileupload"));
+const FormHorizontal = lazy(() => import("../feature-module/Pages/ui-module/forms/form-layouts/formHorizontal"));
+const FormVertical = lazy(() => import("../feature-module/Pages/ui-module/forms/form-layouts/formVertical"));
+const FormFloatingLabels = lazy(() => import("../feature-module/Pages/ui-module/forms/form-layouts/formFloatingLabels"));
+const FormValidation = lazy(() => import("../feature-module/Pages/ui-module/forms/form-validation/formValidation"));
 
-import FormWizard from "../feature-module/Pages/ui-module/forms/form-wizard/formWizard";
-import FormPickers from "../feature-module/Pages/ui-module/forms/form-pickers/formPickers";
-import TablesBasic from "../feature-module/Pages/ui-module/table/tables-basic";
-import DataTables from "../feature-module/Pages/ui-module/table/data-tables";
-import ChartApex from "../feature-module/Pages/ui-module/charts/apexcharts";
-import IconBootstrap from "../feature-module/Pages/ui-module/icons/iconBootstrap";
-import IconFlag from "../feature-module/Pages/ui-module/icons/iconFlag";
-import IconFontawesome from "../feature-module/Pages/ui-module/icons/iconFontawesome";
-import IconIonic from "../feature-module/Pages/ui-module/icons/iconIonic";
-import IconMaterial from "../feature-module/Pages/ui-module/icons/iconMaterial";
-import IconPe7 from "../feature-module/Pages/ui-module/icons/iconPe7";
-import IconRemix from "../feature-module/Pages/ui-module/icons/iconRemix";
-import IconTabler from "../feature-module/Pages/ui-module/icons/iconTabler";
-import IconThemify from "../feature-module/Pages/ui-module/icons/iconThemify";
-import IconTypicon from "../feature-module/Pages/ui-module/icons/iconTypicon";
-import IconWeather from "../feature-module/Pages/ui-module/icons/iconWeather";
-import DelasDashboard from "../feature-module/Pages/dashboard/deals-dashboard/delasDashboard";
-import ContactsList from "../feature-module/Pages/crm-module/contacts/contactsList";
-import Chat from "../feature-module/Pages/application-module/chat/chat";
-import VideoCall from "../feature-module/Pages/application-module/chat/calls/videoCall";
-import AudioCall from "../feature-module/Pages/application-module/chat/calls/audioCall";
-import CallHistory from "../feature-module/Pages/application-module/chat/calls/callHistory";
-import Calender from "../feature-module/Pages/application-module/calendar/calendar";
-import Email from "../feature-module/Pages/application-module/email/email";
-import EmailReply from "../feature-module/Pages/application-module/email/emailReply";
-import Todo from "../feature-module/Pages/application-module/todo/todo";
-import TodoList from "../feature-module/Pages/application-module/todo/todoList";
-import Notes from "../feature-module/Pages/application-module/notes/notes";
-import FileManager from "../feature-module/Pages/application-module/file-manager/fileManager";
-import SocialFeed from "../feature-module/Pages/application-module/social-feed/socialFeed";
-import KanbanView from "../feature-module/Pages/application-module/kanban-view/kanbanView";
-import Invoice from "../feature-module/Pages/application-module/invoice/invoice";
-import AddInoivce from "../feature-module/Pages/application-module/invoice/add-invoice/addInoivce";
-import EditInoivce from "../feature-module/Pages/application-module/invoice/edit-invoice/editInoivce";
-import InvoiceDetails from "../feature-module/Pages/application-module/invoice/invoiceDetails";
-import Register from "../feature-module/Authentication/register/register";
-import ResetPassword from "../feature-module/Authentication/reset-password/resetPassword";
-import ForgotPassword from "../feature-module/Authentication/forgot-password/forgotPassword";
-import EmailVerification from "../feature-module/Authentication/email-verification/emailVerification";
-import TwoStepVerification from "../feature-module/Authentication/two-step-verification/twoStepVerification";
-import LockScreen from "../feature-module/Authentication/lock-screen/lockScreen";
-import Error404 from "../feature-module/Authentication/error-404/error404";
-import Error500 from "../feature-module/Authentication/error-500/error500";
-import BlankPage from "../feature-module/Authentication/blank-page/blankPage";
-import ComingSoon from "../feature-module/Authentication/coming-soon/comingSoon";
-import UnderMaintenance from "../feature-module/Authentication/under-maintenance/underMaintenance";
-import LeadsDashboard from "../feature-module/Pages/dashboard/leads-dashboard/leadsDashboard";
-import ProjectDashboard from "../feature-module/Pages/dashboard/project-dashboard/projectDashboard";
-import ContactsDetails from "../feature-module/Pages/crm-module/contacts/contactsDetails";
-import CompaniesGrid from "../feature-module/Pages/crm-module/companies/companiesGrid";
-import CompaniesList from "../feature-module/Pages/crm-module/companies/companiesList";
-import CompaniesDetails from "../feature-module/Pages/crm-module/companies/companiesDetails";
-import DealsGrid from "../feature-module/Pages/crm-module/deals/dealsGrid";
-import DealsList from "../feature-module/Pages/crm-module/deals/dealsList";
-import DealsDetails from "../feature-module/Pages/crm-module/deals/dealsDetails";
-import Leads from "../feature-module/Pages/crm-module/leads/leads";
-import LeadsList from "../feature-module/Pages/crm-module/leads/leadsList";
-import LeadsDetails from "../feature-module/Pages/crm-module/leads/leadsDetails";
-import Pipeline from "../feature-module/Pages/crm-module/pipeline/pipeline";
-import Campaign from "../feature-module/Pages/crm-module/campaign/campaign";
-import CampaignComplete from "../feature-module/Pages/crm-module/campaign/campaignComplete";
-import CampaignArchieve from "../feature-module/Pages/crm-module/campaign/campaignArchieve";
-import ProjectsGrid from "../feature-module/Pages/crm-module/projects/projectsGrid";
-import ProjectsList from "../feature-module/Pages/crm-module/projects/projectsList";
-import Tasks from "../feature-module/Pages/crm-module/tasks/tasks";
-import ProjectDetails from "../feature-module/Pages/crm-module/projects/projectDetails";
-import TasksImportant from "../feature-module/Pages/crm-module/tasks/tasksImportant";
-import Taskscompleted from "../feature-module/Pages/crm-module/tasks/tasksCompleted";
-import Proposals from "../feature-module/Pages/crm-module/proposals/proposals";
-import ProposalList from "../feature-module/Pages/crm-module/proposals/proposalList";
-import Contracts from "../feature-module/Pages/crm-module/contracts/contracts";
-import ContractsList from "../feature-module/Pages/crm-module/contracts/contractsList";
-import Estimations from "../feature-module/Pages/crm-module/estimations/estimations";
-import EstimationsList from "../feature-module/Pages/crm-module/estimations/estimationsList";
-import InvoicesGrid from "../feature-module/Pages/crm-module/invoices/invoicesGrid";
-import InvoicesList from "../feature-module/Pages/crm-module/invoices/invoicesList";
-import Payments from "../feature-module/Pages/crm-module/payments/payments";
-import Analytics from "../feature-module/Pages/crm-module/analytics/analytics";
-import Activities from "../feature-module/Pages/crm-module/activities/activities";
-import LeadReports from "../feature-module/Pages/reports/lead-reports/leadReports";
-import DealReports from "../feature-module/Pages/reports/deal-reports/dealReports";
-import ContactReports from "../feature-module/Pages/reports/contact-reports/contactReports";
-import CompanyReports from "../feature-module/Pages/reports/company-reports/companyReports";
-import ProjectReports from "../feature-module/Pages/reports/project-reports/projectReports";
-import TaskReports from "../feature-module/Pages/reports/task-reports/taskReports";
-import Sources from "../feature-module/Pages/crm-settings/sources/sources";
-import LostReason from "../feature-module/Pages/crm-settings/lost-reason/lostReason";
-import ActivityCalls from "../feature-module/Pages/crm-module/activities/activity-calls";
-import ActivityMails from "../feature-module/Pages/crm-module/activities/activity-mail";
-import ActivityTasks from "../feature-module/Pages/crm-module/activities/activity-task";
-import ActivityMeetings from "../feature-module/Pages/crm-module/activities/activity-meeting";
-import ContactStage from "../feature-module/Pages/crm-settings/contact-stage/contactStage";
-import Industry from "../feature-module/Pages/crm-settings/industry/industry";
-import Calls from "../feature-module/Pages/crm-settings/calls/calls";
-import ManageUsers from "../feature-module/Pages/user-management/manage-users/manageUsers";
-import RolesPermissions from "../feature-module/Pages/user-management/roles-permissions/rolesPermissions";
-import Permission from "../feature-module/Pages/user-management/permission/permission";
-import DeleteRequest from "../feature-module/Pages/user-management/delete-request/deleteRequest";
-import MembershipPlans from "../feature-module/Pages/membership/membership-plans/membershipPlans";
-import MembershipAddons from "../feature-module/Pages/membership/membership-addons/membershipAddons";
-import MembershipTransactions from "../feature-module/Pages/membership/membership-transactions/membershipTransactions";
-import Page from "../feature-module/Pages/content/page";
-import AddPage from "../feature-module/Pages/content/addPage";
-import EditPage from "../feature-module/Pages/content/editPage";
-import Blogs from "../feature-module/Pages/content/blogs/blogs";
-import Addblog from "../feature-module/Pages/content/blogs/addblog";
-import Editblog from "../feature-module/Pages/content/blogs/editblog";
-import BlogDetails from "../feature-module/Pages/content/blogs/blogDetails";
-import BlogCategories from "../feature-module/Pages/content/blogs/blogCategories";
-import BlogComments from "../feature-module/Pages/content/blogs/blogComments";
-import BlogTags from "../feature-module/Pages/content/blogs/blogTags";
-import Countries from "../feature-module/Pages/content/location/countries";
-import States from "../feature-module/Pages/content/location/states";
-import Cities from "../feature-module/Pages/content/location/cities";
-import Testimonials from "../feature-module/Pages/content/testimonials";
-import Faq from "../feature-module/Pages/content/faq";
-import ContactMessages from "../feature-module/Pages/support/contact-messages/contactMessages";
-import Tickets from "../feature-module/Pages/support/tickets/tickets";
-import TicketDetails from "../feature-module/Pages/support/tickets/ticketDetails";
-import ProfileSettings from "../feature-module/Pages/settings/general-settings/profileSettings";
-import SecuritySettings from "../feature-module/Pages/settings/general-settings/securitySettings";
-import NotificationsSettings from "../feature-module/Pages/settings/general-settings/notificationsSettings";
-import ConnectedApps from "../feature-module/Pages/settings/general-settings/connectedApps";
-import CompanySettings from "../feature-module/Pages/settings/website-settings/companySettings";
-import LocalizationSettings from "../feature-module/Pages/settings/website-settings/localizationSettings";
-import PrefixesSettings from "../feature-module/Pages/settings/website-settings/prefixesSettings";
-import PreferenceSettings from "../feature-module/Pages/settings/website-settings/preferenceSettings";
-import AppearanceSettings from "../feature-module/Pages/settings/website-settings/appearanceSettings";
-import LanguageSettings from "../feature-module/Pages/settings/website-settings/languageSettings";
-import SettingsHome from "../feature-module/Pages/settings/settingsHome";
-import InvoiceSettings from "../feature-module/Pages/settings/app-settings/invoiceSettings";
-import PrintersSettings from "../feature-module/Pages/settings/app-settings/printersSettings";
-import CustomFieldsSetting from "../feature-module/Pages/settings/app-settings/customFieldsSetting";
-import ProjectSettings from "../feature-module/Pages/settings/app-settings/productSettings";
-import AddCustomField from "../feature-module/Pages/settings/app-settings/addCustomField";
-import NewItem from "../feature-module/Pages/inventory/items/newItem";
-import ItemsList from "../feature-module/Pages/inventory/items/itemsList";
-import ItemOverview from "../feature-module/Pages/inventory/items/itemOverview";
-import AddOpeningStock from "../feature-module/Pages/inventory/items/addOpeningStock";
-import CompositeItem from "../feature-module/Pages/inventory/items/compositeItem";
-import CompositeItemsList from "../feature-module/Pages/inventory/items/compositeItemsList";
-import CompositeItemOverview from "../feature-module/Pages/inventory/items/compositeItemOverview";
-import LocationList from "../feature-module/Pages/inventory/locations/locationList";
-import LocationOverview from "../feature-module/Pages/inventory/locations/locationOverview";
-import AddLocation from "../feature-module/Pages/inventory/locations/location";
-import TransactionSeriesList from "../feature-module/Pages/inventory/locations/transactionSeriesList";
-import TransactionSeriesOverview from "../feature-module/Pages/inventory/locations/transactionSeriesOverview";
-import NewTransactionSeries from "../feature-module/Pages/inventory/locations/newTransactionSeries";
-import PriceList from "../feature-module/Pages/inventory/price-list/priceList";
-import NewPriceList from "../feature-module/Pages/inventory/price-list/newPriceList";
-import PriceListOverview from "../feature-module/Pages/inventory/price-list/priceListOverview";
-import CustomerCategoryList from "../feature-module/Pages/customers/customerCategories/customerCategoryList";
-import NewCustomerCategory from "../feature-module/Pages/customers/customerCategories/newCustomerCategory";
-import EditCustomField from "../feature-module/Pages/settings/app-settings/editCustomField";
-import EmailSettings from "../feature-module/Pages/settings/system-settings/emailSettings";
-import SmsGateways from "../feature-module/Pages/settings/system-settings/smsGateways";
-import GdprCookies from "../feature-module/Pages/settings/system-settings/gdprCookies";
-import PaymentGateways from "../feature-module/Pages/settings/financial-settings/paymentGateways";
-import BankAccounts from "../feature-module/Pages/settings/financial-settings/bankAccounts";
-import TaxRates from "../feature-module/Pages/settings/financial-settings/taxRates";
-import Currencies from "../feature-module/Pages/settings/financial-settings/currencies";
-import Sitemap from "../feature-module/Pages/settings/other-settings/sitemap";
-import ClearCache from "../feature-module/Pages/settings/other-settings/clearCache";
-import Storage from "../feature-module/Pages/settings/other-settings/storage";
-import Cronjob from "../feature-module/Pages/settings/other-settings/cronjob";
-import BanIpAddress from "../feature-module/Pages/settings/other-settings/banIpAddress";
-import SystemBackup from "../feature-module/Pages/settings/other-settings/systemBackup";
-import DatabaseBackup from "../feature-module/Pages/settings/other-settings/databaseBackup";
-import SystemUpdate from "../feature-module/Pages/settings/other-settings/systemUpdate";
-import Notifications from "../feature-module/Pages/notifications/notifications";
-import Dashboard from "../feature-module/Pages/super-admin/dashboard";
-import Company from "../feature-module/Pages/super-admin/company";
-import Subscription from "../feature-module/Pages/super-admin/subscription";
-import Packages from "../feature-module/Pages/super-admin/packages";
-import Domain from "../feature-module/Pages/super-admin/domain";
-import PurchaseTransaction from "../feature-module/Pages/super-admin/purchaseTransaction";
-import MapsLeaflet from "../feature-module/Pages/ui-module/map/leaflet";
-import FormSelect2 from "../feature-module/Pages/ui-module/forms/form-select2/formSelect2";
-import UiSweetAlerts from "../feature-module/Pages/ui-module/ui-advance/uiSweetAlerts";
+const FormWizard = lazy(() => import("../feature-module/Pages/ui-module/forms/form-wizard/formWizard"));
+const FormPickers = lazy(() => import("../feature-module/Pages/ui-module/forms/form-pickers/formPickers"));
+const TablesBasic = lazy(() => import("../feature-module/Pages/ui-module/table/tables-basic"));
+const DataTables = lazy(() => import("../feature-module/Pages/ui-module/table/data-tables"));
+const ChartApex = lazy(() => import("../feature-module/Pages/ui-module/charts/apexcharts"));
+const IconBootstrap = lazy(() => import("../feature-module/Pages/ui-module/icons/iconBootstrap"));
+const IconFlag = lazy(() => import("../feature-module/Pages/ui-module/icons/iconFlag"));
+const IconFontawesome = lazy(() => import("../feature-module/Pages/ui-module/icons/iconFontawesome"));
+const IconIonic = lazy(() => import("../feature-module/Pages/ui-module/icons/iconIonic"));
+const IconMaterial = lazy(() => import("../feature-module/Pages/ui-module/icons/iconMaterial"));
+const IconPe7 = lazy(() => import("../feature-module/Pages/ui-module/icons/iconPe7"));
+const IconRemix = lazy(() => import("../feature-module/Pages/ui-module/icons/iconRemix"));
+const IconTabler = lazy(() => import("../feature-module/Pages/ui-module/icons/iconTabler"));
+const IconThemify = lazy(() => import("../feature-module/Pages/ui-module/icons/iconThemify"));
+const IconTypicon = lazy(() => import("../feature-module/Pages/ui-module/icons/iconTypicon"));
+const IconWeather = lazy(() => import("../feature-module/Pages/ui-module/icons/iconWeather"));
+const DelasDashboard = lazy(() => import("../feature-module/Pages/dashboard/deals-dashboard/delasDashboard"));
+const ContactsList = lazy(() => import("../feature-module/Pages/crm-module/contacts/contactsList"));
+const Chat = lazy(() => import("../feature-module/Pages/application-module/chat/chat"));
+const VideoCall = lazy(() => import("../feature-module/Pages/application-module/chat/calls/videoCall"));
+const AudioCall = lazy(() => import("../feature-module/Pages/application-module/chat/calls/audioCall"));
+const CallHistory = lazy(() => import("../feature-module/Pages/application-module/chat/calls/callHistory"));
+const Calender = lazy(() => import("../feature-module/Pages/application-module/calendar/calendar"));
+const Email = lazy(() => import("../feature-module/Pages/application-module/email/email"));
+const EmailReply = lazy(() => import("../feature-module/Pages/application-module/email/emailReply"));
+const Todo = lazy(() => import("../feature-module/Pages/application-module/todo/todo"));
+const TodoList = lazy(() => import("../feature-module/Pages/application-module/todo/todoList"));
+const Notes = lazy(() => import("../feature-module/Pages/application-module/notes/notes"));
+const FileManager = lazy(() => import("../feature-module/Pages/application-module/file-manager/fileManager"));
+const SocialFeed = lazy(() => import("../feature-module/Pages/application-module/social-feed/socialFeed"));
+const KanbanView = lazy(() => import("../feature-module/Pages/application-module/kanban-view/kanbanView"));
+const Invoice = lazy(() => import("../feature-module/Pages/application-module/invoice/invoice"));
+const AddInoivce = lazy(() => import("../feature-module/Pages/application-module/invoice/add-invoice/addInoivce"));
+const EditInoivce = lazy(() => import("../feature-module/Pages/application-module/invoice/edit-invoice/editInoivce"));
+const InvoiceDetails = lazy(() => import("../feature-module/Pages/application-module/invoice/invoiceDetails"));
+const Register = lazy(() => import("../feature-module/Authentication/register/register"));
+const ResetPassword = lazy(() => import("../feature-module/Authentication/reset-password/resetPassword"));
+const ForgotPassword = lazy(() => import("../feature-module/Authentication/forgot-password/forgotPassword"));
+const EmailVerification = lazy(() => import("../feature-module/Authentication/email-verification/emailVerification"));
+const TwoStepVerification = lazy(() => import("../feature-module/Authentication/two-step-verification/twoStepVerification"));
+const LockScreen = lazy(() => import("../feature-module/Authentication/lock-screen/lockScreen"));
+const Error403 = lazy(() => import("../feature-module/Authentication/error-403/error403"));
+const Error404 = lazy(() => import("../feature-module/Authentication/error-404/error404"));
+const Error500 = lazy(() => import("../feature-module/Authentication/error-500/error500"));
+const BlankPage = lazy(() => import("../feature-module/Authentication/blank-page/blankPage"));
+const ComingSoon = lazy(() => import("../feature-module/Authentication/coming-soon/comingSoon"));
+const UnderMaintenance = lazy(() => import("../feature-module/Authentication/under-maintenance/underMaintenance"));
+const LeadsDashboard = lazy(() => import("../feature-module/Pages/dashboard/leads-dashboard/leadsDashboard"));
+const ProjectDashboard = lazy(() => import("../feature-module/Pages/dashboard/project-dashboard/projectDashboard"));
+const ContactsDetails = lazy(() => import("../feature-module/Pages/crm-module/contacts/contactsDetails"));
+const CompaniesGrid = lazy(() => import("../feature-module/Pages/crm-module/companies/companiesGrid"));
+const CompaniesList = lazy(() => import("../feature-module/Pages/crm-module/companies/companiesList"));
+const CompaniesDetails = lazy(() => import("../feature-module/Pages/crm-module/companies/companiesDetails"));
+const DealsGrid = lazy(() => import("../feature-module/Pages/crm-module/deals/dealsGrid"));
+const DealsList = lazy(() => import("../feature-module/Pages/crm-module/deals/dealsList"));
+const DealsDetails = lazy(() => import("../feature-module/Pages/crm-module/deals/dealsDetails"));
+const Leads = lazy(() => import("../feature-module/Pages/crm-module/leads/leads"));
+const LeadsList = lazy(() => import("../feature-module/Pages/crm-module/leads/leadsList"));
+const LeadsDetails = lazy(() => import("../feature-module/Pages/crm-module/leads/leadsDetails"));
+const Pipeline = lazy(() => import("../feature-module/Pages/crm-module/pipeline/pipeline"));
+const Campaign = lazy(() => import("../feature-module/Pages/crm-module/campaign/campaign"));
+const CampaignComplete = lazy(() => import("../feature-module/Pages/crm-module/campaign/campaignComplete"));
+const CampaignArchieve = lazy(() => import("../feature-module/Pages/crm-module/campaign/campaignArchieve"));
+const ProjectsGrid = lazy(() => import("../feature-module/Pages/crm-module/projects/projectsGrid"));
+const ProjectsList = lazy(() => import("../feature-module/Pages/crm-module/projects/projectsList"));
+const Tasks = lazy(() => import("../feature-module/Pages/crm-module/tasks/tasks"));
+const ProjectDetails = lazy(() => import("../feature-module/Pages/crm-module/projects/projectDetails"));
+const TasksImportant = lazy(() => import("../feature-module/Pages/crm-module/tasks/tasksImportant"));
+const Taskscompleted = lazy(() => import("../feature-module/Pages/crm-module/tasks/tasksCompleted"));
+const Proposals = lazy(() => import("../feature-module/Pages/crm-module/proposals/proposals"));
+const ProposalList = lazy(() => import("../feature-module/Pages/crm-module/proposals/proposalList"));
+const Contracts = lazy(() => import("../feature-module/Pages/crm-module/contracts/contracts"));
+const ContractsList = lazy(() => import("../feature-module/Pages/crm-module/contracts/contractsList"));
+const Estimations = lazy(() => import("../feature-module/Pages/crm-module/estimations/estimations"));
+const EstimationsList = lazy(() => import("../feature-module/Pages/crm-module/estimations/estimationsList"));
+const InvoicesGrid    = lazy(() => import("../feature-module/Pages/crm-module/invoices/invoicesGrid"));
+const InvoicesList    = lazy(() => import("../feature-module/Pages/crm-module/invoices/invoicesList"));
+const NewInvoice      = lazy(() => import("../feature-module/Pages/crm-module/invoices/newInvoice"));
+const InvoiceOverview = lazy(() => import("../feature-module/Pages/crm-module/invoices/invoiceOverview"));
+const RecordPayment       = lazy(() => import("../feature-module/Pages/crm-module/invoices/recordPayment"));
+const NewCreditNote       = lazy(() => import("../feature-module/Pages/crm-module/invoices/newCreditNote"));
+const CreditNotesList     = lazy(() => import("../feature-module/Pages/crm-module/invoices/creditNotes"));
+const CreditNoteOverview  = lazy(() => import("../feature-module/Pages/crm-module/invoices/creditNoteOverview"));
+const Payments            = lazy(() => import("../feature-module/Pages/crm-module/payments/payments"));
+const NewPayment      = lazy(() => import("../feature-module/Pages/crm-module/payments/newPayment"));
+const PaymentOverview = lazy(() => import("../feature-module/Pages/crm-module/payments/paymentOverview"));
+const PaymentRefund   = lazy(() => import("../feature-module/Pages/crm-module/payments/paymentRefund"));
+const Analytics = lazy(() => import("../feature-module/Pages/crm-module/analytics/analytics"));
+const Activities = lazy(() => import("../feature-module/Pages/crm-module/activities/activities"));
+const LeadReports = lazy(() => import("../feature-module/Pages/reports/lead-reports/leadReports"));
+const DealReports = lazy(() => import("../feature-module/Pages/reports/deal-reports/dealReports"));
+const ContactReports = lazy(() => import("../feature-module/Pages/reports/contact-reports/contactReports"));
+const CompanyReports = lazy(() => import("../feature-module/Pages/reports/company-reports/companyReports"));
+const ProjectReports = lazy(() => import("../feature-module/Pages/reports/project-reports/projectReports"));
+const TaskReports = lazy(() => import("../feature-module/Pages/reports/task-reports/taskReports"));
+const Sources = lazy(() => import("../feature-module/Pages/crm-settings/sources/sources"));
+const LostReason = lazy(() => import("../feature-module/Pages/crm-settings/lost-reason/lostReason"));
+const ActivityCalls = lazy(() => import("../feature-module/Pages/crm-module/activities/activity-calls"));
+const ActivityMails = lazy(() => import("../feature-module/Pages/crm-module/activities/activity-mail"));
+const ActivityTasks = lazy(() => import("../feature-module/Pages/crm-module/activities/activity-task"));
+const ActivityMeetings = lazy(() => import("../feature-module/Pages/crm-module/activities/activity-meeting"));
+const ContactStage = lazy(() => import("../feature-module/Pages/crm-settings/contact-stage/contactStage"));
+const Industry = lazy(() => import("../feature-module/Pages/crm-settings/industry/industry"));
+const Calls = lazy(() => import("../feature-module/Pages/crm-settings/calls/calls"));
+const ManageUsers  = lazy(() => import("../feature-module/Pages/user-management/manage-users/manageUsers"));
+const NewUser      = lazy(() => import("../feature-module/Pages/user-management/manage-users/newUser"));
+const EditUser     = lazy(() => import("../feature-module/Pages/user-management/manage-users/editUser"));
+const UserOverview = lazy(() => import("../feature-module/Pages/user-management/manage-users/userOverview"));
+const RolesPermissions = lazy(() => import("../feature-module/Pages/user-management/roles-permissions/rolesPermissions"));
+const NewRole          = lazy(() => import("../feature-module/Pages/user-management/roles-permissions/newRole"));
+const RoleOverview     = lazy(() => import("../feature-module/Pages/user-management/roles-permissions/roleOverview"));
+const EditRole         = lazy(() => import("../feature-module/Pages/user-management/roles-permissions/editRole"));
+const Permission = lazy(() => import("../feature-module/Pages/user-management/permission/permission"));
+const DeleteRequest = lazy(() => import("../feature-module/Pages/user-management/delete-request/deleteRequest"));
+const MembershipPlans = lazy(() => import("../feature-module/Pages/membership/membership-plans/membershipPlans"));
+const MembershipAddons = lazy(() => import("../feature-module/Pages/membership/membership-addons/membershipAddons"));
+const MembershipTransactions = lazy(() => import("../feature-module/Pages/membership/membership-transactions/membershipTransactions"));
+const Page = lazy(() => import("../feature-module/Pages/content/page"));
+const AddPage = lazy(() => import("../feature-module/Pages/content/addPage"));
+const EditPage = lazy(() => import("../feature-module/Pages/content/editPage"));
+const Blogs = lazy(() => import("../feature-module/Pages/content/blogs/blogs"));
+const Addblog = lazy(() => import("../feature-module/Pages/content/blogs/addblog"));
+const Editblog = lazy(() => import("../feature-module/Pages/content/blogs/editblog"));
+const BlogDetails = lazy(() => import("../feature-module/Pages/content/blogs/blogDetails"));
+const BlogCategories = lazy(() => import("../feature-module/Pages/content/blogs/blogCategories"));
+const BlogComments = lazy(() => import("../feature-module/Pages/content/blogs/blogComments"));
+const BlogTags = lazy(() => import("../feature-module/Pages/content/blogs/blogTags"));
+const Countries = lazy(() => import("../feature-module/Pages/content/location/countries"));
+const States = lazy(() => import("../feature-module/Pages/content/location/states"));
+const Cities = lazy(() => import("../feature-module/Pages/content/location/cities"));
+const Testimonials = lazy(() => import("../feature-module/Pages/content/testimonials"));
+const Faq = lazy(() => import("../feature-module/Pages/content/faq"));
+const ContactMessages = lazy(() => import("../feature-module/Pages/support/contact-messages/contactMessages"));
+const Tickets = lazy(() => import("../feature-module/Pages/support/tickets/tickets"));
+const TicketDetails = lazy(() => import("../feature-module/Pages/support/tickets/ticketDetails"));
+const ProfileSettings = lazy(() => import("../feature-module/Pages/profile/Profile"));
+const SecuritySettings = lazy(() => import("../feature-module/Pages/settings/general-settings/securitySettings"));
+const NotificationsSettings = lazy(() => import("../feature-module/Pages/settings/general-settings/notificationsSettings"));
+const ConnectedApps = lazy(() => import("../feature-module/Pages/settings/general-settings/connectedApps"));
+const CompanySettings = lazy(() => import("../feature-module/Pages/settings/website-settings/companySettings"));
+const LocalizationSettings = lazy(() => import("../feature-module/Pages/settings/website-settings/localizationSettings"));
+const PrefixesSettings = lazy(() => import("../feature-module/Pages/settings/website-settings/prefixesSettings"));
+const PreferenceSettings = lazy(() => import("../feature-module/Pages/settings/website-settings/preferenceSettings"));
+const AppearanceSettings = lazy(() => import("../feature-module/Pages/settings/website-settings/appearanceSettings"));
+const LanguageSettings = lazy(() => import("../feature-module/Pages/settings/website-settings/languageSettings"));
+const SettingsHome = lazy(() => import("../feature-module/Pages/settings/settingsHome"));
+const InvoiceSettings = lazy(() => import("../feature-module/Pages/settings/app-settings/invoiceSettings"));
+const PrintersSettings = lazy(() => import("../feature-module/Pages/settings/app-settings/printersSettings"));
+const CustomFieldsSetting = lazy(() => import("../feature-module/Pages/settings/app-settings/customFieldsSetting"));
+const ProjectSettings = lazy(() => import("../feature-module/Pages/settings/app-settings/productSettings"));
+const CustomerSettings = lazy(() => import("../feature-module/Pages/settings/app-settings/customerSettings"));
+const PaymentReceivedSettings = lazy(() => import("../feature-module/Pages/settings/app-settings/paymentReceivedSettings"));
+const AddCustomField = lazy(() => import("../feature-module/Pages/settings/app-settings/addCustomField"));
+const InventoryList = lazy(() => import("../feature-module/Pages/inventory/inventoryList"));
+const AssembliesList   = lazy(() => import("../feature-module/Pages/inventory/assemblies/assembliesList"));
+const AssemblyOverview = lazy(() => import("../feature-module/Pages/inventory/assemblies/assemblyOverview"));
+const NewAssembly      = lazy(() => import("../feature-module/Pages/inventory/assemblies/newAssembly"));
+const InventoryAdjustmentsList     = lazy(() => import("../feature-module/Pages/inventory/adjustments/inventoryAdjustmentsList"));
+const NewInventoryAdjustment       = lazy(() => import("../feature-module/Pages/inventory/adjustments/newInventoryAdjustment"));
+const InventoryAdjustmentOverview  = lazy(() => import("../feature-module/Pages/inventory/adjustments/inventoryAdjustmentOverview"));
+const TransferOrdersList           = lazy(() => import("../feature-module/Pages/inventory/transferOrders/transferOrdersList"));
+const NewTransferOrder             = lazy(() => import("../feature-module/Pages/inventory/transferOrders/newTransferOrder"));
+const TransferOrderOverview        = lazy(() => import("../feature-module/Pages/inventory/transferOrders/transferOrderOverview"));
+const NewItem = lazy(() => import("../feature-module/Pages/inventory/items/newItem"));
+const ItemsList = lazy(() => import("../feature-module/Pages/inventory/items/itemsList"));
+const ItemOverview = lazy(() => import("../feature-module/Pages/inventory/items/itemOverview"));
+const AddOpeningStock = lazy(() => import("../feature-module/Pages/inventory/items/addOpeningStock"));
+const CompositeItem = lazy(() => import("../feature-module/Pages/inventory/items/compositeItem"));
+const CompositeItemsList = lazy(() => import("../feature-module/Pages/inventory/items/compositeItemsList"));
+const CompositeItemOverview = lazy(() => import("../feature-module/Pages/inventory/items/compositeItemOverview"));
+const LocationList = lazy(() => import("../feature-module/Pages/inventory/locations/locationList"));
+const LocationOverview = lazy(() => import("../feature-module/Pages/inventory/locations/locationOverview"));
+const AddLocation = lazy(() => import("../feature-module/Pages/inventory/locations/location"));
+const TransactionSeriesList = lazy(() => import("../feature-module/Pages/inventory/locations/transactionSeriesList"));
+const TransactionSeriesOverview = lazy(() => import("../feature-module/Pages/inventory/locations/transactionSeriesOverview"));
+const NewTransactionSeries = lazy(() => import("../feature-module/Pages/inventory/locations/newTransactionSeries"));
+const PriceList = lazy(() => import("../feature-module/Pages/inventory/price-list/priceList"));
+const NewPriceList = lazy(() => import("../feature-module/Pages/inventory/price-list/newPriceList"));
+const PriceListOverview = lazy(() => import("../feature-module/Pages/inventory/price-list/priceListOverview"));
+const DistributionCategoryList = lazy(() => import("../feature-module/Pages/customers/customerCategories/distributionCategoryList"));
+const NewDistributionCategory = lazy(() => import("../feature-module/Pages/customers/customerCategories/newDistributionCategory"));
+const DistributionSubCategoryList = lazy(() => import("../feature-module/Pages/customers/customerSubCategories/distributionSubCategoryList"));
+const NewDistributionSubCategory = lazy(() => import("../feature-module/Pages/customers/customerSubCategories/newDistributionSubCategory"));
+const DistributionLocationList = lazy(() => import("../feature-module/Pages/customers/distributionLocation/distributionLocationList"));
+const AddNewParty = lazy(() => import("../feature-module/Pages/customers/distributors/addNewParty"));
+const DistributorsList = lazy(() => import("../feature-module/Pages/customers/distributors/distributorsList"));
+const PartyOverview = lazy(() => import("../feature-module/Pages/customers/distributors/partyOverview"));
+const EditCustomField = lazy(() => import("../feature-module/Pages/settings/app-settings/editCustomField"));
+const EmailSettings = lazy(() => import("../feature-module/Pages/settings/system-settings/emailSettings"));
+const SmsGateways = lazy(() => import("../feature-module/Pages/settings/system-settings/smsGateways"));
+const GdprCookies = lazy(() => import("../feature-module/Pages/settings/system-settings/gdprCookies"));
+const PaymentGateways = lazy(() => import("../feature-module/Pages/settings/financial-settings/paymentGateways"));
+const BankAccounts = lazy(() => import("../feature-module/Pages/settings/financial-settings/bankAccounts"));
+const TaxRates = lazy(() => import("../feature-module/Pages/settings/financial-settings/taxRates"));
+const Currencies = lazy(() => import("../feature-module/Pages/settings/financial-settings/currencies"));
+const Sitemap = lazy(() => import("../feature-module/Pages/settings/other-settings/sitemap"));
+const ClearCache = lazy(() => import("../feature-module/Pages/settings/other-settings/clearCache"));
+const Storage = lazy(() => import("../feature-module/Pages/settings/other-settings/storage"));
+const Cronjob = lazy(() => import("../feature-module/Pages/settings/other-settings/cronjob"));
+const BanIpAddress = lazy(() => import("../feature-module/Pages/settings/other-settings/banIpAddress"));
+const SystemBackup = lazy(() => import("../feature-module/Pages/settings/other-settings/systemBackup"));
+const DatabaseBackup = lazy(() => import("../feature-module/Pages/settings/other-settings/databaseBackup"));
+const SystemUpdate = lazy(() => import("../feature-module/Pages/settings/other-settings/systemUpdate"));
+const Notifications = lazy(() => import("../feature-module/Pages/notifications/notifications"));
+const Dashboard = lazy(() => import("../feature-module/Pages/super-admin/dashboard"));
+const Company = lazy(() => import("../feature-module/Pages/super-admin/company"));
+const Subscription = lazy(() => import("../feature-module/Pages/super-admin/subscription"));
+const Packages = lazy(() => import("../feature-module/Pages/super-admin/packages"));
+const Domain = lazy(() => import("../feature-module/Pages/super-admin/domain"));
+const PurchaseTransaction = lazy(() => import("../feature-module/Pages/super-admin/purchaseTransaction"));
+const MapsLeaflet = lazy(() => import("../feature-module/Pages/ui-module/map/leaflet"));
+const FormSelect2 = lazy(() => import("../feature-module/Pages/ui-module/forms/form-select2/formSelect2"));
+const UiSweetAlerts = lazy(() => import("../feature-module/Pages/ui-module/ui-advance/uiSweetAlerts"));
 
 const route = all_routes;
 
@@ -1034,11 +1069,110 @@ export const publicRoutes = [
     meta_title: "Invoice List",
   },
   {
+    id: "112a-base",
+    path: route.invoices,
+    element: <InvoicesList />,
+    route: Route,
+    meta_title: "Invoices",
+    permModule: "invoices",
+  },
+  {
+    id: "112b",
+    path: route.newInvoice,
+    element: <NewInvoice />,
+    route: Route,
+    meta_title: "New Invoice",
+    permModule: "invoices",
+    permAction: "create",
+  },
+  {
+    id: "112b-edit",
+    path: route.editInvoice,
+    element: <NewInvoice />,
+    route: Route,
+    meta_title: "Edit Invoice",
+    permModule: "invoices",
+    permAction: "edit",
+  },
+  {
+    id: "112c",
+    path: route.invoiceOverview,
+    element: <InvoiceOverview />,
+    route: Route,
+    meta_title: "Invoice Overview",
+    permModule: "invoices",
+  },
+  {
+    id: "112d",
+    path: route.recordPayment,
+    element: <RecordPayment />,
+    route: Route,
+    meta_title: "Record Payment",
+    permModule: "payments",
+    permAction: "create",
+  },
+  {
+    id: "112e",
+    path: route.newCreditNote,
+    element: <NewCreditNote />,
+    route: Route,
+    meta_title: "New Credit Note",
+    permModule: "credit_notes",
+    permAction: "create",
+  },
+  {
+    id: "112f",
+    path: route.creditNotes,
+    element: <CreditNotesList />,
+    route: Route,
+    meta_title: "Credit Notes",
+    permModule: "credit_notes",
+  },
+  {
+    id: "112g",
+    path: route.creditNoteOverview,
+    element: <CreditNoteOverview />,
+    route: Route,
+    meta_title: "Credit Note Overview",
+    permModule: "credit_notes",
+  },
+  {
     id: "113",
     path: route.payments,
     element: <Payments />,
     route: Route,
     meta_title: "Payments",
+    permModule: "payments",
+  },
+  {
+    id: "113a",
+    path: route.newPayment,
+    element: <NewPayment />,
+    route: Route,
+    meta_title: "New Payment",
+    permModule: "payments",
+    permAction: "create",
+  },
+  {
+    id: "113b",
+    path: route.paymentRefund,
+    element: <PaymentRefund />,
+    route: Route,
+    meta_title: "Refund Payment",
+  },
+  {
+    id: "113b2",
+    path: route.paymentRefundEdit,
+    element: <PaymentRefund />,
+    route: Route,
+    meta_title: "Edit Refund",
+  },
+  {
+    id: "113c",
+    path: route.paymentOverview,
+    element: <PaymentOverview />,
+    route: Route,
+    meta_title: "Payment Overview",
   },
   {
     id: "114",
@@ -1165,6 +1299,33 @@ export const publicRoutes = [
     element: <ManageUsers />,
     route: Route,
     meta_title: "Manage Users",
+    permModule: "users",
+  },
+  {
+    id: "131a",
+    path: route.newUser,
+    element: <NewUser />,
+    route: Route,
+    meta_title: "New User",
+    permModule: "users",
+    permAction: "create",
+  },
+  {
+    id: "131a2",
+    path: route.editUser,
+    element: <EditUser />,
+    route: Route,
+    meta_title: "Edit User",
+    permModule: "users",
+    permAction: "edit",
+  },
+  {
+    id: "131b",
+    path: route.userOverview,
+    element: <UserOverview />,
+    route: Route,
+    meta_title: "User Overview",
+    permModule: "users",
   },
   {
     id: "132",
@@ -1172,6 +1333,33 @@ export const publicRoutes = [
     element: <RolesPermissions />,
     route: Route,
     meta_title: "Roles & Permissions",
+    permModule: "roles",
+  },
+  {
+    id: "132a",
+    path: route.newRole,
+    element: <NewRole />,
+    route: Route,
+    meta_title: "New Role",
+    permModule: "roles",
+    permAction: "create",
+  },
+  {
+    id: "132b",
+    path: route.roleOverview,
+    element: <RoleOverview />,
+    route: Route,
+    meta_title: "Role Overview",
+    permModule: "roles",
+  },
+  {
+    id: "132c",
+    path: route.editRole,
+    element: <EditRole />,
+    route: Route,
+    meta_title: "Edit Role",
+    permModule: "roles",
+    permAction: "edit",
   },
   {
     id: "133",
@@ -1431,6 +1619,7 @@ export const publicRoutes = [
     element: <SettingsHome />,
     route: Route,
     meta_title: "Settings",
+    permModule: "settings",
   },
   {
     id: "168a",
@@ -1440,11 +1629,109 @@ export const publicRoutes = [
     meta_title: "Settings - Product Settings",
   },
   {
+    id: "168b",
+    path: route.customerSettings,
+    element: <CustomerSettings />,
+    route: Route,
+    meta_title: "Settings - Customer Settings",
+  },
+  {
+    id: "168c",
+    path: route.paymentReceivedSettings,
+    element: <PaymentReceivedSettings />,
+    route: Route,
+    meta_title: "Settings - Payments Received Settings",
+  },
+  {
+    id: "inventory-0",
+    path: route.inventoryList,
+    element: <InventoryList />,
+    route: Route,
+    meta_title: "Inventory",
+    permModule: "inventory",
+  },
+  {
+    id: "assemblies-list",
+    path: route.assemblies,
+    element: <AssembliesList />,
+    route: Route,
+    meta_title: "Assemblies",
+    permModule: "assemblies",
+  },
+  {
+    id: "assembly-overview",
+    path: route.assemblyOverview,
+    element: <AssemblyOverview />,
+    route: Route,
+    meta_title: "Assembly Overview",
+    permModule: "assemblies",
+  },
+  {
+    id: "assembly-0",
+    path: route.newAssembly,
+    element: <NewAssembly />,
+    route: Route,
+    meta_title: "New Assembly",
+    permModule: "assemblies",
+    permAction: "create",
+  },
+  {
+    id: "adj-list",
+    path: route.inventoryAdjustments,
+    element: <InventoryAdjustmentsList />,
+    route: Route,
+    meta_title: "Inventory Adjustments",
+    permModule: "inventory_adjustments",
+  },
+  {
+    id: "adj-new",
+    path: route.newInventoryAdjustment,
+    element: <NewInventoryAdjustment />,
+    route: Route,
+    meta_title: "New Inventory Adjustment",
+    permModule: "inventory_adjustments",
+    permAction: "create",
+  },
+  {
+    id: "adj-overview",
+    path: route.inventoryAdjustmentOverview,
+    element: <InventoryAdjustmentOverview />,
+    route: Route,
+    meta_title: "Adjustment Overview",
+    permModule: "inventory_adjustments",
+  },
+  {
+    id: "transfer-list",
+    path: route.transferOrders,
+    element: <TransferOrdersList />,
+    route: Route,
+    meta_title: "Transfer Orders",
+    permModule: "transfer_orders",
+  },
+  {
+    id: "transfer-new",
+    path: route.newTransferOrder,
+    element: <NewTransferOrder />,
+    route: Route,
+    meta_title: "New Transfer Order",
+    permModule: "transfer_orders",
+    permAction: "create",
+  },
+  {
+    id: "transfer-overview",
+    path: route.transferOrderOverview,
+    element: <TransferOrderOverview />,
+    route: Route,
+    meta_title: "Transfer Order",
+    permModule: "transfer_orders",
+  },
+  {
     id: "inv-0",
     path: route.itemsList,
     element: <ItemsList />,
     route: Route,
     meta_title: "Items",
+    permModule: "items",
   },
   {
     id: "inv-1",
@@ -1452,6 +1739,8 @@ export const publicRoutes = [
     element: <NewItem />,
     route: Route,
     meta_title: "New Item",
+    permModule: "items",
+    permAction: "create",
   },
   {
     id: "inv-2",
@@ -1459,6 +1748,7 @@ export const publicRoutes = [
     element: <ItemOverview />,
     route: Route,
     meta_title: "Item Overview",
+    permModule: "items",
   },
   {
     id: "inv-3",
@@ -1466,6 +1756,8 @@ export const publicRoutes = [
     element: <NewItem />,
     route: Route,
     meta_title: "Edit Item",
+    permModule: "items",
+    permAction: "edit",
   },
   {
     id: "inv-4",
@@ -1473,6 +1765,9 @@ export const publicRoutes = [
     element: <AddOpeningStock />,
     route: Route,
     meta_title: "Add Opening Stock",
+    permModule: "items",
+    permAction: "edit",
+    permAllowParty: true,
   },
   {
     id: "comp-0",
@@ -1481,6 +1776,7 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Composite Items",
     feature: "composite_items",
+    permModule: "composite_items",
   },
   {
     id: "comp-1",
@@ -1489,6 +1785,8 @@ export const publicRoutes = [
     route: Route,
     meta_title: "New Composite Item",
     feature: "composite_items",
+    permModule: "composite_items",
+    permAction: "create",
   },
   {
     id: "comp-2",
@@ -1497,6 +1795,7 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Composite Item Overview",
     feature: "composite_items",
+    permModule: "composite_items",
   },
   {
     id: "comp-3",
@@ -1505,6 +1804,8 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Edit Composite Item",
     feature: "composite_items",
+    permModule: "composite_items",
+    permAction: "edit",
   },
   {
     id: "inv-loc-list",
@@ -1569,6 +1870,8 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Price Lists",
     feature: "price_lists",
+    permModule: "price_list",
+    permAllowParty: true,
   },
   {
     id: "inv-price-list-overview",
@@ -1577,6 +1880,7 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Price List Overview",
     feature: "price_lists",
+    permModule: "price_list",
   },
   {
     id: "inv-price-list-new",
@@ -1585,6 +1889,8 @@ export const publicRoutes = [
     route: Route,
     meta_title: "New Price List",
     feature: "price_lists",
+    permModule: "price_list",
+    permAction: "create",
   },
   {
     id: "inv-price-list-edit",
@@ -1593,27 +1899,92 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Edit Price List",
     feature: "price_lists",
+    permModule: "price_list",
+    permAction: "edit",
   },
   {
     id: "cust-cat-0",
-    path: route.customerCategories,
-    element: <CustomerCategoryList />,
+    path: route.distributionCategories,
+    element: <DistributionCategoryList />,
     route: Route,
-    meta_title: "Customer Categories",
+    meta_title: "Distribution Categories",
   },
   {
     id: "cust-cat-1",
-    path: route.addCustomerCategory,
-    element: <NewCustomerCategory />,
+    path: route.addDistributionCategory,
+    element: <NewDistributionCategory />,
     route: Route,
-    meta_title: "Add Customer Category",
+    meta_title: "Add Distribution Category",
   },
   {
     id: "cust-cat-2",
-    path: route.editCustomerCategory,
-    element: <NewCustomerCategory />,
+    path: route.editDistributionCategory,
+    element: <NewDistributionCategory />,
     route: Route,
-    meta_title: "Edit Customer Category",
+    meta_title: "Edit Distribution Category",
+  },
+  {
+    id: "cust-sub-cat-0",
+    path: route.distributionSubCategories,
+    element: <DistributionSubCategoryList />,
+    route: Route,
+    meta_title: "Distribution Sub Categories",
+  },
+  {
+    id: "cust-sub-cat-1",
+    path: route.addDistributionSubCategory,
+    element: <NewDistributionSubCategory />,
+    route: Route,
+    meta_title: "Add Distribution Sub Category",
+  },
+  {
+    id: "cust-sub-cat-2",
+    path: route.editDistributionSubCategory,
+    element: <NewDistributionSubCategory />,
+    route: Route,
+    meta_title: "Edit Distribution Sub Category",
+  },
+  {
+    id: "dist-loc-0",
+    path: route.distributionLocationList + "/*",
+    element: <DistributionLocationList />,
+    route: Route,
+    meta_title: "Distribution Locations",
+    permModule: "locations",
+  },
+  {
+    id: "distributors-list-0",
+    path: route.distributors,
+    element: <DistributorsList />,
+    route: Route,
+    meta_title: "Parties",
+    permModule: "parties",
+  },
+  {
+    id: "dist-new-0",
+    path: route.addNewDistributors,
+    element: <AddNewParty />,
+    route: Route,
+    meta_title: "Add New Party",
+    permModule: "parties",
+    permAction: "create",
+  },
+  {
+    id: "dist-edit-0",
+    path: route.editDistributor,
+    element: <AddNewParty />,
+    route: Route,
+    meta_title: "Edit Party",
+    permModule: "parties",
+    permAction: "edit",
+  },
+  {
+    id: "party-overview-0",
+    path: route.distributorOverview,
+    element: <PartyOverview />,
+    route: Route,
+    meta_title: "Party Overview",
+    permModule: "parties",
   },
   {
     id: "168b",
@@ -1625,6 +1996,48 @@ export const publicRoutes = [
   {
     id: "168c",
     path: route.productCustomFieldEdit,
+    element: <EditCustomField />,
+    route: Route,
+    meta_title: "Settings - Edit Custom Field",
+  },
+  {
+    id: "168d",
+    path: route.customerCustomField,
+    element: <AddCustomField />,
+    route: Route,
+    meta_title: "Settings - New Custom Field",
+  },
+  {
+    id: "168e",
+    path: route.customerCustomFieldEdit,
+    element: <EditCustomField />,
+    route: Route,
+    meta_title: "Settings - Edit Custom Field",
+  },
+  {
+    id: "168f",
+    path: route.invoiceCustomField,
+    element: <AddCustomField />,
+    route: Route,
+    meta_title: "Settings - New Custom Field",
+  },
+  {
+    id: "168g",
+    path: route.invoiceCustomFieldEdit,
+    element: <EditCustomField />,
+    route: Route,
+    meta_title: "Settings - Edit Custom Field",
+  },
+  {
+    id: "168h",
+    path: route.paymentCustomField,
+    element: <AddCustomField />,
+    route: Route,
+    meta_title: "Settings - New Custom Field",
+  },
+  {
+    id: "168i",
+    path: route.paymentCustomFieldEdit,
     element: <EditCustomField />,
     route: Route,
     meta_title: "Settings - Edit Custom Field",
@@ -1849,6 +2262,13 @@ export const publicRoutes = [
 ];
 
 export const authRoutes = [
+  {
+    id: "403",
+    path: route.error403,
+    element: <Error403 />,
+    route: Route,
+    meta_title: "Access Denied",
+  },
   {
     id: "1",
     path: route.login,

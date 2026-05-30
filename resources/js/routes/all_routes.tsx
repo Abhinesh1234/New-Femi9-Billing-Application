@@ -55,8 +55,20 @@ export const all_routes = {
   ProposalsView: "/crm/proposals-view",
   ContractsList: "/crm/contracts-list",
   ContractsGrid: "/crm/contracts-grid",
-  InvoiceList: "/crm/invoice-list",
-  InvoiceGrid: "/crm/invoice-grid",
+  InvoiceList:     "/crm/invoice-list",
+  InvoiceGrid:     "/crm/invoice-grid",
+  invoices:        "/invoices",
+  newInvoice:      "/invoices/new",
+  invoiceOverview:    "/invoices/:id",
+  editInvoice:        "/invoices/:id/edit",
+  recordPayment:      "/invoices/:id/payment",
+  newCreditNote:      "/invoices/:id/credit-note",
+  creditNotes:        "/credit-notes",
+  creditNoteOverview: "/credit-notes/:id",
+  newPayment:         "/payments/new",
+  paymentOverview:      "/payments/:id",
+  paymentRefund:        "/payments/:id/refund",
+  paymentRefundEdit:    "/payments/:id/refunds/:refundId/edit",
   estimationList: "/crm/estimation-list",
   estimationKanban: "/crm/estimation-kanban",
 
@@ -181,11 +193,13 @@ export const all_routes = {
   notificationbell:"/notifications",
 
   // pages routes
+  error403: "/403",
   error404: "/error-404",
   error500: "/error-500",
   underMaintenance: "/under-maintenance",
 
   // inventory routes
+  inventoryList: "/inventory",
   itemsList: "/items",
   addItem: "/items/new",
   itemOverview: "/items/:id",
@@ -207,20 +221,45 @@ export const all_routes = {
   newPriceList: "/price-list/new",
   priceListOverview: "/price-list/:id",
   editPriceList: "/price-list/:id/edit",
+  assemblies: "/assemblies",
+  newAssembly: "/assemblies/new",
+  assemblyOverview: "/assemblies/:id",
+  inventoryAdjustments: "/inventory-adjustments",
+  newInventoryAdjustment: "/inventory-adjustments/new",
+  inventoryAdjustmentOverview: "/inventory-adjustments/:id",
+  transferOrders: "/transfer-orders",
+  newTransferOrder: "/transfer-orders/new",
+  transferOrderOverview: "/transfer-orders/:id",
 
   // customer routes
-  customerCategories:    "/customer-categories",
-  addCustomerCategory:   "/customer-categories/new",
-  editCustomerCategory:  "/customer-categories/:id/edit",
+  distributionCategories:       "/distribution-categories",
+  addDistributionCategory:      "/distribution-categories/new",
+  editDistributionCategory:     "/distribution-categories/:id/edit",
+  distributionSubCategories:    "/distribution-sub-categories",
+  addDistributionSubCategory:   "/distribution-sub-categories/new",
+  editDistributionSubCategory:  "/distribution-sub-categories/:id/edit",
+  distributionLocationList:     "/distribution-locations",
+  distributors:                 "/distributors",
+  distributorOverview:          "/distributors/:id",
+  addNewDistributors:           "/distributors/new",
+  editDistributor:              "/distributors/:id/edit",
 
   // settings routes
   settingsHome: "/settings",
   productCustomField: "/app-settings/product-settings/add-custom-field",
   productCustomFieldEdit: "/app-settings/product-settings/edit-custom-field/:id",
+  customerCustomField: "/app-settings/customer-settings/add-custom-field",
+  customerCustomFieldEdit: "/app-settings/customer-settings/edit-custom-field/:id",
   customFields: "/app-settings/custom-fields",
   invoiceSettings: "/app-settings/invoice-settings",
+  invoiceCustomField: "/app-settings/invoice-settings/add-custom-field",
+  invoiceCustomFieldEdit: "/app-settings/invoice-settings/edit-custom-field/:id",
   printers: "/app-settings/printers",
   projectSettings: "/app-settings/project-settings",
+  customerSettings: "/app-settings/customer-settings",
+  paymentReceivedSettings: "/app-settings/payment-received-settings",
+  paymentCustomField: "/app-settings/payment-received-settings/add-custom-field",
+  paymentCustomFieldEdit: "/app-settings/payment-received-settings/edit-custom-field/:id",
 
   bankAccount: "/financial-settings/bank-ccount",
   currencies: "/financial-settings/currencies",
@@ -229,7 +268,7 @@ export const all_routes = {
 
   connectedApps: "/general-settings/connected-apps",
   notification: "/general-settings/notification",
-  profile: "/general-settings/profile-settings",
+  profile: "/profile",
   security: "/general-settings/security",
 
   banIpAddrress: "/other-settings/ban-ip-address",
@@ -305,7 +344,13 @@ export const all_routes = {
   //userManagement routes
   deleteRequest: "/user-management/delete-request",
   rolesPermissions: "/user-management/roles-permissions",
-  manageusers: "/user-management/manage-users",
+  newRole:          "/user-management/roles-permissions/new",
+  roleOverview:     "/user-management/roles-permissions/:id",
+  editRole:         "/user-management/roles-permissions/:id/edit",
+  manageusers:  "/user-management/manage-users",
+  newUser:      "/user-management/manage-users/new",
+  editUser:     "/user-management/manage-users/:id/edit",
+  userOverview: "/user-management/manage-users/:id",
   permissions: "/user-management/permissions",
 
   //support routes
@@ -328,4 +373,12 @@ export const all_routes = {
   layoutRtl: "/layout-rtl",
   Detached: "/layout-detached",
   Dark: "/layout-dark",
+
+  // Party portal routes
+  partyLogin:             "/party/login",
+  partyDashboard:         "/party/dashboard",
+  partyItems:             "/party/items",
+  partyItemDetail:        "/party/items/:id",
+  partyCompositeItems:    "/party/composite-items",
+  partyPriceList:         "/party/price-list",
 };

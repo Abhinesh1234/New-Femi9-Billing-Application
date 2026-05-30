@@ -44,8 +44,10 @@ export interface PriceListRecord {
   price_list_type:        "all_items" | "individual_items";
   customer_category_id:   number | null;
   customer_category_name: string | null;
+  party_id:               number | null;
   is_active:              boolean;
   admin_only:             boolean;
+  is_company_list?:       boolean;
   created_at:             string;
   updated_at:             string;
   deleted_at:             string | null;

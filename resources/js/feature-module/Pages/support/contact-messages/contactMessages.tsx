@@ -921,8 +921,8 @@ const ContactMessages = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Name <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Name <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -931,8 +931,8 @@ const ContactMessages = () => {
               <div className="col-lg-6">
                 <div className="mb-3">
                   <div className="d-flex align-items-center justify-content-between">
-                    <label className="form-label">
-                      Email <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Email <span>*</span>
                     </label>
                     <div className="form-check form-switch mb-1">
                       <label className="form-check-label d-flex align-items-center gap-2">
@@ -952,8 +952,8 @@ const ContactMessages = () => {
               {/* end col */}
               <div className="col-lg-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Phone <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Phone <span>*</span>
                   </label>
                  <CommonPhoneInput
                             value={phone}
@@ -1006,8 +1006,8 @@ const ContactMessages = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Name <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Name <span>*</span>
               </label>
               <input
                 type="text"
@@ -1020,8 +1020,8 @@ const ContactMessages = () => {
               <div className="col-lg-6">
                 <div className="mb-3">
                   <div className="d-flex align-items-center justify-content-between">
-                    <label className="form-label">
-                      Email <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Email <span>*</span>
                     </label>
                     <div className="form-check form-switch mb-1">
                       <label className="form-check-label d-flex align-items-center gap-2">
@@ -1045,8 +1045,8 @@ const ContactMessages = () => {
               {/* end col */}
               <div className="col-lg-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Phone <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Phone <span>*</span>
                   </label>
                   <CommonPhoneInput
                             value={phone2}

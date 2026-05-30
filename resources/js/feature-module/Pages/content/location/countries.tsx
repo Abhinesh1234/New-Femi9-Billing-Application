@@ -176,20 +176,20 @@ const Countries = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Country Code <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Country Code <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Country ID <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Country ID <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Country Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Country Name <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -228,8 +228,8 @@ const Countries = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Country Code <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Country Code <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -238,8 +238,8 @@ const Countries = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Country ID <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Country ID <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -248,8 +248,8 @@ const Countries = () => {
                   />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Country Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Country Name <span>*</span>
                   </label>
                   <input
                     type="text"

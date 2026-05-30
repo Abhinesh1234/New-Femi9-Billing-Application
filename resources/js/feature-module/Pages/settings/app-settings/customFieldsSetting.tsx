@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Modal, Toast } from "react-bootstrap";
+import { Toast } from "react-bootstrap";
 import PageHeader from "../../../../components/page-header/pageHeader";
 import SettingsTopbar from "../settings-topbar/settingsTopbar";
 import Footer from "../../../../components/footer/footer";
@@ -211,12 +211,6 @@ const CustomFieldsSetting = () => {
                   <div className="p-4">
 
                     {/* Loading */}
-                    {loading && (
-                      <div className="d-flex align-items-center gap-2 py-5 justify-content-center text-muted">
-                        <div className="spinner-border spinner-border-sm text-primary" role="status" />
-                        <span>Loading custom fields…</span>
-                      </div>
-                    )}
 
                     {/* Error */}
                     {!loading && loadError && (
@@ -362,62 +356,57 @@ const CustomFieldsSetting = () => {
       </div>
 
       {/* ── Delete Confirmation Modal ── */}
-      <Modal
-        show={deleteModal.show}
-        onHide={() => !deleteModal.deleting && setDeleteModal((m) => ({ ...m, show: false }))}
-        centered
-        size="md"
-      >
-        <Modal.Body className="p-5">
-          <div className="text-center">
-            <div className="mb-4">
-              <span
-                className="avatar badge-soft-danger border-0 text-danger rounded-circle d-inline-flex align-items-center justify-content-center"
-                style={{ width: 72, height: 72 }}
-              >
-                <i className="ti ti-trash" style={{ fontSize: 34 }} />
-              </span>
-            </div>
-            <h3 className="mb-3 fw-semibold">Delete Confirmation</h3>
-            <p className="mb-0 text-muted fs-15">
-              Are you sure you want to delete <strong>{deleteModal.field?.config.label}</strong>?
-              This cannot be undone.
-            </p>
-            <div className="d-flex align-items-center justify-content-center gap-3 mt-5">
-              <button
-                type="button"
-                className="btn btn-cancel px-5 py-2 fs-15"
-                onClick={() => setDeleteModal((m) => ({ ...m, show: false }))}
-                disabled={deleteModal.deleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger px-5 py-2 fs-15"
-                onClick={handleDeleteConfirm}
-                disabled={deleteModal.deleting}
-              >
-                {deleteModal.deleting ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-1" role="status" />
-                    Deleting…
-                  </>
-                ) : "Yes, Delete"}
-              </button>
+      {deleteModal.show && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={(e) => { if (!deleteModal.deleting && e.target === e.currentTarget) setDeleteModal((m) => ({ ...m, show: false })); }}
+        >
+          <div style={{ background: "#fff", borderRadius: 14, width: 420, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden", padding: "40px 32px" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                <i className="ti ti-trash" style={{ fontSize: 26, color: "#ef4444" }} />
+              </div>
+              <h3 style={{ marginBottom: 12, fontWeight: 600, color: "#0f172a" }}>Delete Confirmation</h3>
+              <p style={{ marginBottom: 0, color: "#64748b", fontSize: 15 }}>
+                Are you sure you want to delete <strong>{deleteModal.field?.config.label}</strong>?
+                This cannot be undone.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 32 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline-light px-5 py-2 fs-15"
+                  onClick={() => setDeleteModal((m) => ({ ...m, show: false }))}
+                  disabled={deleteModal.deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger px-5 py-2 fs-15"
+                  onClick={handleDeleteConfirm}
+                  disabled={deleteModal.deleting}
+                >
+                  {deleteModal.deleting ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-1" role="status" />
+                      Deleting…
+                    </>
+                  ) : "Yes, Delete"}
+                </button>
+              </div>
             </div>
           </div>
-        </Modal.Body>
-      </Modal>
+        </div>
+      )}
 
       {/* ── Toast ── */}
-      <div
-        className="position-fixed top-0 start-50 translate-middle-x pt-4"
-        style={{ zIndex: 9999, pointerEvents: "none" }}
-      >
+      <div role="region" aria-live="polite" className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
           onClose={() => setToast((t) => ({ ...t, show: false }))}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           style={{
             pointerEvents: "auto",
             borderRadius: "12px",

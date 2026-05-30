@@ -184,20 +184,20 @@ const Faq = () => {
               <form>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Category <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Category <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Question <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Question <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Answer <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Answer <span>*</span>
                     </label>
                     <textarea
                       className="form-control"
@@ -206,8 +206,8 @@ const Faq = () => {
                     />
                   </div>
                   <div className="mb-0">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <div className="d-flex align-items-center">
                       <div className="me-2">
@@ -266,8 +266,8 @@ const Faq = () => {
               <form>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Category <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Category <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -276,8 +276,8 @@ const Faq = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Question <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Question <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -286,8 +286,8 @@ const Faq = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Answer <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Answer <span>*</span>
                     </label>
                     <textarea
                       className="form-control"
@@ -298,8 +298,8 @@ const Faq = () => {
                     />
                   </div>
                   <div className="mb-0">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <div className="d-flex align-items-center">
                       <div className="me-2">

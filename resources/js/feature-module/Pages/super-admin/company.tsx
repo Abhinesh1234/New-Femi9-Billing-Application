@@ -920,8 +920,8 @@ const Company = () => {
                     <div className="row row-gap-3">
                       <div className="col-md-6">
                         <div>
-                          <label className="form-label">
-                            Plan Name <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Plan Name <span>*</span>
                           </label>
                           <CommonSelect
                             options={Plan_Name}
@@ -932,8 +932,8 @@ const Company = () => {
                       </div>
                       <div className="col-md-6">
                         <div>
-                          <label className="form-label">
-                            Plan Type <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Plan Type <span>*</span>
                           </label>
                           <CommonSelect
                             options={PlanType}
@@ -944,8 +944,8 @@ const Company = () => {
                       </div>
                       <div className="col-md-6">
                         <div>
-                          <label className="form-label">
-                            Amount<span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Amount<span>*</span>
                           </label>
                           <input
                             type="text"
@@ -956,8 +956,8 @@ const Company = () => {
                       </div>
                       <div className="col-md-6">
                         <div>
-                          <label className="form-label">
-                            Payment Date <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Payment Date <span>*</span>
                           </label>
                           <div className="input-icon-end position-relative">
                             <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -966,9 +966,9 @@ const Company = () => {
                       </div>
                       <div className="col-md-6">
                         <div>
-                          <label className="form-label">
+                          <label className="form-label text-danger">
                             Next Payment Date{" "}
-                            <span className="text-danger">*</span>
+                            <span>*</span>
                           </label>
                           <div className="input-icon-end position-relative">
                             <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -977,8 +977,8 @@ const Company = () => {
                       </div>
                       <div className="col-md-6">
                         <div>
-                          <label className="form-label">
-                            Expiring On <span className="text-danger">*</span>
+                          <label className="form-label text-danger">
+                            Expiring On <span>*</span>
                           </label>
                           <div className="input-icon-end position-relative">
                             <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -1052,8 +1052,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Company Name <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Company Name <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
@@ -1072,8 +1072,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Phone Number <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Phone Number <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
@@ -1086,8 +1086,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Password <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Password <span>*</span>
                       </label>
                       <div className="input-group input-group-flat pass-group">
                         <input
@@ -1110,8 +1110,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Confirm Password <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Confirm Password <span>*</span>
                       </label>
                       <div className="input-group input-group-flat pass-group">
                         <input
@@ -1144,8 +1144,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Name <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Name <span>*</span>
                       </label>
                       <CommonSelect
                         options={Plan_Name}
@@ -1156,8 +1156,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Type <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Type <span>*</span>
                       </label>
                       <CommonSelect
                         options={PlanType}
@@ -1168,8 +1168,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Currency <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Currency <span>*</span>
                       </label>
                       <CommonSelect
                         options={Currency}
@@ -1180,8 +1180,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Language <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Language <span>*</span>
                       </label>
                       <CommonSelect
                         options={Language}
@@ -1282,8 +1282,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Company Name <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Company Name <span>*</span>
                       </label>
                       <input
                         type="text"
@@ -1314,8 +1314,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Phone Number <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Phone Number <span>*</span>
                       </label>
                       <CommonPhoneInput
                         value={phone}
@@ -1332,8 +1332,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Password <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Password <span>*</span>
                       </label>
                       <div className="input-group input-group-flat pass-group">
                         <input
@@ -1356,8 +1356,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Confirm Password <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Confirm Password <span>*</span>
                       </label>
                       <div className="input-group input-group-flat pass-group">
                         <input
@@ -1394,8 +1394,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Name <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Name <span>*</span>
                       </label>
                       <CommonSelect
                         options={Plan_Name}
@@ -1406,8 +1406,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Plan Type <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Plan Type <span>*</span>
                       </label>
                       <CommonSelect
                         options={PlanType}
@@ -1418,8 +1418,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Currency <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Currency <span>*</span>
                       </label>
                       <CommonSelect
                         options={Currency}
@@ -1430,8 +1430,8 @@ const Company = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3 ">
-                      <label className="form-label">
-                        Language <span className="text-danger"> *</span>
+                      <label className="form-label text-danger">
+                        Language <span>*</span>
                       </label>
                       <CommonSelect
                         options={Language}

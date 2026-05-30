@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePermission } from "../../../../core/hooks/usePermission";
 import { Link, useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
 import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
@@ -23,6 +24,7 @@ import {
 } from "../../../../core/cache/locationCache";
 import { emitMutation, onMutation } from "../../../../core/cache/mutationEvents";
 import { all_routes } from "../../../../routes/all_routes";
+import ConfirmDialog, { type ConfirmConfig } from "../../../../components/confirm-dialog/ConfirmDialog";
 
 const route = all_routes;
 
@@ -70,100 +72,6 @@ function collectDescendants(all: LocationListItem[], rootId: number): Set<number
 
 type ListFilter = "all" | "active" | "deleted";
 
-// ── Confirmation dialog ────────────────────────────────────────────────────────
-interface ConfirmConfig {
-  icon: string;
-  iconColor: string;
-  iconBg: string;
-  title: string;
-  message: string;
-  confirmLabel: string;
-  confirmColor: string;
-  onConfirm: () => Promise<void>;
-}
-
-function ConfirmDialog({
-  config,
-  onClose,
-}: {
-  config: ConfirmConfig | null;
-  onClose: () => void;
-}) {
-  const [busy, setBusy] = React.useState(false);
-
-  React.useEffect(() => { setBusy(false); }, [config]);
-
-  if (!config) return null;
-
-  const handleConfirm = async () => {
-    setBusy(true);
-    try { await config.onConfirm(); } finally { setBusy(false); }
-    onClose();
-  };
-
-  return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 1060,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)",
-      }}
-      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
-    >
-      <div
-        style={{
-          background: "#fff", borderRadius: 14, padding: "32px 28px 24px",
-          width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-          display: "flex", flexDirection: "column", alignItems: "center", gap: 0,
-        }}
-      >
-        {/* Icon */}
-        <div style={{
-          width: 56, height: 56, borderRadius: "50%",
-          background: config.iconBg,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          marginBottom: 16,
-        }}>
-          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
-        </div>
-
-        {/* Title */}
-        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>
-          {config.title}
-        </p>
-
-        {/* Message */}
-        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>
-          {config.message}
-        </p>
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 10, width: "100%" }}>
-          <button
-            className="btn btn-light flex-grow-1"
-            style={{ fontWeight: 500, fontSize: 14, height: 44 }}
-            onClick={onClose}
-            disabled={busy}
-          >
-            Cancel
-          </button>
-          <button
-            className="btn flex-grow-1"
-            style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
-            onClick={handleConfirm}
-            disabled={busy}
-          >
-            {busy
-              ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</>
-              : config.confirmLabel
-            }
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Location info row (2-col grid inside the Location Information card) ───────
 function LocInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -178,15 +86,17 @@ function LocInfoRow({ label, value }: { label: string; value: React.ReactNode })
 const LocationOverview = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const canEdit   = usePermission("locations", "edit");
+  const canDelete = usePermission("locations", "delete");
   const navState = useRouterLocation().state as { tab?: Tab } | null;
 
-  const [location, setLocation] = useState<LocationListItem | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [location, setLocation] = useState<LocationListItem | null>(() => { const n = Number(id); return isNaN(n) ? null : readLocationDetail(n) ?? null; });
+  const [loading, setLoading] = useState(() => { const n = Number(id); return isNaN(n) ? false : readLocationDetail(n) == null; });
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>(navState?.tab ?? "overview");
 
   // ── Locations list (left panel) ──
-  const [allLocations, setAllLocations] = useState<LocationListItem[]>([]);
+  const [allLocations, setAllLocations] = useState<LocationListItem[]>(() => readLocationList() ?? []);
   const [listSearch, setListSearch] = useState("");
   const [listFilter, setListFilter] = useState<ListFilter>("all");
   const [deletedLocations, setDeletedLocations] = useState<LocationListItem[]>([]);
@@ -575,39 +485,12 @@ const LocationOverview = () => {
     });
   };
 
-  // ── Loading / Error ──
-  if (loading) {
-    return (
-      <div className="page-wrapper">
-        <div className="content d-flex align-items-center justify-content-center" style={{ minHeight: 300 }}>
-          <span className="spinner-border spinner-border-sm me-2 text-primary" />
-          <span className="text-muted">Loading location…</span>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (error || !location) {
-    return (
-      <div className="page-wrapper">
-        <div className="content">
-          <div className="alert alert-danger">{error ?? "Location not found."}</div>
-          <Link to={route.locations} className="btn btn-outline-light">
-            <i className="ti ti-arrow-left me-1" /> Back to Locations
-          </Link>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
   const tabs: { key: Tab; label: string }[] = [
     { key: "overview", label: "Overview" },
     { key: "history",  label: "History"  },
   ];
 
-  const logoSrc = location.logo_path ? `/storage/${location.logo_path}` : null;
+  const logoSrc = location?.logo_path ? `/storage/${location.logo_path}` : null;
 
   const toggleExpand = (locId: number) => {
     setExpandedIds(prev => {
@@ -698,10 +581,10 @@ const LocationOverview = () => {
               </button>
               <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                 <ul>
-                  <li><button className="dropdown-item fs-13" onClick={() => navigate(`/locations/${loc.id}/edit`)}><i className="ti ti-pencil me-2" />Edit</button></li>
+                  {canEdit && <li><button className="dropdown-item fs-13" onClick={() => navigate(`/locations/${loc.id}/edit`)}><i className="ti ti-pencil me-2" />Edit</button></li>}
                   <li><button className="dropdown-item fs-13" onClick={() => navigate(route.addLocation, { state: { parentId: loc.id, parentName: loc.name } })}><i className="ti ti-plus me-2" />Add Sub-Location</button></li>
                   <li><hr className="dropdown-divider m-1" /></li>
-                  <li><button className="dropdown-item fs-13 text-danger" onClick={() => deleteLocation(loc.id)}><i className="ti ti-trash me-2" />Delete</button></li>
+                  {canDelete && <li><button className="dropdown-item fs-13 text-danger" onClick={() => deleteLocation(loc.id)}><i className="ti ti-trash me-2" />Delete</button></li>}
                 </ul>
               </div>
             </div>
@@ -875,6 +758,18 @@ const LocationOverview = () => {
 
         {/* ── Right: Location detail (independently scrollable) ─────────────── */}
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", background: "#fff" }}>
+          {(loading && !location) ? (
+            <div className="d-flex align-items-center gap-2 text-muted fs-13 py-4 px-4">
+              <span className="spinner-border spinner-border-sm" />Loading…
+            </div>
+          ) : !location ? (
+            <div style={{ padding: "1.25rem" }}>
+              <div className="alert alert-danger">{error ?? "Location not found."}</div>
+              <Link to={route.locations} className="btn btn-outline-light">
+                <i className="ti ti-arrow-left me-1" /> Back to Locations
+              </Link>
+            </div>
+          ) : (
           <div style={{ padding: "1.25rem", flex: 1 }}>
 
             {/* ── Header ── */}
@@ -944,11 +839,13 @@ const LocationOverview = () => {
                 </button>
                 <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                   <ul>
-                    <li>
-                      <button className="dropdown-item" onClick={() => navigate(`/locations/${id}/edit`)}>
-                        <i className="ti ti-pencil me-2" />Edit
-                      </button>
-                    </li>
+                    {canEdit && (
+                      <li>
+                        <button className="dropdown-item" onClick={() => navigate(`/locations/${id}/edit`)}>
+                          <i className="ti ti-pencil me-2" />Edit
+                        </button>
+                      </li>
+                    )}
                     <li>
                       <button
                         className="dropdown-item"
@@ -965,11 +862,13 @@ const LocationOverview = () => {
                       </li>
                     )}
                     <li><hr className="dropdown-divider m-1" /></li>
-                    <li>
-                      <button className="dropdown-item text-danger" onClick={() => deleteLocation(Number(id))}>
-                        <i className="ti ti-trash me-2" />Delete
-                      </button>
-                    </li>
+                    {canDelete && (
+                      <li>
+                        <button className="dropdown-item text-danger" onClick={() => deleteLocation(Number(id))}>
+                          <i className="ti ti-trash me-2" />Delete
+                        </button>
+                      </li>
+                    )}
                   </ul>
                 </div>
               </div>
@@ -997,7 +896,7 @@ const LocationOverview = () => {
             </div>
 
             {/* ── Tab nav ── */}
-            <div className="mb-4">
+            <div className="mb-4 scrollbar-hidden" style={{ overflowX: "auto" }}>
               <div
                 className="d-inline-flex rounded"
                 style={{ background: "#f1f3f5", padding: 4, gap: 2 }}
@@ -1346,7 +1245,7 @@ const LocationOverview = () => {
                       const actor   = log.user?.name ?? log.user?.email ?? "System";
                       // Normalise to UTC: append Z if no timezone indicator present
                       const rawTs   = log.created_at;
-                      const utcTs   = /Z$|[+-]\d{2}:\d{2}$/.test(rawTs) ? rawTs : rawTs.replace(' ', 'T') + 'Z';
+                      const utcTs   = rawTs.replace(' ', 'T').replace(/Z$|[+-]\d{2}:\d{2}$/, '');
                       const dateObj = new Date(utcTs);
                       const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
                       const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -1464,6 +1363,7 @@ const LocationOverview = () => {
             )}
 
           </div>
+          )}
         </div>
       </div>
       <Footer />

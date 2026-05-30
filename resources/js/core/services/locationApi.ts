@@ -4,6 +4,7 @@ const BASE = "/api/locations";
 
 export interface LocationListItem {
   id: number;
+  party_id: number | null;
   name: string;
   type: "business" | "warehouse";
   parent_id: number | null;
@@ -80,7 +81,7 @@ export async function fetchLocation(id: number): Promise<ItemResult> {
   } catch (e) { return handleError(e); }
 }
 
-export async function fetchLocations(params?: { active_only?: boolean; type?: string; trashed?: boolean }): Promise<ListResult> {
+export async function fetchLocations(params?: { active_only?: boolean; type?: string; trashed?: boolean; party_id?: number; all_locations?: boolean }): Promise<ListResult> {
   try {
     const { data } = await axios.get<ListResponse>(BASE, { params });
     return data;

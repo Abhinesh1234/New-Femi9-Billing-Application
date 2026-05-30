@@ -33,15 +33,25 @@ class SeriesController extends Controller
                 ->selectRaw('series_id, COUNT(id) AS cnt')
                 ->groupBy('series_id');
 
-            $series = TransactionSeries::with('modulesConfig')
+            $perPage = max(1, min((int) $request->query('per_page', 100), 200));
+
+            $paginated = TransactionSeries::with('modulesConfig')
                 ->leftJoinSub($locationCountSub, 'lc', 'lc.series_id', '=', 'transaction_series.id')
                 ->select(['transaction_series.*', DB::raw('COALESCE(lc.cnt, 0) AS locations_count')])
                 ->when($request->boolean('trashed'), fn($q) => $q->onlyTrashed())
                 ->when($request->query('search'), fn($q, $s) => $q->where('transaction_series.name', 'like', "%{$s}%"))
                 ->orderBy('transaction_series.name')
-                ->get();
+                ->paginate($perPage);
 
-            return $this->successResponse(['data' => $series]);
+            return $this->successResponse([
+                'data' => $paginated->items(),
+                'meta' => [
+                    'current_page' => $paginated->currentPage(),
+                    'last_page'    => $paginated->lastPage(),
+                    'per_page'     => $paginated->perPage(),
+                    'total'        => $paginated->total(),
+                ],
+            ]);
 
         } catch (Throwable $e) {
             $this->logException('SeriesController::index', $e, $ctx);
@@ -79,7 +89,7 @@ class SeriesController extends Controller
                     'customer_category' => $series->customer_category,
                     'modules_config'  => ['modules' => $normalised],
                 ]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message' => 'Transaction series created.',
@@ -176,7 +186,7 @@ class SeriesController extends Controller
             Log::info('[SeriesController] Updated', array_merge($ctx, ['series_id' => $id]));
             try {
                 $this->audit($request, 'updated', $id, $oldValues, $newValues);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message' => 'Transaction series updated.',
@@ -205,7 +215,7 @@ class SeriesController extends Controller
             Log::info('[SeriesController] Deleted', array_merge($ctx, ['series_id' => $id]));
             try {
                 $this->audit($request, 'deleted', $id, ['name' => $oldName], null);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
             return $this->successResponse(['message' => 'Transaction series deleted.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -244,7 +254,7 @@ class SeriesController extends Controller
             ]));
             try {
                 $this->audit($request, 'locations_assigned', $id, null, ['location_ids' => $locationIds]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
             return $this->successResponse(['message' => 'Locations assigned successfully.']);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
@@ -253,6 +263,43 @@ class SeriesController extends Controller
             DB::rollBack();
             $this->logException('SeriesController::assignLocations', $e, $ctx);
             return $this->errorResponse('Failed to assign locations.', 500);
+        }
+    }
+
+    // ── GET /api/series/for-location/{locationId} ─────────────────────────────
+    public function forLocation(Request $request, int $locationId): JsonResponse
+    {
+        $ctx = $this->buildCtx($request, 'SeriesController::forLocation', ['location_id' => $locationId]);
+
+        try {
+            $location = Location::select('id', 'txn_series_id', 'default_txn_series_id')
+                ->find($locationId);
+
+            $ids = $location
+                ? array_values(array_filter([
+                    $location->txn_series_id,
+                    $location->default_txn_series_id,
+                  ]))
+                : [];
+
+            $series = TransactionSeries::with('modulesConfig')
+                ->select('id', 'name', 'customer_category', 'is_system_default')
+                ->where(function ($q) use ($ids) {
+                    $q->where('is_system_default', true);
+                    if (!empty($ids)) {
+                        $q->orWhereIn('id', $ids);
+                    }
+                })
+                ->whereNull('deleted_at')
+                ->orderByRaw('is_system_default ASC')
+                ->orderBy('name')
+                ->get();
+
+            return $this->successResponse(['data' => $series]);
+
+        } catch (Throwable $e) {
+            $this->logException('SeriesController::forLocation', $e, $ctx);
+            return $this->errorResponse('Failed to fetch series for location.', 500);
         }
     }
 
@@ -273,7 +320,7 @@ class SeriesController extends Controller
             Log::info('[SeriesController] Restored', array_merge($ctx, ['series_id' => $id]));
             try {
                 $this->audit($request, 'restored', $id, null, ['name' => $series->name]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
             return $this->successResponse([
                 'message' => 'Transaction series restored.',
                 'data'    => $series->fresh('modulesConfig'),
@@ -284,6 +331,58 @@ class SeriesController extends Controller
         } catch (Throwable $e) {
             $this->logException('SeriesController::restore', $e, $ctx);
             return $this->errorResponse('Failed to restore series.', 500);
+        }
+    }
+
+    // ── GET /api/series/{id}/next-number?module=Invoice ──────────────────────
+    /**
+     * Return the next safe invoice number for this series.
+     * Uses max(current_number, highest_existing_invoice_suffix + 1)
+     * so existing invoices created before the increment logic are never re-used.
+     */
+    public function nextNumber(Request $request, int $id): JsonResponse
+    {
+        $ctx = $this->buildCtx($request, 'SeriesController::nextNumber');
+        try {
+            $series = TransactionSeries::with('modulesConfig')->findOrFail($id);
+            $moduleName = trim((string) $request->query('module', 'Invoice'));
+
+            $module = $series->modulesConfig?->getModule($moduleName);
+            if (!$module) {
+                return $this->errorResponse("Module \"{$moduleName}\" not found in this series.", 404);
+            }
+
+            $prefix  = (string) ($module['prefix']          ?? '');
+            $padLen  = strlen((string) ($module['starting_number'] ?? '1'));
+            $current = (int)   ($module['current_number']   ?? 1);
+
+            // Scan existing invoices with this prefix to find the highest used number,
+            // so we never suggest a number that was already issued (even before the
+            // increment logic existed).
+            if ($prefix !== '') {
+                $maxExisting = \App\Models\Invoice::withTrashed()
+                    ->where('invoice_number', 'like', $prefix . '%')
+                    ->selectRaw('MAX(CAST(SUBSTRING(invoice_number, ?) AS UNSIGNED)) AS max_num', [strlen($prefix) + 1])
+                    ->value('max_num');
+
+                if ($maxExisting !== null && (int) $maxExisting >= $current) {
+                    $current = (int) $maxExisting + 1;
+                }
+            }
+
+            return $this->successResponse([
+                'data' => [
+                    'invoice_number' => $prefix . str_pad($current, $padLen, '0', STR_PAD_LEFT),
+                    'prefix'         => $prefix,
+                    'current_number' => $current,
+                    'pad_length'     => $padLen,
+                ],
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return $this->errorResponse('Series not found.', 404);
+        } catch (Throwable $e) {
+            $this->logException('SeriesController::nextNumber', $e, $ctx);
+            return $this->errorResponse('Failed to fetch next number.', 500);
         }
     }
 

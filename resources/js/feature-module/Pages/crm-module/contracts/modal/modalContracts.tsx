@@ -28,16 +28,16 @@ const ModalContracts = () => {
               <div className="row mb-3">
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Subject <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Subject <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Start Date <span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Start Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -46,8 +46,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      End Date <span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      End Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -56,8 +56,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Client <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Client <span>*</span>
                     </label>
                     <CommonSelect
                       options={Client}
@@ -68,8 +68,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Contract Type<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Contract Type<span>*</span>
                     </label>
                     <CommonSelect
                       options={Contract_Type}
@@ -80,16 +80,16 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Contract Value <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Contract Value <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Attachment <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Attachment <span>*</span>
                     </label>
                     <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                       <span className="upload-img d-block mb-1">
@@ -111,8 +111,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <div className="editor pages-editor">
                       <TextEditor />
@@ -392,32 +392,32 @@ const ModalContracts = () => {
           <div className="row">
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  First Name <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  First Name <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Last Name <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Last Name <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Email <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Email <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Signature <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Signature <span>*</span>
                 </label>
                 <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                   <span className="upload-img d-block mb-1">
@@ -474,8 +474,8 @@ const ModalContracts = () => {
               <div className="row mb-3">
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Subject <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Subject <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -486,8 +486,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Start Date <span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Start Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -496,8 +496,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      End Date <span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      End Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -506,8 +506,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Client <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Client <span>*</span>
                     </label>
                     <CommonSelect
                       options={Client}
@@ -518,8 +518,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Contract Type<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Contract Type<span>*</span>
                     </label>
                     <CommonSelect
                       options={Contract_Type}
@@ -530,8 +530,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Contract Value <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Contract Value <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -542,8 +542,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Attachment <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Attachment <span>*</span>
                     </label>
                     <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                       <span className="upload-img d-block mb-1">
@@ -565,8 +565,8 @@ const ModalContracts = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <div className="editor pages-editor">
                       <TextEditor />

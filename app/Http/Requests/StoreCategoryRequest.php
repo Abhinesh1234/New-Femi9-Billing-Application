@@ -23,9 +23,9 @@ class StoreCategoryRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required'      => 'Category name is required.',
-            'name.max'           => 'Category name cannot exceed 255 characters.',
-            'parent_id.exists'   => 'The selected parent category does not exist.',
+            'name.required'    => 'Category name is required.',
+            'name.max'         => 'Category name cannot exceed 255 characters.',
+            'parent_id.exists' => 'The selected parent category does not exist.',
         ];
     }
 }

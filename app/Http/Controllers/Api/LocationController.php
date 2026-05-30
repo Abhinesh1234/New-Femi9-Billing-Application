@@ -21,8 +21,11 @@ class LocationController extends Controller
         $ctx = $this->buildCtx($request, 'LocationController::index');
 
         try {
-            $locations = Location::select([
-                    'id', 'name', 'type', 'parent_id',
+            $perPage      = max(1, min((int) $request->query('per_page', 500), 1000));
+            $partyScopeId = $request->attributes->get('party_scope_id');
+
+            $query = Location::select([
+                    'id', 'party_id', 'name', 'type', 'parent_id',
                     'logo_type', 'logo_path', 'is_active', 'is_primary',
                     'address', 'default_txn_series_id',
                     'created_by', 'created_at',
@@ -32,14 +35,37 @@ class LocationController extends Controller
                     'createdBy:id,name,phone',
                     'defaultTxnSeries:id,name',
                 ])
+                ->when(
+                    $request->boolean('all_locations'),
+                    fn($q) => $q, // no party_id constraint — return all locations
+                    fn($q) => $q->when(
+                        $partyScopeId !== null,
+                        fn($q2) => $q2->where('party_id', $partyScopeId), // party portal: their own locations
+                        fn($q2) => $q2->when(
+                            $request->filled('party_id'),
+                            fn($q3) => $q3->where('party_id', $request->query('party_id')),
+                            fn($q3) => $q3->whereNull('party_id') // default: company-owned only
+                        )
+                    )
+                )
                 ->search($request->query('search'))
                 ->ofType($request->query('type'))
                 ->when($request->boolean('active_only'), fn($q) => $q->active())
                 ->when($request->boolean('trashed'),     fn($q) => $q->onlyTrashed())
-                ->orderBy('name')
-                ->get();
+                ->orderBy('name');
 
-            return $this->successResponse(['data' => $locations]);
+            $paginated = $query->paginate($perPage);
+
+            return response()->json(array_merge(['success' => true], [
+                'data' => $paginated->items(),
+                'meta' => [
+                    'current_page' => $paginated->currentPage(),
+                    'last_page'    => $paginated->lastPage(),
+                    'total'        => $paginated->total(),
+                    'per_page'     => $paginated->perPage(),
+                ],
+            ]))
+            ->header('Cache-Control', 'private, no-cache');
 
         } catch (Throwable $e) {
             $this->logException('LocationController::index', $e, $ctx);
@@ -53,16 +79,21 @@ class LocationController extends Controller
         $ctx = $this->buildCtx($request, 'LocationController::store');
 
         try {
+            $location = null;
+
+            DB::beginTransaction();
+
             $data = $request->validated();
             $data['created_by'] = $request->user()->id;
-
             $location = Location::create($data);
+
+            DB::commit();
 
             Log::info('[LocationController] Created', array_merge($ctx, ['location_id' => $location->id]));
 
             try {
                 $this->audit($request, 'created', $location->id, null, $location->toArray());
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message' => 'Location created.',
@@ -70,6 +101,7 @@ class LocationController extends Controller
             ], 201);
 
         } catch (Throwable $e) {
+            DB::rollBack();
             $this->logException('LocationController::store', $e, $ctx);
             return $this->errorResponse('Failed to create location.', 500);
         }
@@ -114,7 +146,7 @@ class LocationController extends Controller
 
             try {
                 $this->audit($request, 'updated', $id, $old, $location->fresh()->toArray());
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message' => 'Location updated.',
@@ -140,23 +172,26 @@ class LocationController extends Controller
             // Collect this location + every descendant (recursive via closure table pattern)
             $allIds = $this->collectDescendantIds($id);
 
-            // Audit + soft-delete every location in the subtree
-            foreach ($allIds as $locId) {
-                $loc = Location::find($locId);
-                if (!$loc) continue;
-                try {
-                    $this->audit($request, 'deleted', $locId, $loc->toArray(), null);
-                } catch (Throwable) {}
-                $loc->delete();
-            }
+            DB::transaction(function () use ($request, $location, $allIds, $id) {
+                // Audit + soft-delete every location in the subtree (bulk fetch to avoid N+1)
+                $locations = Location::whereIn('id', $allIds)->get()->keyBy('id');
+                foreach ($allIds as $locId) {
+                    $loc = $locations->get($locId);
+                    if (!$loc) continue;
+                    try {
+                        $this->audit($request, 'deleted', $locId, $loc->toArray(), null);
+                    } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
+                    $loc->delete();
+                }
 
-            // Also record the removal on the parent so its History tab reflects the change
-            if ($location->parent_id) {
-                try {
-                    $this->audit($request, 'child_deleted', $location->parent_id,
-                        ['child_id' => $location->id, 'child_name' => $location->name], null);
-                } catch (Throwable) {}
-            }
+                // Also record the removal on the parent so its History tab reflects the change
+                if ($location->parent_id) {
+                    try {
+                        $this->audit($request, 'child_deleted', $location->parent_id,
+                            ['child_id' => $location->id, 'child_name' => $location->name], null);
+                    } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
+                }
+            });
 
             Log::info('[LocationController] Deleted', array_merge($ctx, ['location_id' => $id]));
             return $this->successResponse(['message' => 'Location deleted.']);
@@ -184,7 +219,7 @@ class LocationController extends Controller
 
             try {
                 $this->audit($request, 'set_primary', $id, null, ['is_primary' => true]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse(['message' => 'Primary location updated.']);
 
@@ -207,20 +242,22 @@ class LocationController extends Controller
             // Cascade-restore every descendant that was soft-deleted at or after this location
             $allIds = $this->collectDescendantIds($id, onlyTrashed: true);
 
+            // Bulk fetch to avoid N+1 queries per restored location
+            $trashedLocs = Location::onlyTrashed()->whereIn('id', $allIds)->get()->keyBy('id');
             foreach ($allIds as $locId) {
-                $loc = Location::onlyTrashed()->find($locId);
+                $loc = $trashedLocs->get($locId);
                 if (!$loc) continue;
                 $loc->restore();
                 try {
                     $this->audit($request, 'restored', $locId, null, $loc->fresh()->toArray());
-                } catch (Throwable) {}
+                } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
             }
 
             if ($location->parent_id) {
                 try {
                     $this->audit($request, 'child_restored', $location->parent_id,
                         null, ['child_id' => $location->id, 'child_name' => $location->name]);
-                } catch (Throwable) {}
+                } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
             }
 
             return $this->successResponse([
@@ -284,7 +321,7 @@ class LocationController extends Controller
                     ['access_users' => $old],
                     ['access_users' => $deduped]
                 );
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message'      => 'Access users updated.',
@@ -303,24 +340,24 @@ class LocationController extends Controller
 
     private function collectDescendantIds(int $rootId, bool $onlyTrashed = false): array
     {
-        $ids   = [$rootId];
-        $queue = [$rootId];
+        // Single recursive CTE — one query regardless of tree depth
+        $deletedFilter = $onlyTrashed
+            ? 'AND deleted_at IS NOT NULL'
+            : '';                             // withTrashed: include all rows
 
-        while (!empty($queue)) {
-            $parentId = array_shift($queue);
-            $query    = $onlyTrashed
-                ? Location::onlyTrashed()->where('parent_id', $parentId)
-                : Location::withTrashed()->where('parent_id', $parentId);
+        $rows = DB::select("
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM locations WHERE id = ? {$deletedFilter}
+                UNION ALL
+                SELECT l.id
+                FROM locations l
+                INNER JOIN descendants d ON l.parent_id = d.id
+                {$deletedFilter}
+            )
+            SELECT id FROM descendants
+        ", [$rootId]);
 
-            $children = $query->pluck('id')->toArray();
-
-            foreach ($children as $childId) {
-                $ids[]   = $childId;
-                $queue[] = $childId;
-            }
-        }
-
-        return $ids;
+        return array_column($rows, 'id');
     }
 
     private function audit(

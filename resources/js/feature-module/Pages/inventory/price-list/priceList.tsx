@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
 import { Link, useNavigate } from "react-router";
-import { Modal, Toast } from "react-bootstrap";
+import { useSelector } from "react-redux";
+import { Toast } from "react-bootstrap";
+import type { RootState } from "../../../../core/redux/store";
 import {
   DndContext,
   closestCenter,
@@ -23,13 +25,16 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import Datatable from "../../../../components/dataTable";
 import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
+import { usePermission } from "../../../../core/hooks/usePermission";
 import {
   readPriceListList,
   getPriceListList,
   bustAllPriceListCache,
+  hydratePriceListDetail,
   type PriceListRecord,
 } from "../../../../core/cache/priceListCache";
 import { onMutation } from "../../../../core/cache/mutationEvents";
+import { useWindowFocusRefresh } from "../../../../core/hooks/useWindowFocusRefresh";
 import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
 
 const route = all_routes;
@@ -142,9 +147,14 @@ function SortableColRow({ col, checked, onToggle }: { col: ColDef; checked: bool
   );
 }
 
+type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
+
 // ─── Main component ───────────────────────────────────────────────────────────
 const PriceList = () => {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const authUser  = useSelector((state: RootState) => state.auth.user);
+  const isParty   = authUser?.user_type === "party";
+  const canCreate = usePermission("price_list", "create");
 
   const [view, setView] = useState<"list" | "grid">(() => {
     try { return localStorage.getItem(VIEW_LS_KEY) === "grid" ? "grid" : "list"; }
@@ -153,21 +163,19 @@ const PriceList = () => {
   const [gridPage,    setGridPage]    = useState(12);
   const [searchText,  setSearchText]  = useState("");
   const [items,       setItems]       = useState<PriceListRecord[]>([]);
-  const [total,       setTotal]       = useState(0);
   const [loading,     setLoading]     = useState(true);
   const [loadError,   setLoadError]   = useState<string | null>(null);
   const [typeFilter,  setTypeFilter]  = useState<"all" | "sales" | "purchase" | "both" | "deleted">("all");
+  const [sortBy,      setSortBy]      = useState<SortOption>("newest");
   const [deletedItems,   setDeletedItems]   = useState<PriceListRecord[]>([]);
   const [deletedLoading, setDeletedLoading] = useState(false);
 
   // ── Toast ──
-  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({
-    show: false, message: "", type: "success",
-  });
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = (type: "success" | "danger", message: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ show: true, message, type });
+    setToast({ show: true, type, message });
     toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
@@ -256,29 +264,40 @@ const PriceList = () => {
   const loadFresh = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
-    bustAllPriceListCache();
     try {
       const data = await getPriceListList();
       setItems(data);
-      setTotal(data.length);
     } catch (e: any) {
       setLoadError(e.message ?? "Failed to load price lists.");
     }
     setLoading(false);
   }, []);
 
+  // Silent refresh — busts cache and updates data in place without wiping the table
+  const silentRefresh = useCallback(async () => {
+    bustAllPriceListCache();
+    try {
+      const data = await getPriceListList();
+      setItems(data);
+    } catch { /* ignore — data stays as is */ }
+  }, []);
+
   // Cache-first mount
   useEffect(() => {
     const cached = readPriceListList();
-    if (cached) { setItems(cached); setTotal(cached.length); setLoading(false); return; }
+    if (cached) { setItems(cached); setLoading(false); return; }
     loadFresh();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
 
-  // Reload when any page mutates price list data
-  useEffect(() => onMutation("price-lists:mutated", loadFresh), [loadFresh]);
+  // Reload when any page mutates price list data — silent so table stays visible
+  useEffect(() => onMutation("price-lists:mutated", silentRefresh), [silentRefresh]);
+  useWindowFocusRefresh(silentRefresh);
+
+  // Party users cannot access the deleted filter
+  useEffect(() => { if (isParty && typeFilter === "deleted") setTypeFilter("all"); }, [isParty, typeFilter]);
 
   // Reset grid "load more" count when filter changes
   useEffect(() => { setGridPage(12); }, [typeFilter]);
@@ -287,7 +306,7 @@ const PriceList = () => {
   useEffect(() => {
     const onFocus = () => {
       getPriceListList()
-        .then(data => { setItems(data); setTotal(data.length); })
+        .then(data => { setItems(data); })
         .catch(() => {});
     };
     window.addEventListener("focus", onFocus);
@@ -305,22 +324,36 @@ const PriceList = () => {
       .catch(() => setDeletedLoading(false));
   }, [typeFilter]);
 
-  // ── Filtered rows ──
+  // ── Filtered + sorted rows (no search — Datatable handles search in list view) ──
   const filtered = useMemo(() => {
     const base = typeFilter === "deleted"
       ? deletedItems
       : typeFilter === "all"
         ? items
         : items.filter(i => i.transaction_type === typeFilter);
-    if (!searchText.trim()) return base;
+    const sorted = [...base].sort((a, b) => {
+      switch (sortBy) {
+        case "oldest":    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "name_asc":  return a.name.localeCompare(b.name);
+        case "name_desc": return b.name.localeCompare(a.name);
+        default:          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+    if (!isParty) return sorted;
+    return [
+      ...sorted.filter(i => !i.is_company_list),
+      ...sorted.filter(i =>  i.is_company_list),
+    ];
+  }, [items, deletedItems, typeFilter, sortBy, isParty]);
+
+  // ── Grid search filter (Datatable handles search in list view) ──
+  const gridItems = useMemo(() => {
+    if (!searchText.trim()) return filtered;
     const q = searchText.trim().toLowerCase();
-    return base.filter(i =>
-      i.name.toLowerCase().includes(q) ||
-      i.transaction_type.toLowerCase().includes(q) ||
-      i.price_list_type.toLowerCase().includes(q) ||
-      (i.customer_category_name ?? "").toLowerCase().includes(q)
+    return filtered.filter(i =>
+      Object.values(i).some(v => String(v ?? "").toLowerCase().includes(q))
     );
-  }, [items, deletedItems, typeFilter, searchText]);
+  }, [filtered, searchText]);
 
   // ── Build table columns ──
   const columns = useMemo(() => {
@@ -337,15 +370,21 @@ const PriceList = () => {
         dataIndex: "name",
         width: colWidths["name"] ?? DEFAULT_COL_WIDTHS["name"],
         onHeaderCell: resizeCell("name"),
-        render: (_: string, record: PriceListRecord) => (
-          <Link
-            to={`/price-list/${record.id}`}
-            className="title-name fw-medium"
-            onClick={e => e.stopPropagation()}
-          >
-            {record.name}
-          </Link>
-        ),
+        render: (_: string, record: PriceListRecord) =>
+          record.is_company_list ? (
+            <span className="d-flex align-items-center gap-2 text-muted">
+              <i className="ti ti-lock fs-13" />
+              {record.name}
+            </span>
+          ) : (
+            <Link
+              to={`/price-list/${record.id}`}
+              className="title-name fw-medium"
+              onClick={e => e.stopPropagation()}
+            >
+              {record.name}
+            </Link>
+          ),
       },
     ];
 
@@ -437,9 +476,6 @@ const PriceList = () => {
     return cols;
   }, [visibleCols, colOrder, colWidths, handleResize]);
 
-  // ── Grid items ──
-  const gridItems = useMemo(() => filtered, [filtered]);
-
   // ── Export handlers ──
   const txnLabel = (v: string) => ({ sales: "Sales", purchase: "Purchase", both: "Both" }[v] ?? v);
   const plLabel  = (v: string) => v === "all_items" ? "All Items" : "Individual Items";
@@ -457,7 +493,7 @@ const PriceList = () => {
 
   const handleExportPdf = () => {
     try { exportToPdfPrint("Price Lists", plExportHeaders, buildPlExportRows()); }
-    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+    catch (e: any) { showToast("danger", e.message ?? "PDF export failed."); }
   };
 
   const handleExportExcel = () => {
@@ -476,7 +512,7 @@ const PriceList = () => {
       { header: "Customer Category", key: "customer_cat",     width: 22 },
       { header: "Status",            key: "status",           width: 12 },
       { header: "Created On",        key: "created_at",       width: 18 },
-    ], rows).catch(() => showToast("Export failed.", "error"));
+    ], rows).catch(() => showToast("danger", "Export failed."));
   };
 
   return (
@@ -485,10 +521,10 @@ const PriceList = () => {
         <div className="content">
           <PageHeader
             title="Price Lists"
-            badgeCount={total}
+            badgeCount={filtered.length}
             showModuleTile={false}
             showExport={true}
-            onRefresh={loadFresh}
+            onRefresh={silentRefresh}
             onExportPdf={handleExportPdf}
             onExportExcel={handleExportExcel}
           />
@@ -501,10 +537,12 @@ const PriceList = () => {
                 </span>
                 <SearchInput value={searchText} onChange={setSearchText} />
               </div>
-              <Link to={route.newPriceList} className="btn btn-primary">
-                <i className="ti ti-square-rounded-plus-filled me-1" />
-                New Price List
-              </Link>
+              {canCreate && (
+                <Link to={route.newPriceList} className="btn btn-primary">
+                  <i className="ti ti-square-rounded-plus-filled me-1" />
+                  New Price List
+                </Link>
+              )}
             </div>
 
             <div className="card-body">
@@ -542,18 +580,35 @@ const PriceList = () => {
                             <i className="ti ti-arrows-exchange me-1" />Both
                           </button>
                         </li>
-                        <li>
-                          <button className="dropdown-item" onClick={() => setTypeFilter("deleted")}>
-                            <i className="ti ti-trash me-1" />Deleted Price Lists
-                          </button>
-                        </li>
+                        {!isParty && (
+                          <li>
+                            <button className="dropdown-item" onClick={() => setTypeFilter("deleted")}>
+                              <i className="ti ti-trash me-1" />Deleted Price Lists
+                            </button>
+                          </li>
+                        )}
                       </ul>
                     </div>
                   </div>
                 </div>
 
-                {/* Right — manage cols + view toggle */}
+                {/* Right — sort + manage cols + view toggle */}
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <div className="dropdown">
+                    <button type="button" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
+                      <i className="ti ti-sort-ascending-2 me-2" />
+                      {{ newest: "Newest", oldest: "Oldest", name_asc: "Name A–Z", name_desc: "Name Z–A" }[sortBy]}
+                    </button>
+                    <div className="dropdown-menu dropmenu-hover-primary">
+                      <ul>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "newest" ? " active" : ""}`} onClick={() => setSortBy("newest")}><i className="ti ti-clock-hour-3 fs-15" />Newest</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "oldest" ? " active" : ""}`} onClick={() => setSortBy("oldest")}><i className="ti ti-history fs-15" />Oldest</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "name_asc" ? " active" : ""}`} onClick={() => setSortBy("name_asc")}><i className="ti ti-sort-ascending-letters fs-15" />Name A–Z</button></li>
+                        <li><button className={`dropdown-item d-flex align-items-center gap-2${sortBy === "name_desc" ? " active" : ""}`} onClick={() => setSortBy("name_desc")}><i className="ti ti-sort-descending-letters fs-15" />Name Z–A</button></li>
+                      </ul>
+                    </div>
+                  </div>
+
                   {view === "list" && (
                     <button type="button" className="btn bg-soft-indigo px-2 border-0" onClick={openColsModal}>
                       <i className="ti ti-columns-3 me-2" />Manage Columns
@@ -589,23 +644,23 @@ const PriceList = () => {
                 </div>
               )}
 
-              {(loading || (typeFilter === "deleted" && deletedLoading)) ? (
-                <div className="text-center py-5 text-muted">
-                  <span className="spinner-border spinner-border-sm me-2" />
-                  {typeFilter === "deleted" ? "Loading deleted price lists…" : "Loading price lists…"}
-                </div>
-              ) : view === "list" ? (
+              {(loading || (typeFilter === "deleted" && deletedLoading)) ? null : view === "list" ? (
                 <div className="custom-table table-nowrap">
                   <Datatable
                     columns={columns}
-                    dataSource={filtered.map(r => ({ ...r, key: r.id }))}
+                    dataSource={filtered}
                     Selection={false}
                     searchText={searchText}
                     components={TABLE_COMPONENTS}
                     scroll={{ x: "max-content" }}
+                    rowKey="id"
                     onRow={(record: PriceListRecord) => ({
-                      onClick: () => navigate(`/price-list/${record.id}`, { state: typeFilter === "deleted" ? { listFilter: "deleted" } : undefined }),
-                      style:   { cursor: "pointer" },
+                      onClick: () => {
+                        if (record.is_company_list) return;
+                        hydratePriceListDetail(record);
+                        navigate(`/price-list/${record.id}`, { state: typeFilter === "deleted" ? { listFilter: "deleted" } : undefined });
+                      },
+                      style: { cursor: record.is_company_list ? "default" : "pointer" },
                     })}
                   />
                 </div>
@@ -613,9 +668,16 @@ const PriceList = () => {
                 /* ── Grid view ─────────────────────────────────────────── */
                 <>
                   {gridItems.length === 0 ? (
-                    <div className="text-center py-5 text-muted">
-                      <i className="ti ti-mood-empty fs-32 d-block mb-2" />
-                      No price lists found
+                    <div className="text-center py-5">
+                      <i className="ti ti-tag fs-40 d-block mb-4 text-muted opacity-50" />
+                      <h6 className="fw-semibold mb-2">No Price Lists</h6>
+                      <p className="text-muted mb-4 fs-14">Get started by creating your first price list.</p>
+                      {canCreate && (
+                        <Link to={route.newPriceList} className="btn btn-primary px-4">
+                          <i className="ti ti-square-rounded-plus-filled me-1" />
+                          Add New Price List
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     <div className="row">
@@ -629,15 +691,22 @@ const PriceList = () => {
                           <div key={item.id} className="col-xxl-3 col-xl-4 col-md-6">
                             <div
                               className="card border shadow"
-                              style={{ cursor: "pointer" }}
-                              onClick={() => navigate(`/price-list/${item.id}`, { state: typeFilter === "deleted" ? { listFilter: "deleted" } : undefined })}
+                              style={{ cursor: item.is_company_list ? "default" : "pointer", opacity: item.is_company_list ? 0.7 : 1 }}
+                              onClick={() => { if (!item.is_company_list) { hydratePriceListDetail(item); navigate(`/price-list/${item.id}`, { state: typeFilter === "deleted" ? { listFilter: "deleted" } : undefined }); } }}
                             >
                               <div className="card-body">
                                 <div className="d-flex align-items-center justify-content-between border-bottom pb-3 mb-3">
                                   <span className="fs-13 text-muted">{txnLabels[item.transaction_type] ?? item.transaction_type}</span>
-                                  <span className={`badge ${item.is_active ? "badge-soft-success" : "badge-soft-danger"}`}>
-                                    {item.is_active ? "Active" : "Inactive"}
-                                  </span>
+                                  <div className="d-flex align-items-center gap-2">
+                                    {item.is_company_list && (
+                                      <span className="badge badge-soft-secondary fs-11">
+                                        <i className="ti ti-lock me-1 fs-11" />Company
+                                      </span>
+                                    )}
+                                    <span className={`badge ${item.is_active ? "badge-soft-success" : "badge-soft-danger"}`}>
+                                      {item.is_active ? "Active" : "Inactive"}
+                                    </span>
+                                  </div>
                                 </div>
 
                                 <div className="d-block">
@@ -690,88 +759,74 @@ const PriceList = () => {
       </div>
 
       {/* ── Customize Columns Modal ───────────────────────────────────────────── */}
-      <Modal show={showColsModal} onHide={closeColsModal} centered size="md">
-        <Modal.Header className="px-4 py-3 border-bottom">
-          <div className="d-flex align-items-center justify-content-between w-100">
-            <div className="d-flex align-items-center gap-2">
-              <i className="ti ti-adjustments-horizontal fs-20 text-muted" />
-              <Modal.Title className="fs-17 fw-semibold mb-0">Customize Columns</Modal.Title>
+      {showColsModal && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={e => { if (e.target === e.currentTarget) closeColsModal(); }}
+        >
+          <div style={{ background: "#fff", borderRadius: 14, width: 580, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "85vh" }}>
+            <div style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 12, flexShrink: 0 }}>
+              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <i className="ti ti-adjustments-horizontal fs-18" style={{ color: "#ef4444" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Customize Columns</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>{draftVisible.size + 1} of {INITIAL_COLS.length + 1} columns visible</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeColsModal}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+              >
+                <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+              </button>
             </div>
-            <div className="d-flex align-items-center gap-3">
-              <span className="text-muted fs-14">
-                {draftVisible.size + 2} of {INITIAL_COLS.length + 2} Selected
-              </span>
-              <button type="button" className="btn-close" onClick={closeColsModal} aria-label="Close" />
+            <div style={{ padding: "14px 24px 10px", flexShrink: 0 }}>
+              <div className="input-icon input-icon-start position-relative">
+                <span className="input-icon-addon text-muted" style={{ left: 12 }}>
+                  <i className="ti ti-search fs-15" />
+                </span>
+                <input
+                  type="text"
+                  className="form-control ps-5"
+                  placeholder="Search columns…"
+                  value={colSearch}
+                  onChange={e => setColSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light" style={{ flexShrink: 0 }}>
+              <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
+              <i className="ti ti-lock text-muted fs-15" />
+              <span className="fs-14 text-muted">Name</span>
+              <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={filteredDraft.map(c => c.key)} strategy={verticalListSortingStrategy}>
+                  {filteredDraft.map(col => (
+                    <SortableColRow key={col.key} col={col} checked={draftVisible.has(col.key)} onToggle={() => toggleDraft(col.key)} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+            <div style={{ padding: "16px 24px 22px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button className="btn btn-danger me-2" onClick={saveColsModal}>Save</button>
+              <button className="btn btn-outline-light" onClick={closeColsModal}>Cancel</button>
             </div>
           </div>
-        </Modal.Header>
-
-        <Modal.Body className="p-0">
-          <div className="px-4 pt-3 pb-2">
-            <div className="input-icon input-icon-start position-relative">
-              <span className="input-icon-addon text-muted" style={{ left: 12 }}>
-                <i className="ti ti-search fs-15" />
-              </span>
-              <input
-                type="text"
-                className="form-control ps-5"
-                placeholder="Search columns…"
-                value={colSearch}
-                onChange={e => setColSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light">
-            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
-            <i className="ti ti-lock text-muted fs-15" />
-            <span className="fs-14 text-muted">Name</span>
-            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
-          </div>
-
-          <div style={{ maxHeight: 380, overflowY: "auto" }}>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={filteredDraft.map(c => c.key)} strategy={verticalListSortingStrategy}>
-                {filteredDraft.map(col => (
-                  <SortableColRow key={col.key} col={col} checked={draftVisible.has(col.key)} onToggle={() => toggleDraft(col.key)} />
-                ))}
-              </SortableContext>
-            </DndContext>
-          </div>
-
-          <div className="d-flex align-items-center gap-3 px-4 py-3 border-top bg-light">
-            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
-            <i className="ti ti-lock text-muted fs-15" />
-            <span className="fs-14 text-muted">Action</span>
-            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
-          </div>
-        </Modal.Body>
-
-        <Modal.Footer className="px-4 py-3 border-top justify-content-start gap-2">
-          <button type="button" className="btn btn-sm btn-primary" onClick={saveColsModal}>Save</button>
-          <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
-        </Modal.Footer>
-      </Modal>
+        </div>
+      )}
 
       {/* ── Toast notification ───────────────────────────────────────────────── */}
-      <div
-        className="position-fixed top-0 start-50 translate-middle-x pt-4"
-        style={{ zIndex: 9999, pointerEvents: "none" }}
-      >
+      <div className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
-          onClose={() => setToast(t => ({ ...t, show: false }))}
+          onClose={() => setToast((t) => ({ ...t, show: false }))}
           role="alert"
           aria-live="assertive"
           aria-atomic="true"
-          style={{
-            pointerEvents: "auto",
-            borderRadius: 12,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-            border: "none",
-            minWidth: 320,
-            background: "#fff",
-          }}
+          style={{ pointerEvents: "auto", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.10)", border: "none", minWidth: 320, background: "#fff" }}
         >
           <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
             <span

@@ -48,16 +48,16 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Bill To<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Bill To<span>*</span>
                 </label>
                 <input className="form-control" type="text" />
               </div>
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Ship To<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Ship To<span>*</span>
                 </label>
                 <input className="form-control" type="text" />
               </div>
@@ -83,16 +83,16 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Amount<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Amount<span>*</span>
                 </label>
                 <input className="form-control" type="text" />
               </div>
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Currency <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Currency <span>*</span>
                 </label>
                 <CommonSelect
                             options={Currency}
@@ -112,8 +112,8 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Open Till<span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Open Till<span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -142,8 +142,8 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-12 mb-3">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <div className="editor pages-editor">
                     <TextEditor/>
@@ -296,16 +296,16 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Bill To<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Bill To<span>*</span>
                 </label>
                 <input className="form-control" type="text" />
               </div>
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Ship To<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Ship To<span>*</span>
                 </label>
                 <input className="form-control" type="text" />
               </div>
@@ -331,8 +331,8 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Amount<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Amount<span>*</span>
                 </label>
                 <input
                   className="form-control"
@@ -343,8 +343,8 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Currency <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Currency <span>*</span>
                 </label>
                 <CommonSelect
                             options={Currency}
@@ -364,8 +364,8 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Open Till<span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Open Till<span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                  <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -394,8 +394,8 @@ const ModalInvoice = () => {
             </div>
             <div className="col-md-12 mb-3">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <div className="editor pages-editor">
                   <TextEditor/>

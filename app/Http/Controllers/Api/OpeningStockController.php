@@ -17,25 +17,42 @@ use Throwable;
 class OpeningStockController extends Controller
 {
     // ── GET /api/items/{item}/opening-stock ───────────────────────────────────
+    // Party users only see opening stock for locations that belong to their party.
     public function show(Request $request, int $itemId): JsonResponse
     {
         $ctx = $this->buildCtx($request, 'OpeningStockController::show', ['item_id' => $itemId]);
+        Log::info('[OpeningStockController] Show started', $ctx);
 
         try {
             if (!Item::withTrashed()->where('id', $itemId)->exists()) {
+                Log::warning('[OpeningStockController] Show — item not found', $ctx);
                 return $this->errorResponse('Item not found.', 404);
             }
 
-            $entries = ItemStockLedger::where('item_id', $itemId)
-                ->where('transaction_type', 'opening')
+            $partyScopeId = $request->attributes->get('party_scope_id');
+
+            $query = ItemStockLedger::where('item_stock_ledger.item_id', $itemId)
+                ->where('item_stock_ledger.transaction_type', 'opening')
+                ->join('locations', 'item_stock_ledger.location_id', '=', 'locations.id');
+
+            if ($partyScopeId !== null) {
+                $query->where('locations.party_id', $partyScopeId);
+            } else {
+                $query->whereNull('locations.party_id');
+            }
+
+            $entries = $query
                 ->with('location:id,name')
-                ->get(['location_id', 'qty_change', 'unit_value'])
+                ->orderBy('item_stock_ledger.id')
+                ->get(['item_stock_ledger.id', 'item_stock_ledger.location_id', 'item_stock_ledger.qty_change', 'item_stock_ledger.unit_value'])
                 ->map(fn($row) => [
                     'location_id'         => $row->location_id,
                     'location_name'       => $row->location?->name ?? '',
                     'opening_stock'       => (float) $row->qty_change,
                     'opening_stock_value' => (float) ($row->unit_value ?? 0),
                 ]);
+
+            Log::info('[OpeningStockController] Show success', array_merge($ctx, ['count' => $entries->count()]));
 
             return $this->successResponse(['data' => $entries]);
 
@@ -90,7 +107,7 @@ class OpeningStockController extends Controller
                         'transaction_date'    => $today,
                         'qty_change'          => $qty,
                         'committed_change'    => 0,
-                        'unit_value'          => $value > 0 ? $value : null,
+                        'unit_value'          => $value >= 0 ? $value : null,
                         'stock_on_hand_after' => $qty,
                         'committed_after'     => 0,
                         'available_after'     => $qty,
@@ -114,7 +131,7 @@ class OpeningStockController extends Controller
 
             try {
                 $this->audit($request, $itemId, $entries);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message' => 'Opening stock saved successfully.',
@@ -130,23 +147,150 @@ class OpeningStockController extends Controller
     }
 
     // ── GET /api/items/{item}/stock ───────────────────────────────────────────
+    // Party users only see stock for locations that belong to their party.
     public function stock(Request $request, int $itemId): JsonResponse
     {
         $ctx = $this->buildCtx($request, 'OpeningStockController::stock', ['item_id' => $itemId]);
+        Log::info('[OpeningStockController] Stock started', $ctx);
 
         try {
             if (!Item::withTrashed()->where('id', $itemId)->exists()) {
+                Log::warning('[OpeningStockController] Stock — item not found', $ctx);
                 return $this->errorResponse('Item not found.', 404);
             }
 
-            $rows = ItemStock::where('item_id', $itemId)
-                ->get(['location_id', 'stock_on_hand', 'committed_stock', 'available_for_sale']);
+            $partyScopeId = $request->attributes->get('party_scope_id');
+
+            if ($partyScopeId !== null) {
+                // Party portal: start from locations so all active party locations appear even with zero stock.
+                // LEFT JOIN item_stock so locations with no stock row still show as 0.
+                $rows = DB::table('locations as l')
+                    ->leftJoin('item_stock as s', function ($join) use ($itemId) {
+                        $join->on('s.location_id', '=', 'l.id')
+                             ->where('s.item_id', '=', $itemId);
+                    })
+                    ->where('l.party_id', $partyScopeId)
+                    ->where('l.is_active', true)
+                    ->whereNull('l.deleted_at')
+                    ->select(
+                        'l.id as location_id',
+                        'l.name as location_name',
+                        DB::raw('COALESCE(s.stock_on_hand, 0) as stock_on_hand'),
+                        DB::raw('COALESCE(s.committed_stock, 0) as committed_stock'),
+                        DB::raw('COALESCE(s.available_for_sale, 0) as available_for_sale')
+                    )
+                    ->orderBy('l.name')
+                    ->get();
+            } else {
+                // Admin: company-owned locations only (party_id IS NULL).
+                $rows = ItemStock::where('item_stock.item_id', $itemId)
+                    ->join('locations', 'item_stock.location_id', '=', 'locations.id')
+                    ->whereNull('locations.party_id')
+                    ->select(
+                        'item_stock.location_id',
+                        'locations.name as location_name',
+                        'item_stock.stock_on_hand',
+                        'item_stock.committed_stock',
+                        'item_stock.available_for_sale'
+                    )
+                    ->orderBy('item_stock.location_id')
+                    ->get();
+            }
+
+            Log::info('[OpeningStockController] Stock success', array_merge($ctx, ['count' => $rows->count()]));
 
             return $this->successResponse(['data' => $rows]);
 
         } catch (Throwable $e) {
             $this->logException('OpeningStockController::stock', $e, $ctx);
             return $this->errorResponse('Failed to fetch stock.', 500);
+        }
+    }
+
+    // ── POST /api/items/stock-batch ───────────────────────────────────────────
+    // Body: { item_ids: [1,2,3], location_id: 5 }
+    // Returns: { data: { "1": "10.00", "2": "0.00" } }  — missing ids are absent
+    // Party users may only query a location that belongs to their own party.
+    public function stockBatch(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'item_ids'    => ['required', 'array', 'max:200'],
+            'item_ids.*'  => ['integer', 'min:1'],
+            'location_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $partyScopeId = $request->attributes->get('party_scope_id');
+
+            // Verify the requested location belongs to the authenticated party.
+            if ($partyScopeId !== null) {
+                $locationBelongsToParty = \App\Models\Location::where('id', $validated['location_id'])
+                    ->where('party_id', $partyScopeId)
+                    ->exists();
+
+                if (!$locationBelongsToParty) {
+                    return $this->errorResponse('Location not found.', 404);
+                }
+            }
+
+            $rows = ItemStock::whereIn('item_id', $validated['item_ids'])
+                ->where('location_id', $validated['location_id'])
+                ->get(['item_id', 'available_for_sale']);
+
+            $map = [];
+            foreach ($rows as $row) {
+                $map[(string) $row->item_id] = (string) $row->available_for_sale;
+            }
+
+            return $this->successResponse(['data' => $map]);
+        } catch (Throwable $e) {
+            $this->logException('OpeningStockController::stockBatch', $e, []);
+            return $this->errorResponse('Failed to fetch stock.', 500);
+        }
+    }
+
+    // ── POST /api/items/stock-totals ─────────────────────────────────────────
+    // Body: { item_ids: [1,2,3] }
+    // Returns: { data: { "1": "10.00", "2": "5.00" } } — stock_on_hand summed across locations
+    // Party users only see stock for locations that belong to their own party.
+    public function stockTotals(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'item_ids'   => ['required', 'array', 'max:500'],
+            'item_ids.*' => ['integer', 'min:1'],
+        ]);
+
+        try {
+            $partyScopeId = $request->attributes->get('party_scope_id');
+
+            if ($partyScopeId !== null) {
+                // Party portal: sum only across locations that belong to the authenticated party.
+                $rows = ItemStock::whereIn('item_stock.item_id', $validated['item_ids'])
+                    ->join('locations', 'item_stock.location_id', '=', 'locations.id')
+                    ->where('locations.party_id', $partyScopeId)
+                    ->selectRaw('item_stock.item_id, SUM(item_stock.stock_on_hand) as total_stock')
+                    ->groupBy('item_stock.item_id')
+                    ->get();
+            } else {
+                // Admin portal: company-wide totals across company-owned locations only
+                // (exclude party-owned locations, which have a non-null party_id).
+                $rows = ItemStock::whereIn('item_stock.item_id', $validated['item_ids'])
+                    ->join('locations', 'item_stock.location_id', '=', 'locations.id')
+                    ->whereNull('locations.party_id')
+                    ->selectRaw('item_stock.item_id, SUM(item_stock.stock_on_hand) as total_stock')
+                    ->groupBy('item_stock.item_id')
+                    ->get();
+            }
+
+            $map = [];
+            foreach ($rows as $row) {
+                $map[(string) $row->item_id] = number_format((float) $row->total_stock, 2, '.', '');
+            }
+
+            return $this->successResponse(['data' => $map]);
+        } catch (Throwable $e) {
+            $this->logException('OpeningStockController::stockTotals', $e, []);
+            return $this->errorResponse('Failed to fetch stock totals.', 500);
         }
     }
 
@@ -166,11 +310,17 @@ class OpeningStockController extends Controller
             'opening_stock_value' => $e['opening_stock_value'],
         ], $entries);
 
+        // party_user_id is set on the request by ScopeToParty middleware — more
+        // reliable than instanceof checks, which can misfire when an admin session
+        // cookie overrides a party Bearer token on the same domain.
+        $partyUserId = $request->attributes->get('party_user_id');
+
         AuditLog::create([
             'auditable_type' => 'items',
             'auditable_id'   => $itemId,
             'event'          => 'opening_stock_saved',
-            'user_id'        => $request->user()->id,
+            'user_id'        => $partyUserId ? null : $request->user()?->id,
+            'party_user_id'  => $partyUserId ?: null,
             'ip_address'     => $request->ip(),
             'user_agent'     => $request->userAgent(),
             'old_values'     => null,

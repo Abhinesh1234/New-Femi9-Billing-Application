@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Setting;
+use App\Support\SettingValidationRules;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,11 +20,19 @@ class SettingService
      */
     public function get(string $module): ?array
     {
-        return Cache::remember(
+        $saved = Cache::remember(
             self::CACHE_PREFIX . $module,
             self::CACHE_TTL,
             fn () => Setting::getForModule($module)
         );
+
+        // First visit — no row saved yet; return module defaults so the
+        // frontend never sees a null configuration.
+        if ($saved === null) {
+            return SettingValidationRules::defaults($module);
+        }
+
+        return $saved;
     }
 
     /**
@@ -79,14 +88,25 @@ class SettingService
     private function deepMerge(array $existing, array $new): array
     {
         foreach ($new as $key => $value) {
-            if (is_array($value) && isset($existing[$key]) && is_array($existing[$key])) {
+            if (
+                is_array($value) &&
+                isset($existing[$key]) &&
+                is_array($existing[$key]) &&
+                !$this->isList($value)          // associative sub-objects → recurse
+            ) {
                 $existing[$key] = $this->deepMerge($existing[$key], $value);
             } else {
-                $existing[$key] = $value;
+                $existing[$key] = $value;        // scalars and lists → replace outright
             }
         }
 
         return $existing;
+    }
+
+    /** True when $arr is a plain indexed list (0, 1, 2, …) rather than an associative map. */
+    private function isList(array $arr): bool
+    {
+        return empty($arr) || array_keys($arr) === range(0, count($arr) - 1);
     }
 
     /**

@@ -1,13 +1,24 @@
 import axios, { AxiosError } from "axios";
+import type { PartyCategory } from "../redux/authSlice";
 
 export interface AuthUser {
-  id: number;
-  name: string;
-  phone: string;
-  email: string | null;
-  avatar: string | null;
-  user_type: "super_admin" | "admin" | "staff";
+  id:       number;
+  name:     string;
+  phone:    string | null;
+  email:    string | null;
+  avatar:   string | null;
+  avatar_url?: string | null;
+  user_type: "super_admin" | "admin" | "staff" | "party";
+  role_id:  number | null;
   permissions: Record<string, Record<string, boolean>> | null;
+  // Party-specific
+  mobile?:        string | null;
+  party_id?:      number;
+  party_code?:    string | null;
+  party_name?:    string | null;
+  category_id?:   number | null;
+  category_name?: string | null;
+  categories?:    PartyCategory[];
 }
 
 export interface UserListItem {

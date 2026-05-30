@@ -196,20 +196,20 @@ const SmsGateways = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    API Key <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    API Key <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    API Secret Key <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    API Secret Key <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Sender ID <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Sender ID <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -242,20 +242,20 @@ const SmsGateways = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    API Key <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    API Key <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    API Secret Key <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    API Secret Key <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Sender ID <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Sender ID <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -288,20 +288,20 @@ const SmsGateways = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    API Key <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    API Key <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    API Secret Key <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    API Secret Key <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Sender ID <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Sender ID <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>

@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSelector } from "react-redux";
+import type { RootState } from "../../../../core/redux/store";
+import { usePermission } from "../../../../core/hooks/usePermission";
 import { Link, useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
 import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
 import {
   destroyPriceList,
   restorePriceList,
+  fetchPriceList,
   type PriceListRecord,
 } from "../../../../core/services/priceListApi";
 import { type AuditLogEntry } from "../../../../core/services/auditLogApi";
@@ -18,9 +22,11 @@ import {
   bustPriceList,
   bustAllPriceListCache,
   hydratePriceListList,
+  hydratePriceListDetail,
 } from "../../../../core/cache/priceListCache";
 import { emitMutation, onMutation } from "../../../../core/cache/mutationEvents";
 import { all_routes } from "../../../../routes/all_routes";
+import ConfirmDialog, { type ConfirmConfig } from "../../../../components/confirm-dialog/ConfirmDialog";
 
 const route = all_routes;
 
@@ -35,76 +41,6 @@ interface PriceListDetail extends PriceListRecord {
   created_by?: { id: number; name: string; email: string } | null;
 }
 
-// ── Confirmation dialog ────────────────────────────────────────────────────────
-interface ConfirmConfig {
-  icon:         string;
-  iconColor:    string;
-  iconBg:       string;
-  title:        string;
-  message:      string;
-  confirmLabel: string;
-  confirmColor: string;
-  onConfirm:    () => Promise<void>;
-}
-
-function ConfirmDialog({ config, onClose }: { config: ConfirmConfig | null; onClose: () => void }) {
-  const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { setBusy(false); }, [config]);
-  if (!config) return null;
-
-  const handleConfirm = async () => {
-    setBusy(true);
-    try { await config.onConfirm(); } finally { setBusy(false); }
-    onClose();
-  };
-
-  return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 1060,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)",
-      }}
-      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
-    >
-      <div
-        style={{
-          background: "#fff", borderRadius: 14, padding: "32px 28px 24px",
-          width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-          display: "flex", flexDirection: "column", alignItems: "center", gap: 0,
-        }}
-      >
-        <div style={{
-          width: 56, height: 56, borderRadius: "50%", background: config.iconBg,
-          display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16,
-        }}>
-          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
-        </div>
-        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>
-          {config.title}
-        </p>
-        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>
-          {config.message}
-        </p>
-        <div style={{ display: "flex", gap: 10, width: "100%" }}>
-          <button className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button
-            className="btn flex-grow-1"
-            style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
-            onClick={handleConfirm}
-            disabled={busy}
-          >
-            {busy
-              ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</>
-              : config.confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Info row (2-col grid inside cards) ────────────────────────────────────────
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -120,15 +56,19 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 const PriceListOverview = () => {
   const { id }   = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const navState = useRouterLocation().state as { tab?: Tab; listFilter?: ListFilter } | null;
+  const canEdit   = usePermission("price_list", "edit");
+  const canDelete = usePermission("price_list", "delete");
+  const navState  = useRouterLocation().state as { tab?: Tab; listFilter?: ListFilter } | null;
+  const authUser  = useSelector((state: RootState) => state.auth.user);
+  const isParty   = authUser?.user_type === "party";
 
-  const [record,    setRecord]    = useState<PriceListDetail | null>(null);
-  const [loading,   setLoading]   = useState(true);
+  const [record,    setRecord]    = useState<PriceListDetail | null>(() => { const n = Number(id); return isNaN(n) ? null : readPriceListDetail(n) ?? null; });
+  const [loading,   setLoading]   = useState(() => { const n = Number(id); return isNaN(n) ? false : readPriceListDetail(n) == null; });
   const [error,     setError]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>(navState?.tab ?? "overview");
 
   // ── Left panel ──
-  const [allLists,      setAllLists]      = useState<PriceListRecord[]>([]);
+  const [allLists,      setAllLists]      = useState<PriceListRecord[]>(() => readPriceListList() ?? []);
   const [listFilter,    setListFilter]    = useState<ListFilter>(navState?.listFilter ?? "all");
   const [listSearch,    setListSearch]    = useState("");
   const [deletedLists,  setDeletedLists]  = useState<PriceListRecord[]>([]);
@@ -142,8 +82,9 @@ const PriceListOverview = () => {
   const [auditTotal,    setAuditTotal]    = useState(0);
 
   // ── Refs ──
-  const activeItemRef  = useRef<HTMLDivElement>(null);
-  const detailFetchRef = useRef(0);
+  const activeItemRef    = useRef<HTMLDivElement>(null);
+  const detailFetchRef   = useRef(0);
+  const filterMountRef   = useRef(true);
 
   // ── Confirmation dialog ──
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
@@ -210,32 +151,54 @@ const PriceListOverview = () => {
     }
   }, [id, listFilter, activeTab, auditPage]);
 
-  // Fetch detail — stale-fetch guard via incrementing token
+  // Fetch detail — stale-fetch guard via incrementing token.
+  // If only light (list-level) data is cached (no items/settings), show it instantly
+  // but still fetch the full detail so items, settings, and createdBy are populated.
   useEffect(() => {
     if (!id) return;
     const numId = Number(id);
     const token = ++detailFetchRef.current;
 
     const cached = readPriceListDetail(numId);
+    // Also treat as stale if created_by is still an integer (old serialisation conflict)
+    const isFullDetail = cached != null &&
+      (cached as any).settings !== undefined &&
+      typeof (cached as any).created_by !== "number";
+
     if (cached) {
       if (token !== detailFetchRef.current) return;
       setRecord(cached as PriceListDetail);
       setLoading(false);
-      return;
+      if (isFullDetail) return;
+      // Light cache (pre-hydrated from list) — fall through to fetch full detail
     }
 
-    setLoading(true);
+    if (!cached) setLoading(true);
     setError(null);
-    getPriceListDetail(numId)
-      .then(data => {
+
+    // Always use the raw API call when we need full detail, so we bypass the TTLCache
+    // which may still hold the light (list-level) snapshot from the pre-hydration.
+    fetchPriceList(numId)
+      .then(res => {
         if (token !== detailFetchRef.current) return;
-        setRecord(data as PriceListDetail);
+        if (!res.success) {
+          if (!cached) {
+            setError((res as any).message ?? "Failed to load price list.");
+            setLoading(false);
+          }
+          return;
+        }
+        const data = (res as any).data as PriceListDetail;
+        hydratePriceListDetail(data as PriceListRecord);
+        setRecord(data);
         setLoading(false);
       })
       .catch((e: Error) => {
         if (token !== detailFetchRef.current) return;
-        setError(e.message ?? "Failed to load price list.");
-        setLoading(false);
+        if (!cached) {
+          setError(e.message ?? "Failed to load price list.");
+          setLoading(false);
+        }
       });
   }, [id]);
 
@@ -299,7 +262,11 @@ const PriceListOverview = () => {
 
   // Navigate to first item in the new view when filter changes
   const pendingDeletedNav = useRef(false);
+  const suppressFilterNav = useRef(false);
   useEffect(() => {
+    // Skip on initial mount — user navigated to a specific price list, don't override it.
+    if (filterMountRef.current) { filterMountRef.current = false; return; }
+    if (suppressFilterNav.current) { suppressFilterNav.current = false; return; }
     if (listFilter === "deleted") {
       if (deletedLists.length > 0) {
         navigate(`/price-list/${deletedLists[0].id}`, { state: { listFilter: "deleted" } });
@@ -307,7 +274,8 @@ const PriceListOverview = () => {
         pendingDeletedNav.current = true;
       }
     } else {
-      const base = listFilter === "all" ? allLists : allLists.filter(l => l.transaction_type === listFilter);
+      let base = listFilter === "all" ? allLists : allLists.filter(l => l.transaction_type === listFilter);
+      if (isParty) base = base.filter(l => !l.is_company_list);
       if (base.length > 0) navigate(`/price-list/${base[0].id}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,10 +312,10 @@ const PriceListOverview = () => {
     emitMutation("price-lists:mutated");
     showToast("success", "Price list restored.");
     if (listFilter === "deleted" && remainingDeleted.length === 0) {
+      suppressFilterNav.current = true;
       setListFilter("all");
-    } else {
-      navigate(`/price-list/${plId}`);
     }
+    navigate(`/price-list/${plId}`);
   };
 
   const handleRestore = (plId: number) => {
@@ -376,8 +344,12 @@ const PriceListOverview = () => {
       const q = listSearch.toLowerCase();
       base = base.filter(l => l.name.toLowerCase().includes(q));
     }
-    return base;
-  }, [allLists, deletedLists, listFilter, listSearch]);
+    if (!isParty) return base;
+    return [
+      ...base.filter(l => !l.is_company_list),
+      ...base.filter(l =>  l.is_company_list),
+    ];
+  }, [allLists, deletedLists, listFilter, listSearch, isParty]);
 
   const fmt = (val: any) => (val === null || val === undefined || val === "" ? "—" : String(val));
 
@@ -421,44 +393,17 @@ const PriceListOverview = () => {
     });
   };
 
-  // ── Loading / Error ──
-  if (loading) {
-    return (
-      <div className="page-wrapper">
-        <div className="content d-flex align-items-center justify-content-center" style={{ minHeight: 300 }}>
-          <span className="spinner-border spinner-border-sm me-2 text-primary" />
-          <span className="text-muted">Loading price list…</span>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (error || !record) {
-    return (
-      <div className="page-wrapper">
-        <div className="content">
-          <div className="alert alert-danger">{error ?? "Price list not found."}</div>
-          <Link to={route.priceList} className="btn btn-outline-light">
-            <i className="ti ti-arrow-left me-1" /> Back to Price Lists
-          </Link>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
   const tabs: { key: Tab; label: string }[] = [
     { key: "overview", label: "Overview" },
     { key: "history",  label: "History"  },
   ];
 
-  const settings   = record.settings ?? {};
-  const isAllItems = record.price_list_type === "all_items";
-  const items      = record.items ?? [];
+  const settings   = record?.settings ?? {};
+  const isAllItems = record?.price_list_type === "all_items";
+  const items      = record?.items ?? [];
 
   const txnTypeLabel: Record<string, string> = { sales: "Sales", purchase: "Purchase", both: "Both" };
-  const txnLabel = txnTypeLabel[record.transaction_type] ?? record.transaction_type;
+  const txnLabel = txnTypeLabel[record?.transaction_type ?? ""] ?? record?.transaction_type ?? "";
 
   const txnBadgeCls: Record<string, string> = {
     sales: "badge-soft-success", purchase: "badge-soft-warning", both: "badge-soft-info",
@@ -579,28 +524,30 @@ const PriceListOverview = () => {
             ) : (
               filteredLists.map(pl => {
                 const isActive   = String(pl.id) === id;
+                const isLocked   = !!pl.is_company_list;
                 const plTxnLabel = txnTypeLabel[pl.transaction_type] ?? pl.transaction_type;
                 return (
                   <div
                     key={pl.id}
                     ref={isActive ? activeItemRef : undefined}
-                    onClick={() => navigate(`/price-list/${pl.id}`)}
+                    onClick={() => { if (!isLocked) navigate(`/price-list/${pl.id}`); }}
                     className="d-flex align-items-center gap-2 px-3"
                     style={{
                       paddingTop: 11, paddingBottom: 11,
-                      cursor: "pointer",
+                      cursor: isLocked ? "default" : "pointer",
                       background: isActive ? "#fff1f0" : "transparent",
                       borderBottom: "1px solid #f5f5f5",
+                      opacity: isLocked ? 0.6 : 1,
                     }}
-                    onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"; }}
+                    onMouseEnter={e => { if (!isActive && !isLocked) (e.currentTarget as HTMLDivElement).style.background = "#f8f9fa"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isActive ? "#fff1f0" : "transparent"; }}
                   >
                     <div className="rounded border d-flex align-items-center justify-content-center flex-shrink-0"
                       style={{ width: 28, height: 28, background: "#f5f5f5" }}>
-                      <i className="ti ti-tag text-muted" style={{ fontSize: 12 }} />
+                      <i className={`ti ${isLocked ? "ti-lock" : "ti-tag"} text-muted`} style={{ fontSize: 12 }} />
                     </div>
                     <span className="flex-grow-1 text-truncate"
-                      style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, color: isActive ? "#e03131" : "#212529" }}>
+                      style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, color: isActive ? "#e03131" : isLocked ? "#6c757d" : "#212529" }}>
                       {pl.name}
                     </span>
                     <span className="fs-13 text-muted flex-shrink-0">{plTxnLabel}</span>
@@ -613,6 +560,18 @@ const PriceListOverview = () => {
 
         {/* ── Right: Price List detail ─────────────────────────────────────── */}
         <div style={{ flex: 1, overflowY: "auto", background: "#fff" }}>
+          {(loading && !record) ? (
+            <div className="d-flex align-items-center gap-2 text-muted fs-13 py-4 px-4">
+              <span className="spinner-border spinner-border-sm" />Loading…
+            </div>
+          ) : !record ? (
+            <div style={{ padding: "1.25rem" }}>
+              <div className="alert alert-danger">{error ?? "Price list not found."}</div>
+              <Link to={route.priceList} className="btn btn-outline-light">
+                <i className="ti ti-arrow-left me-1" /> Back to Price Lists
+              </Link>
+            </div>
+          ) : (
           <div style={{ padding: "1.25rem" }}>
 
             {/* ── Header ── */}
@@ -674,16 +633,20 @@ const PriceListOverview = () => {
                   </button>
                   <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary">
                     <ul>
-                      <li>
-                        <button className="dropdown-item" onClick={() => navigate(`/price-list/${id}/edit`)}>
-                          <i className="ti ti-pencil me-2" />Edit
-                        </button>
-                      </li>
-                      <li>
-                        <button className="dropdown-item text-danger" onClick={handleDelete}>
-                          <i className="ti ti-trash me-2" />Delete
-                        </button>
-                      </li>
+                      {canEdit && (
+                        <li>
+                          <button className="dropdown-item" onClick={() => navigate(`/price-list/${id}/edit`)}>
+                            <i className="ti ti-pencil me-2" />Edit
+                          </button>
+                        </li>
+                      )}
+                      {canDelete && (
+                        <li>
+                          <button className="dropdown-item text-danger" onClick={handleDelete}>
+                            <i className="ti ti-trash me-2" />Delete
+                          </button>
+                        </li>
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -711,7 +674,7 @@ const PriceListOverview = () => {
             </div>
 
             {/* ── Tab nav (pill) ── */}
-            <div className="mb-4">
+            <div className="mb-4 scrollbar-hidden" style={{ overflowX: "auto" }}>
               <div className="d-inline-flex rounded" style={{ background: "#f1f3f5", padding: 4, gap: 2 }}>
                 {tabs.map(t => {
                   const isActive = activeTab === t.key;
@@ -1033,9 +996,9 @@ const PriceListOverview = () => {
                       };
                       const iconClass = eventIcon[log.event] ?? "ti-activity";
 
-                      const actor  = log.user?.name ?? log.user?.email ?? "System";
+                      const actor  = log.user?.name ?? log.user?.email ?? log.party_user?.name ?? log.party_user?.email ?? "System";
                       const rawTs  = log.created_at;
-                      const utcTs  = /Z$|[+-]\d{2}:\d{2}$/.test(rawTs) ? rawTs : rawTs.replace(' ', 'T') + 'Z';
+                      const utcTs  = rawTs.replace(' ', 'T').replace(/Z$|[+-]\d{2}:\d{2}$/, '');
                       const dateObj = new Date(utcTs);
                       const dateStr = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
                       const timeStr = dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -1136,6 +1099,7 @@ const PriceListOverview = () => {
             )}
 
           </div>
+          )}
         </div>
       </div>
       <Footer />

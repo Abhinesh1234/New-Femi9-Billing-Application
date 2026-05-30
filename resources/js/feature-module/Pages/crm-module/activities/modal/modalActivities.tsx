@@ -156,16 +156,16 @@ const ModalActivities=() => {
           <div className="row">
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Title <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Title <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
             </div>
             <div className="col-md-12">
               <div className="mb-2">
-                <label className="form-label">
-                  Activity Type <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Activity Type <span>*</span>
                 </label>
                 <ul className="radio-activity">
                   <li className="me-2 mb-2">
@@ -214,8 +214,8 @@ const ModalActivities=() => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Due Date <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Due Date <span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -238,8 +238,8 @@ const ModalActivities=() => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Reminder <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Reminder <span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <input type="text" className="form-control" />
@@ -267,8 +267,8 @@ const ModalActivities=() => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Owner <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Owner <span>*</span>
                 </label>
                 <CommonSelect
                     options={Owner}
@@ -279,8 +279,8 @@ const ModalActivities=() => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Guests <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Guests <span>*</span>
                 </label>
                 <MultipleSelect
                     value={selectedItems}
@@ -292,8 +292,8 @@ const ModalActivities=() => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <TextEditor/>
               </div>
@@ -442,16 +442,16 @@ const ModalActivities=() => {
               <div className="row">
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Title <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Title <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-12">
                   <div className="mb-2">
-                    <label className="form-label">
-                      Activity Type <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Activity Type <span>*</span>
                     </label>
                     <ul className="radio-activity">
                       <li className="me-2 mb-2">
@@ -500,8 +500,8 @@ const ModalActivities=() => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Due Date <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Due Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -524,8 +524,8 @@ const ModalActivities=() => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Reminder <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Reminder <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <input type="text" className="form-control" />
@@ -553,8 +553,8 @@ const ModalActivities=() => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Owner <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Owner <span>*</span>
                     </label>
                     <CommonSelect
                         options={Owner}
@@ -565,8 +565,8 @@ const ModalActivities=() => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Guests <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Guests <span>*</span>
                     </label>
                     <select className="multiple-img">
                       <option
@@ -592,8 +592,8 @@ const ModalActivities=() => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <TextEditor/>
                   </div>

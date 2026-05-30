@@ -68,26 +68,77 @@ class User extends Authenticatable
      * Falls back to role-based defaults if no override set.
      * Usage: $user->can('create', 'items')
      */
-    public function hasPermission(string $action, string $module): bool
+    /**
+     * Build a flat [module => [view,create,edit,delete,others]] map once per request.
+     * User-specific rows take precedence; falls back to role rows.
+     */
+    /**
+     * Returns null (= full access) only for super_admin with no individual overrides.
+     * When individual permission rows exist they ALWAYS take priority, even for super_admin.
+     */
+    public function computeEffectivePermissions(): ?array
     {
-        // Super admin always has full access
-        if ($this->isSuperAdmin()) return true;
+        $this->loadMissing(['userPermissions', 'role.permissions']);
 
-        // Check JSON permission overrides
-        $perms = $this->permissions ?? [];
-        if (isset($perms[$module][$action])) {
-            return (bool) $perms[$module][$action];
+        // Individual rows always win — even over super_admin bypass
+        if ($this->userPermissions->isNotEmpty()) {
+            return $this->userPermissions->mapWithKeys(fn ($p) => [
+                $p->module => [
+                    'view'        => (bool) $p->can_view,
+                    'create'      => (bool) $p->can_create,
+                    'edit'        => (bool) $p->can_edit,
+                    'delete'      => (bool) $p->can_delete,
+                    'others'      => (bool) $p->can_others,
+                    'others_data' => $p->others_data,
+                ],
+            ])->toArray();
         }
 
-        // Role-based defaults
-        return match ($this->user_type) {
-            'admin' => in_array($action, ['view', 'create', 'edit', 'delete']),
-            'staff' => $action === 'view',
-            default => false,
-        };
+        // No individual overrides: super_admin gets null (= full access)
+        if ($this->isSuperAdmin()) return null;
+
+        // Regular user falls back to role permissions
+        $source = $this->role?->permissions ?? collect();
+        return $source->mapWithKeys(fn ($p) => [
+            $p->module => [
+                'view'        => (bool) $p->can_view,
+                'create'      => (bool) $p->can_create,
+                'edit'        => (bool) $p->can_edit,
+                'delete'      => (bool) $p->can_delete,
+                'others'      => (bool) $p->can_others,
+                'others_data' => $p->others_data,
+            ],
+        ])->toArray();
+    }
+
+    public function hasPermission(string $action, string $module): bool
+    {
+        $this->loadMissing('userPermissions');
+
+        // Individual rows always win — even over super_admin bypass
+        if ($this->userPermissions->isNotEmpty()) {
+            $perms = $this->computeEffectivePermissions();
+            return (bool) ($perms[$module][$action] ?? false);
+        }
+
+        // No individual overrides: super_admin has full access
+        if ($this->isSuperAdmin()) return true;
+
+        $perms = $this->computeEffectivePermissions();
+        return (bool) ($perms[$module][$action] ?? false);
     }
 
     // ── Relationships ─────────────────────────────────────────────────────────
+
+    public function role()
+    {
+        return $this->belongsTo(\App\Models\Role::class, 'role_id');
+    }
+
+    public function userPermissions()
+    {
+        return $this->hasMany(UserPermission::class);
+    }
 
     public function auditLogs()
     {

@@ -19,7 +19,7 @@ class UpdateCategoryRequest extends FormRequest
             'parent_id' => [
                 'nullable', 'integer',
                 Rule::exists('categories', 'id')->whereNull('deleted_at'),
-                Rule::notIn([$categoryId]),   // cannot set itself as its own parent
+                Rule::notIn([$categoryId]),
             ],
         ];
     }
@@ -27,10 +27,10 @@ class UpdateCategoryRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required'       => 'Category name is required.',
-            'name.max'            => 'Category name cannot exceed 255 characters.',
-            'parent_id.exists'    => 'The selected parent category does not exist.',
-            'parent_id.not_in'    => 'A category cannot be its own parent.',
+            'name.required'      => 'Category name is required.',
+            'name.max'           => 'Category name cannot exceed 255 characters.',
+            'parent_id.exists'   => 'The selected parent category does not exist.',
+            'parent_id.not_in'   => 'A category cannot be its own parent.',
         ];
     }
 

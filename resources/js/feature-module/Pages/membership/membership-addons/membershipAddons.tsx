@@ -31,8 +31,8 @@ const MembershipAddons = () => {
                 <div className="row">
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Contacts <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Contacts <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -65,8 +65,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Leads <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Leads <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -99,8 +99,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Companies <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Companies <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -133,8 +133,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Compaigns <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Compaigns <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -167,8 +167,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Projects <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Projects <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -201,8 +201,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Deals <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Deals <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -235,8 +235,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Tasks <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Tasks <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input
@@ -269,8 +269,8 @@ const MembershipAddons = () => {
                   </div>
                   <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Pipelines <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Pipelines <span>*</span>
                       </label>
                       <div className="d-flex align-items-center">
                         <input

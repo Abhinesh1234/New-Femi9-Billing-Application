@@ -22,7 +22,10 @@ class Item extends Model
         'variation_config', 'custom_fields',
         'is_composite', 'composite_type',
         'admin_only',
+        'points',
     ];
+
+    protected $hidden = ['laravel_through_key'];
 
     protected $casts = [
         'refs'             => 'array',
@@ -37,6 +40,7 @@ class Item extends Model
         'is_returnable'    => 'boolean',
         'is_composite'     => 'boolean',
         'admin_only'       => 'boolean',
+        'points'           => 'integer',
         'selling_price'    => 'decimal:4',
         'cost_price'       => 'decimal:4',
         'reorder_point'    => 'integer',

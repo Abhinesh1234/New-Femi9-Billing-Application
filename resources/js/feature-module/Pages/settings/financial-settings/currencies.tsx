@@ -1,9 +1,71 @@
+import { useState } from "react";
 import { Link } from "react-router";
+import { Country } from "country-state-city";
+import Select from "react-select";
+import type { StylesConfig } from "react-select";
 import PageHeader from "../../../../components/page-header/pageHeader";
 import SettingsTopbar from "../settings-topbar/settingsTopbar";
 import { all_routes } from "../../../../routes/all_routes";
 
+interface WorldCurrencyOption {
+  value:  string; // ISO code e.g. "INR"
+  label:  string; // "INR - Indian Rupee (₹)"
+  name:   string;
+  symbol: string;
+}
+
+// Built once from the bundled country-state-city package — no network, no loading state
+const CURRENCY_OPTIONS: WorldCurrencyOption[] = (() => {
+  const map = new Map<string, { name: string; symbol: string }>();
+  for (const c of Country.getAllCountries()) {
+    if (c.currency && !map.has(c.currency)) {
+      map.set(c.currency, { name: c.currencyName, symbol: c.currencySymbol });
+    }
+  }
+  return Array.from(map.entries())
+    .map(([code, { name, symbol }]) => ({
+      value:  code,
+      label:  symbol && symbol !== code ? `${code} - ${name} (${symbol})` : `${code} - ${name}`,
+      name,
+      symbol: symbol ?? "",
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+})();
+
+const selectStyles: StylesConfig<WorldCurrencyOption> = {
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isSelected ? "#E41F07" : "white",
+    color: state.isSelected ? "#fff" : state.isFocused ? "#E41F07" : "#707070",
+    cursor: "pointer",
+    "&:hover": { backgroundColor: "#E41F07", color: "#fff" },
+  }),
+  menu:       (base) => ({ ...base, zIndex: 9999 }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+};
+
 const Currencies = () => {
+  // Add modal controlled state
+  const [addSelected, setAddSelected]   = useState<WorldCurrencyOption | null>(null);
+  const [addRate, setAddRate]           = useState("");
+  const [addCode, setAddCode]           = useState("");
+  const [addSymbol, setAddSymbol]       = useState("");
+  const [addIsDefault, setAddIsDefault] = useState(false);
+
+  const handleAddSelect = (opt: WorldCurrencyOption | null) => {
+    setAddSelected(opt);
+    setAddCode(opt?.value ?? "");
+    setAddSymbol(opt?.symbol ?? "");
+  };
+
+  const resetAddModal = () => {
+    setAddSelected(null);
+    setAddRate("");
+    setAddCode("");
+    setAddSymbol("");
+    setAddIsDefault(false);
+  };
+
   return (
     <>
       {/* ========================
@@ -74,6 +136,7 @@ const Currencies = () => {
                       className="btn btn-primary btn-sm"
                       data-bs-toggle="modal"
                       data-bs-target="#add_currency"
+                      onClick={resetAddModal}
                     >
                       <i className="ti ti-square-rounded-plus-filled me-1" />
                       Add New Currency
@@ -342,7 +405,8 @@ const Currencies = () => {
       {/* ========================
 			End Page Content
 		========================= */}
-      {/* Add Tax Rate */}
+
+      {/* Add Currency */}
       <div className="modal fade" id="add_currency" role="dialog">
         <div className="modal-dialog modal-dialog-centered">
           <div className="modal-content">
@@ -359,32 +423,64 @@ const Currencies = () => {
             </div>
             <form>
               <div className="modal-body">
+
+                {/* Currency select — populated from restcountries.com */}
                 <div className="mb-3">
-                  <label className="form-label">
-                    Currency Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Currency <span>*</span>
                   </label>
-                  <input type="text" className="form-control" />
+                  <div className="common-select">
+                    <Select
+                      options={CURRENCY_OPTIONS}
+                      value={addSelected}
+                      onChange={handleAddSelect}
+                      isSearchable
+                      isClearable
+                      menuPortalTarget={document.body}
+                      placeholder="Search currency…"
+                      styles={selectStyles}
+                      components={{ IndicatorSeparator: () => null }}
+                    />
+                  </div>
                 </div>
+
                 <div className="mb-3">
-                  <label className="form-label">
-                    Exchange Rate<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Exchange Rate <span>*</span>
                   </label>
-                  <input type="text" className="form-control" />
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={addRate}
+                    onChange={e => setAddRate(e.target.value)}
+                  />
                 </div>
+
                 <div className="d-flex flex-lg-row flex-column align-items-center justify-content-between gap-3 mb-3">
                   <div className="w-100">
-                    <label className="form-label">
-                      Code<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Code <span>*</span>
                     </label>
-                    <input type="text" className="form-control" />
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={addCode}
+                      onChange={e => setAddCode(e.target.value.toUpperCase())}
+                    />
                   </div>
                   <div className="w-100">
-                    <label className="form-label">
-                      Symbol<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Symbol <span>*</span>
                     </label>
-                    <input type="text" className="form-control" />
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={addSymbol}
+                      onChange={e => setAddSymbol(e.target.value)}
+                    />
                   </div>
                 </div>
+
                 <div className="d-flex align-items-center justify-content-between">
                   <label className="form-label mb-0">Make as Default</label>
                   <div className="form-check form-switch p-0">
@@ -393,10 +489,13 @@ const Currencies = () => {
                         className="form-check-input switchCheckDefault ms-auto"
                         type="checkbox"
                         role="switch"
+                        checked={addIsDefault}
+                        onChange={e => setAddIsDefault(e.target.checked)}
                       />
                     </label>
                   </div>
                 </div>
+
               </div>
               <div className="modal-footer">
                 <div className="d-flex align-items-center justify-content-end m-0">
@@ -416,8 +515,9 @@ const Currencies = () => {
           </div>
         </div>
       </div>
-      {/* /Add Tax Rate */}
-      {/* Edit Tax Rate */}
+      {/* /Add Currency */}
+
+      {/* Edit Currency */}
       <div className="modal fade" id="edit_currency" role="dialog">
         <div className="modal-dialog modal-dialog-centered">
           <div className="modal-content">
@@ -435,8 +535,8 @@ const Currencies = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Currency Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Currency Name<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -445,8 +545,8 @@ const Currencies = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Exchange Rate<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Exchange Rate<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -456,8 +556,8 @@ const Currencies = () => {
                 </div>
                 <div className="d-flex flex-lg-row flex-column align-items-center justify-content-between gap-3 mb-3">
                   <div className="w-100">
-                    <label className="form-label">
-                      Code<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Code<span>*</span>
                     </label>
                     <input
                       type="text"
@@ -466,8 +566,8 @@ const Currencies = () => {
                     />
                   </div>
                   <div className="w-100">
-                    <label className="form-label">
-                      Symbol<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Symbol<span>*</span>
                     </label>
                     <input
                       type="text"
@@ -508,8 +608,9 @@ const Currencies = () => {
           </div>
         </div>
       </div>
-      {/* /Edit Tax Rate */}
-      {/* delete modal */}
+      {/* /Edit Currency */}
+
+      {/* Delete modal */}
       <div className="modal fade" id="delete_currency">
         <div className="modal-dialog modal-dialog-centered modal-sm rounded-0">
           <div className="modal-content rounded-0">
@@ -543,7 +644,7 @@ const Currencies = () => {
           </div>
         </div>
       </div>
-      {/* delete modal */}
+      {/* /Delete modal */}
     </>
   );
 };

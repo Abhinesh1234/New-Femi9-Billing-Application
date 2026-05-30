@@ -28,6 +28,19 @@ abstract class Controller
     }
 
     /**
+     * 422 with field-level errors — mirrors Laravel FormRequest shape so the frontend
+     * can highlight specific fields for manual business-rule violations.
+     */
+    protected function errorResponseWithErrors(string $message, array $errors, int $status = 422): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'errors'  => $errors,
+        ], $status);
+    }
+
+    /**
      * Structured logging context.
      */
     protected function buildCtx(Request $request, string $tag, array $extra = []): array

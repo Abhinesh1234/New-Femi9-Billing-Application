@@ -49,7 +49,7 @@ const SettingsTopbar = () => {
             <Link
               to={all_routes.invoiceSettings}
               className={`nav-link p-2${
-                isActive(all_routes.invoiceSettings) || isActive(all_routes.printers) || isActive(all_routes.customFields) || isActive(all_routes.projectSettings) ? " active" : ""
+                isActive(all_routes.invoiceSettings) || isActive(all_routes.printers) || isActive(all_routes.customFields) || isActive(all_routes.projectSettings) || isActive(all_routes.paymentReceivedSettings) ? " active" : ""
               }`}
             >
               <i className="ti ti-apps me-2" />

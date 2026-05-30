@@ -1,0 +1,1 @@
+import{f as i}from"./distributionCategoryApi-C8Tzi5Rd.js";import{T as r}from"./TTLCache-DoWUvLpd.js";const s=300*1e3,e=new r;function n(){return e.read("list")}function c(){return e.resolve("list",s,async()=>{const t=await i();if(!t.success)throw new Error(t.message??"Failed to fetch distribution categories.");return t.data})}function u(){e.bustAll()}export{u as b,c as g,n as r};

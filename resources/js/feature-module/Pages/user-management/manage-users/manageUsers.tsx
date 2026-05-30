@@ -1,722 +1,703 @@
-import { Link } from "react-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
+import { Link, useNavigate } from "react-router";
+import { Toast } from "react-bootstrap";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
-import { useState } from "react";
-import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import Datatable from "../../../../components/dataTable";
-import { ManageuserListData } from "../../../../core/json/manageUserListData";
-import ImageWithBasePath from "../../../../components/imageWithBasePath";
-import ModalUserManagement from "./modal/modalUserManagement";
+import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
-import PredefinedDatePicker from "../../../../components/common-dateRangePicker/PredefinedDatePicker";
+import { usePermission } from "../../../../core/hooks/usePermission";
+import { getUserList, readUserList, bustUserCache, type UserListItem } from "../../../../core/cache/userCache";
+import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
+
+const route = all_routes;
+
+// ─── Column definitions ───────────────────────────────────────────────────────
+
+interface ColDef { key: string; label: string; }
+
+const INITIAL_COLS: ColDef[] = [
+  { key: "phone",      label: "Phone" },
+  { key: "email",      label: "Email" },
+  { key: "role",       label: "Role" },
+  { key: "is_active",  label: "Status" },
+  { key: "created_at", label: "Created On" },
+];
+
+const DEFAULT_VISIBLE = new Set(["phone", "email", "role", "is_active", "created_at"]);
+
+const DEFAULT_COL_WIDTHS: Record<string, number> = {
+  name:       240,
+  phone:      160,
+  email:      220,
+  role:       180,
+  is_active:  120,
+  created_at: 160,
+};
+
+const COL_WIDTHS_LS_KEY  = "femi9_users_col_widths";
+const COL_ORDER_LS_KEY   = "femi9_users_col_order";
+const COL_VISIBLE_LS_KEY = "femi9_users_col_visible";
+const VIEW_LS_KEY        = "femi9_users_view";
+
+const fmtDate = (d: string | null) =>
+  d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+function userInitials(name: string): string {
+  return name.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase();
+}
+
+const AVATAR_COLORS = ["#E41F07","#0d6efd","#198754","#fd7e14","#6f42c1","#20c997","#dc3545","#0dcaf0"];
+function avatarColor(id: number) { return AVATAR_COLORS[id % AVATAR_COLORS.length]; }
+
+// ─── Resizable column header ──────────────────────────────────────────────────
+
+interface ResizableTitleProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  onResize?:     (key: string, width: number) => void;
+  colKey?:       string;
+  currentWidth?: number;
+  handleSide?:   "left" | "right";
+}
+
+function ResizableTitle({ onResize, colKey, currentWidth, handleSide = "right", ...restProps }: ResizableTitleProps) {
+  const thRef = useRef<HTMLTableCellElement>(null);
+  const [handleVisible, setHandleVisible] = useState(false);
+  const isDragging = useRef(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!onResize || !colKey) return;
+    e.preventDefault(); e.stopPropagation();
+    const startX     = e.clientX;
+    const startWidth = handleSide === "left"
+      ? (currentWidth ?? 130)
+      : (thRef.current?.offsetWidth ?? currentWidth ?? 130);
+    isDragging.current = true;
+    setHandleVisible(true);
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      onResize(colKey, Math.max(60, startWidth + ev.clientX - startX));
+    };
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor     = "";
+      document.body.style.userSelect = "";
+      setHandleVisible(false);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor     = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const canResize  = !!onResize && !!colKey;
+  const handleEdge = handleSide === "left"
+    ? { left: 0, right: "auto" as const }
+    : { right: 0, left: "auto" as const };
+
+  return (
+    <th ref={thRef} {...restProps} style={{ ...restProps.style, position: "relative", userSelect: "none" }}>
+      {restProps.children}
+      {canResize && (
+        <span
+          onMouseDown={handleMouseDown}
+          onMouseEnter={() => setHandleVisible(true)}
+          onMouseLeave={() => !isDragging.current && setHandleVisible(false)}
+          style={{ position: "absolute", top: 0, ...handleEdge, bottom: 0, width: 8, cursor: "col-resize", zIndex: 3, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <span style={{ width: 2, height: handleVisible ? "55%" : 0, background: "var(--bs-primary,#0d6efd)", borderRadius: 2, transition: "height 0.15s ease", pointerEvents: "none", opacity: handleVisible ? 0.7 : 0 }} />
+        </span>
+      )}
+    </th>
+  );
+}
+
+const TABLE_COMPONENTS = { header: { cell: ResizableTitle } };
+
+// ─── Sortable row in column modal ─────────────────────────────────────────────
+
+function SortableColRow({ col, checked, onToggle }: { col: ColDef; checked: boolean; onToggle: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.key });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, background: isDragging ? "#f0f4ff" : undefined, zIndex: isDragging ? 999 : undefined }}
+      className="d-flex align-items-center gap-3 px-4 py-3 border-bottom"
+    >
+      <span {...attributes} {...listeners} style={{ cursor: "grab", touchAction: "none" }} className="text-muted flex-shrink-0">
+        <i className="ti ti-grip-vertical fs-16" />
+      </span>
+      <input className="form-check-input m-0 flex-shrink-0" type="checkbox" checked={checked} onChange={onToggle} style={{ width: 17, height: 17 }} />
+      <span className="fs-14">{col.label}</span>
+    </div>
+  );
+}
+
+type SortOption = "name_asc" | "name_desc" | "newest" | "oldest";
+type FilterOption = "all" | "active" | "inactive";
+
+// ─── Avatar cell ──────────────────────────────────────────────────────────────
+
+function UserAvatar({ user, size = 32 }: { user: UserListItem; size?: number }) {
+  const color = avatarColor(user.id);
+  return (
+    <span style={{ width: size, height: size, borderRadius: "50%", background: color, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontWeight: 600, fontSize: size * 0.38 }}>
+      {userInitials(user.name)}
+    </span>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 const ManageUsers = () => {
-  const data = ManageuserListData;
-  const columns = [
-    {
-      title: "Name",
-      dataIndex: "Name",
-      render: (text: any, render: any) => (
-        <h6 className="d-flex align-items-center fs-14 fw-medium mb-0">
-          <Link to="#" className="avatar avatar-rounded me-2">
-            <ImageWithBasePath
-              src={`assets/img/profiles/${render.Image}`}
-              alt="User Image"
-            />
-          </Link>
-          <Link to="#" className="d-flex flex-column">
-            {text}{" "}
-            <span className="text-body fs-13 mt-1 d-inline-block fw-normal">
-              {render.Role}{" "}
-            </span>
-          </Link>
-        </h6>
-      ),
-      sorter: (a: any, b: any) => a.Name.length - b.Name.length,
-    },
-    {
-      title: "Phone",
-      dataIndex: "Phone",
+  const canCreate = usePermission("users", "create");
+  const navigate = useNavigate();
 
-      sorter: (a: any, b: any) => a.Phone.length - b.Phone.length,
-    },
-    {
-      title: "Email",
-      dataIndex: "Email",
+  const [view, setView] = useState<"list" | "grid">(() => {
+    try { return localStorage.getItem(VIEW_LS_KEY) === "grid" ? "grid" : "list"; }
+    catch { return "list"; }
+  });
+  const [gridPage, setGridPage]       = useState(12);
+  const [users, setUsers]             = useState<UserListItem[]>([]);
+  const [total, setTotal]             = useState(0);
+  const [loading, setLoading]         = useState(true);
+  const [loadError, setLoadError]     = useState<string | null>(null);
+  const [searchText, setSearchText]   = useState("");
+  const [sortBy, setSortBy]           = useState<SortOption>("name_asc");
+  const [filterBy, setFilterBy]       = useState<FilterOption>("all");
 
-      sorter: (a: any, b: any) => a.Email.length - b.Email.length,
-    },
-    {
-      title: "Created",
-      dataIndex: "Created",
-
-      sorter: (a: any, b: any) => a.Created.length - b.Created.length,
-    },
-    {
-      title: "Last Activity",
-      dataIndex: "LastActivity",
-
-      sorter: (a: any, b: any) => a.LastActivity.length - b.LastActivity.length,
-    },
-
-    {
-      title: "Status",
-      dataIndex: "Status",
-      render: (text: any) => (
-        <span
-          className={`badge badge-pill badge-status ${
-            text === "Active" ? "bg-success" : "bg-danger"
-          } `}
-        >
-          {text}
-        </span>
-      ),
-      sorter: (a: any, b: any) => a.Status.length - b.Status.length,
-    },
-    {
-      title: "Action",
-      dataIndex: "Action",
-      render: () => (
-        <div className="dropdown table-action">
-          <Link
-            to="#"
-            className="action-icon btn btn-xs shadow btn-icon btn-outline-light"
-            data-bs-toggle="dropdown"
-            aria-expanded="false"
-          >
-            <i className="ti ti-dots-vertical" />
-          </Link>
-          <div className="dropdown-menu dropdown-menu-right">
-            <Link
-              className="dropdown-item"
-              to="#"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#offcanvas_edit"
-            >
-              <i className="ti ti-edit text-blue" /> Edit
-            </Link>
-            <Link
-              className="dropdown-item"
-              to="#"
-              data-bs-toggle="modal"
-              data-bs-target="#delete_contact"
-            >
-              <i className="ti ti-trash" /> Delete
-            </Link>
-          </div>
-        </div>
-      ),
-      sorter: (a: any, b: any) => a.Action.length - b.Action.length,
-    },
-  ];
-
-  const [searchText, setSearchText] = useState<string>("");
-
-  const handleSearch = (value: string) => {
-    setSearchText(value);
+  // ── Toast ──
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "danger" }>({ show: false, message: "", type: "success" });
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string, type: "success" | "danger" = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
   };
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+
+  // ── Column widths ──
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { const s = localStorage.getItem(COL_WIDTHS_LS_KEY); return s ? { ...DEFAULT_COL_WIDTHS, ...JSON.parse(s) } : { ...DEFAULT_COL_WIDTHS }; }
+    catch { return { ...DEFAULT_COL_WIDTHS }; }
+  });
+  const handleResize = useCallback((key: string, width: number) => {
+    setColWidths(prev => { const next = { ...prev, [key]: width }; localStorage.setItem(COL_WIDTHS_LS_KEY, JSON.stringify(next)); return next; });
+  }, []);
+
+  // ── Customize Columns modal ──
+  const [showColsModal, setShowColsModal] = useState(false);
+  const [colSearch, setColSearch]         = useState("");
+  const [colOrder, setColOrder] = useState<ColDef[]>(() => {
+    try {
+      const saved = localStorage.getItem(COL_ORDER_LS_KEY);
+      if (saved) {
+        const keys: string[] = JSON.parse(saved);
+        const ordered = keys.map(k => INITIAL_COLS.find(c => c.key === k)).filter(Boolean) as ColDef[];
+        const savedSet = new Set(keys);
+        return [...ordered, ...INITIAL_COLS.filter(c => !savedSet.has(c.key))];
+      }
+    } catch {}
+    return INITIAL_COLS;
+  });
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COL_VISIBLE_LS_KEY);
+      if (saved) { const parsed: string[] = JSON.parse(saved); const valid = new Set(INITIAL_COLS.map(c => c.key)); return new Set<string>(parsed.filter(k => valid.has(k))); }
+    } catch {}
+    return new Set(DEFAULT_VISIBLE);
+  });
+  const [draftOrder, setDraftOrder]     = useState<ColDef[]>(INITIAL_COLS);
+  const [draftVisible, setDraftVisible] = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
+
+  const openColsModal  = () => { setDraftOrder([...colOrder]); setDraftVisible(new Set(visibleCols)); setColSearch(""); setShowColsModal(true); };
+  const closeColsModal = () => setShowColsModal(false);
+  const saveColsModal  = () => {
+    setColOrder([...draftOrder]); setVisibleCols(new Set(draftVisible));
+    try { localStorage.setItem(COL_ORDER_LS_KEY, JSON.stringify(draftOrder.map(c => c.key))); localStorage.setItem(COL_VISIBLE_LS_KEY, JSON.stringify([...draftVisible])); } catch {}
+    setShowColsModal(false);
+  };
+  const toggleDraft = (key: string) => setDraftVisible(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id)
+      setDraftOrder(prev => arrayMove(prev, prev.findIndex(c => c.key === active.id), prev.findIndex(c => c.key === over.id)));
+  };
+  const filteredDraft = useMemo(() => draftOrder.filter(c => c.label.toLowerCase().includes(colSearch.toLowerCase())), [draftOrder, colSearch]);
+
+  // ── Data loading ──
+  const loadUsers = useCallback(async () => {
+    const cached = readUserList();
+    if (cached) {
+      setUsers(cached.data);
+      setTotal(cached.total);
+      setLoadError(null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setLoadError(null);
+    }
+    try {
+      const result = await getUserList();
+      setUsers(result.data);
+      setTotal(result.total);
+    } catch (e: any) { setLoadError(e.message ?? "Failed to load users."); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
+  useEffect(() => { setGridPage(12); }, [filterBy]);
+
+  const silentRefresh = useCallback(async () => {
+    try {
+      bustUserCache();
+      const result = await getUserList();
+      setUsers(result.data);
+      setTotal(result.total);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    const onFocus = () => silentRefresh();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [silentRefresh]);
+
+  const handleRefresh = useCallback(() => silentRefresh(), [silentRefresh]);
+
+  // ── Filter + sort ──
+  const filtered = useMemo(() => {
+    let base = [...users];
+    if (filterBy === "active")   base = base.filter(u => u.is_active);
+    if (filterBy === "inactive") base = base.filter(u => !u.is_active);
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      base = base.filter(u =>
+        u.name.toLowerCase().includes(q) ||
+        (u.email ?? "").toLowerCase().includes(q) ||
+        u.phone.toLowerCase().includes(q) ||
+        (u.role?.name ?? "").toLowerCase().includes(q)
+      );
+    }
+    return [...base].sort((a, b) => {
+      switch (sortBy) {
+        case "name_desc": return b.name.localeCompare(a.name);
+        case "newest":    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case "oldest":    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        default:          return a.name.localeCompare(b.name);
+      }
+    });
+  }, [users, searchText, sortBy, filterBy]);
+
+  // ── Table columns ──
+  const columns = useMemo(() => {
+    const resizeCell = (key: string) => () => ({
+      colKey: key, onResize: handleResize,
+      currentWidth: colWidths[key] ?? DEFAULT_COL_WIDTHS[key] ?? 160,
+    });
+
+    const cols: object[] = [
+      {
+        title: "Name", key: "name", dataIndex: "name",
+        width: colWidths["name"] ?? DEFAULT_COL_WIDTHS["name"],
+        onHeaderCell: resizeCell("name"),
+        render: (_: string, record: UserListItem) => (
+          <div className="d-flex align-items-center gap-2" style={{ cursor: "pointer" }}
+            onClick={() => navigate(route.userOverview.replace(":id", String(record.id)))}>
+            <UserAvatar user={record} size={32} />
+            <span className="fw-medium fs-14 title-name">{record.name}</span>
+          </div>
+        ),
+      },
+    ];
+
+    for (const col of colOrder) {
+      if (!visibleCols.has(col.key)) continue;
+      switch (col.key) {
+        case "phone":
+          cols.push({
+            title: "Phone", key: "phone", dataIndex: "phone",
+            width: colWidths["phone"] ?? DEFAULT_COL_WIDTHS["phone"],
+            onHeaderCell: resizeCell("phone"),
+            render: (v: string) => <span className="text-muted">{v || "—"}</span>,
+          }); break;
+        case "email":
+          cols.push({
+            title: "Email", key: "email", dataIndex: "email",
+            width: colWidths["email"] ?? DEFAULT_COL_WIDTHS["email"],
+            onHeaderCell: resizeCell("email"),
+            render: (v: string | null) => <span className="text-muted">{v || "—"}</span>,
+          }); break;
+        case "role":
+          cols.push({
+            title: "Role", key: "role", dataIndex: "role",
+            width: colWidths["role"] ?? DEFAULT_COL_WIDTHS["role"],
+            onHeaderCell: resizeCell("role"),
+            render: (v: { name: string } | null) => v
+              ? <span className="badge badge-soft-primary">{v.name}</span>
+              : <span className="text-muted">—</span>,
+          }); break;
+        case "is_active":
+          cols.push({
+            title: "Status", key: "is_active", dataIndex: "is_active",
+            width: colWidths["is_active"] ?? DEFAULT_COL_WIDTHS["is_active"],
+            onHeaderCell: resizeCell("is_active"),
+            render: (v: boolean) => (
+              <span className={`badge ${v ? "badge-soft-success" : "badge-soft-danger"}`}>
+                {v ? "Active" : "Inactive"}
+              </span>
+            ),
+          }); break;
+        case "created_at":
+          cols.push({
+            title: "Created On", key: "created_at", dataIndex: "created_at",
+            width: colWidths["created_at"] ?? DEFAULT_COL_WIDTHS["created_at"],
+            onHeaderCell: resizeCell("created_at"),
+            render: (v: string) => <span className="text-muted">{fmtDate(v)}</span>,
+          }); break;
+      }
+    }
+
+    // Fix last column resize handle
+    if (cols.length > 1) {
+      const lastCol     = cols[cols.length - 1] as any;
+      const prevCol     = cols[cols.length - 2] as any;
+      const adjacentKey = prevCol.key as string;
+      lastCol.onHeaderCell = () => ({
+        colKey: adjacentKey, onResize: handleResize,
+        currentWidth: colWidths[adjacentKey] ?? DEFAULT_COL_WIDTHS[adjacentKey] ?? 160,
+        handleSide: "left",
+      });
+      delete lastCol.width;
+    } else if (cols.length === 1) {
+      delete (cols[0] as any).width;
+    }
+
+    return cols;
+  }, [visibleCols, colOrder, colWidths, handleResize, navigate]);
+
+  // ── Export ──
+  const exportHeaders = ["Name", "Phone", "Email", "Role", "Status", "Created On"];
+  const buildExportRows = () => filtered.map(u => [
+    u.name,
+    u.phone,
+    u.email ?? "—",
+    u.role?.name ?? "—",
+    u.is_active ? "Active" : "Inactive",
+    fmtDate(u.created_at),
+  ]);
+
+  const handleExportPdf = () => {
+    try { exportToPdfPrint("Users", exportHeaders, buildExportRows()); }
+    catch (e: any) { showToast(e.message ?? "PDF export failed.", "danger"); }
+  };
+
+  const handleExportExcel = () => {
+    const rows = filtered.map(u => ({
+      name:       u.name,
+      phone:      u.phone,
+      email:      u.email ?? "—",
+      role:       u.role?.name ?? "—",
+      status:     u.is_active ? "Active" : "Inactive",
+      created_at: fmtDate(u.created_at),
+    }));
+    exportToExcelFile("Users", [
+      { header: "Name",       key: "name",       width: 24 },
+      { header: "Phone",      key: "phone",      width: 18 },
+      { header: "Email",      key: "email",      width: 28 },
+      { header: "Role",       key: "role",       width: 20 },
+      { header: "Status",     key: "status",     width: 12 },
+      { header: "Created On", key: "created_at", width: 16 },
+    ], rows).catch(() => showToast("Excel export failed.", "danger"));
+  };
+
+  const sortLabel: Record<SortOption, string> = {
+    name_asc:  "Name A–Z",
+    name_desc: "Name Z–A",
+    newest:    "Newest",
+    oldest:    "Oldest",
+  };
+
+  const filterLabel: Record<FilterOption, string> = {
+    all:      "All Users",
+    active:   "Active Users",
+    inactive: "Inactive Users",
+  };
+
   return (
     <>
-      {/* ========================
-			Start Page Content
-		========================= */}
       <div className="page-wrapper">
-        {/* Start Content */}
-        <div className="content pb-0">
-          {/* Page Header */}
+        <div className="content">
+
           <PageHeader
             title="Manage Users"
-            badgeCount={152}
+            badgeCount={total}
             showModuleTile={false}
             showExport={true}
+            onRefresh={handleRefresh}
+            onExportPdf={handleExportPdf}
+            onExportExcel={handleExportExcel}
           />
-          {/* End Page Header */}
-          {/* card start */}
+
           <div className="card border-0 rounded-0">
             <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
               <div className="input-icon input-icon-start position-relative">
                 <span className="input-icon-addon text-dark">
                   <i className="ti ti-search" />
                 </span>
-                <SearchInput value={searchText} onChange={handleSearch} />
+                <SearchInput value={searchText} onChange={setSearchText} />
               </div>
-              <Link
-                to="#"
-                className="btn btn-primary"
-                data-bs-toggle="offcanvas"
-                data-bs-target="#offcanvas_add"
-              >
-                <i className="ti ti-square-rounded-plus-filled me-1" />
-                Add User
-              </Link>
+              {canCreate && (
+                <Link to={route.newUser} className="btn btn-primary">
+                  <i className="ti ti-square-rounded-plus-filled me-1" />
+                  New User
+                </Link>
+              )}
             </div>
+
             <div className="card-body">
-              {/* table header */}
               <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-                <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <div className="dropdown">
-                    <Link
-                      to="#"
-                      className="btn btn-outline-light shadow px-2"
-                      data-bs-toggle="dropdown"
-                      data-bs-auto-close="outside"
-                    >
-                      <i className="ti ti-filter me-2" />
-                      Filter
-                      <i className="ti ti-chevron-down ms-2" />
-                    </Link>
-                    <div className="filter-dropdown-menu dropdown-menu dropdown-menu-lg p-0">
-                      <div className="filter-header d-flex align-items-center justify-content-between border-bottom">
-                        <h6 className="mb-0">
-                          <i className="ti ti-filter me-1" />
-                          Filter
-                        </h6>
-                        <button
-                          type="button"
-                          className="btn-close close-filter-btn"
-                          data-bs-dismiss="dropdown-menu"
-                          aria-label="Close"
-                        />
-                      </div>
-                      <div className="filter-set-view p-3">
-                        <div className="accordion" id="accordionExample">
-                          <div className="filter-set-content">
-                            <div className="filter-set-content-head">
-                              <Link
-                                to="#"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#collapseTwo"
-                                aria-expanded="true"
-                                aria-controls="collapseTwo"
-                              >
-                                Name
-                              </Link>
-                            </div>
-                            <div
-                              className="filter-set-contents accordion-collapse collapse show"
-                              id="collapseTwo"
-                              data-bs-parent="#accordionExample"
-                            >
-                              <div className="filter-content-list bg-light rounded border p-2 shadow mt-2">
-                                <div className="mb-2">
-                                  <div className="input-icon-start input-icon position-relative">
-                                    <span className="input-icon-addon fs-12">
-                                      <i className="ti ti-search" />
-                                    </span>
-                                    <input
-                                      type="text"
-                                      className="form-control form-control-md"
-                                      placeholder="Search"
-                                    />
-                                  </div>
-                                </div>
-                                <ul className="mb-0">
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-06.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Elizabeth Morgan
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-40.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Katherine Brooks
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-05.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Sophia Lopez
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-10.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      John Michael
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-15.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Natalie Brooks
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-01.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      William Turner
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-13.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Ava Martinez
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-12.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Nathan Reed
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-03.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Lily Anderson
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      <span className="avatar avatar-xs rounded-circle me-2">
-                                        <ImageWithBasePath
-                                          src="assets/img/users/user-18.jpg"
-                                          className="flex-shrink-0 rounded-circle"
-                                          alt="img"
-                                        />
-                                      </span>
-                                      Ryan Coleman
-                                    </label>
-                                  </li>
-                                  <li>
-                                    <Link
-                                      to="#"
-                                      className="link-primary text-decoration-underline p-2 d-flex"
-                                    >
-                                      Load More
-                                    </Link>
-                                  </li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="filter-set-content">
-                            <div className="filter-set-content-head">
-                              <Link
-                                to="#"
-                                className="collapsed"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#collapseThree"
-                                aria-expanded="false"
-                                aria-controls="collapseThree"
-                              >
-                                Phone
-                              </Link>
-                            </div>
-                            <div
-                              className="filter-set-contents accordion-collapse collapse"
-                              id="collapseThree"
-                              data-bs-parent="#accordionExample"
-                            >
-                              <div className="filter-content-list bg-light rounded border p-2 shadow mt-2">
-                                <ul>
-                                  <li>
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      +1 87545 54503
-                                    </label>
-                                  </li>
-                                  <li>
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      +1 98975 17485
-                                    </label>
-                                  </li>
-                                  <li>
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      +1 54655 25455
-                                    </label>
-                                  </li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="filter-set-content">
-                            <div className="filter-set-content-head">
-                              <Link
-                                to="#"
-                                className="collapsed"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#owner"
-                                aria-expanded="false"
-                                aria-controls="owner"
-                              >
-                                Email
-                              </Link>
-                            </div>
-                            <div
-                              className="filter-set-contents accordion-collapse collapse"
-                              id="owner"
-                              data-bs-parent="#accordionExample"
-                            >
-                              <div className="filter-content-list bg-light rounded border p-2 shadow mt-2">
-                                <ul className="mb-0">
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      elizabeth@example.com
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      katherine@example.com
-                                    </label>
-                                  </li>
-                                  <li className="mb-1">
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      samantha@example.com
-                                    </label>
-                                  </li>
-                                  <li>
-                                    <Link
-                                      to="#"
-                                      className="link-primary text-decoration-underline p-2 pt-0 d-flex"
-                                    >
-                                      Load More
-                                    </Link>
-                                  </li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="filter-set-content">
-                            <div className="filter-set-content-head">
-                              <Link
-                                to="#"
-                                className="collapsed"
-                                data-bs-toggle="collapse"
-                                data-bs-target="#Status"
-                                aria-expanded="false"
-                                aria-controls="Status"
-                              >
-                                Status
-                              </Link>
-                            </div>
-                            <div
-                              className="filter-set-contents accordion-collapse collapse"
-                              id="Status"
-                              data-bs-parent="#accordionExample"
-                            >
-                              <div className="filter-content-list bg-light rounded border p-2 shadow mt-2">
-                                <ul>
-                                  <li>
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      Active
-                                    </label>
-                                  </li>
-                                  <li>
-                                    <label className="dropdown-item px-2 d-flex align-items-center">
-                                      <input
-                                        className="form-check-input m-0 me-1"
-                                        type="checkbox"
-                                      />
-                                      Inactive
-                                    </label>
-                                  </li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="d-flex align-items-center gap-2">
-                          <Link to="#" className="btn btn-outline-light w-100">
-                            Reset
-                          </Link>
-                          <Link
-                            to={all_routes.manageusers}
-                            className="btn btn-primary w-100"
-                          >
-                            Filter
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
+
+                {/* Filter */}
+                <div className="dropdown">
+                  <button type="button" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
+                    {filterLabel[filterBy]}
+                  </button>
+                  <div className="dropdown-menu dropmenu-hover-primary">
+                    <ul>
+                      {(Object.entries(filterLabel) as [FilterOption, string][]).map(([k, label]) => (
+                        <li key={k}>
+                          <button className={`dropdown-item${filterBy === k ? " active" : ""}`} onClick={() => setFilterBy(k)}>
+                            {label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <PredefinedDatePicker/>
                 </div>
+
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  {/* Sort */}
                   <div className="dropdown">
-                    <Link
-                      to="#"
-                      className="dropdown-toggle btn btn-outline-light px-2 shadow"
-                      data-bs-toggle="dropdown"
-                    >
-                      <i className="ti ti-sort-ascending-2 me-2" />
-                      Sort By
-                    </Link>
-                    <div className="dropdown-menu">
+                    <button type="button" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
+                      <i className="ti ti-sort-ascending-2 me-2" />{sortLabel[sortBy]}
+                    </button>
+                    <div className="dropdown-menu dropmenu-hover-primary dropdown-menu-end">
                       <ul>
-                        <li>
-                          <Link to="#" className="dropdown-item">
-                            Newest
-                          </Link>
-                        </li>
-                        <li>
-                          <Link to="#" className="dropdown-item">
-                            Oldest
-                          </Link>
-                        </li>
+                        {(Object.entries(sortLabel) as [SortOption, string][]).map(([k, label]) => (
+                          <li key={k}>
+                            <button className={`dropdown-item d-flex align-items-center gap-2${sortBy === k ? " active" : ""}`} onClick={() => setSortBy(k)}>
+                              {label}
+                            </button>
+                          </li>
+                        ))}
                       </ul>
                     </div>
                   </div>
-                  <div className="dropdown">
-                    <Link
-                      to="#"
-                      className="btn bg-soft-indigo px-2 border-0"
-                      data-bs-toggle="dropdown"
-                      data-bs-auto-close="outside"
-                    >
-                      <i className="ti ti-columns-3 me-2" />
-                      Manage Columns
-                    </Link>
-                    <div className="dropdown-menu dropdown-menu-md dropdown-md p-3">
-                      <ul>
-                        <li className="gap-1 d-flex align-items-center mb-2">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Name</span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                        <li className="gap-1 d-flex align-items-center mb-2">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Phone</span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                        <li className="gap-1 d-flex align-items-center mb-2">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Email</span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                        <li className="gap-1 d-flex align-items-center mb-2">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Created </span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                        <li className="gap-1 d-flex align-items-center mb-2">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Last Activity</span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                        <li className="gap-1 d-flex align-items-center mb-2">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Status</span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                        <li className="gap-1 d-flex align-items-center">
-                          <i className="ti ti-columns me-1" />
-                          <div className="form-check form-switch w-100 ps-0">
-                            <label className="form-check-label d-flex align-items-center gap-2 w-100">
-                              <span>Action</span>
-                              <input
-                                className="form-check-input switchCheckDefault ms-auto"
-                                type="checkbox"
-                                role="switch"
-                                defaultChecked
-                              />
-                            </label>
-                          </div>
-                        </li>
-                      </ul>
-                    </div>
+
+                  {/* Manage columns — list view only */}
+                  {view === "list" && (
+                    <button type="button" className="btn bg-soft-indigo px-2 border-0" onClick={openColsModal}>
+                      <i className="ti ti-columns-3 me-2" />Manage Columns
+                    </button>
+                  )}
+
+                  {/* View toggle */}
+                  <div className="d-flex align-items-center shadow rounded border view-icons bg-white">
+                    <button type="button" className={`btn btn-sm m-1 px-2 border-0 fs-14${view === "list" ? " active" : ""}`} onClick={() => setView("list")} title="List view">
+                      <i className="ti ti-list-tree" />
+                    </button>
+                    <button type="button" className={`btn btn-sm m-1 px-2 border-0 fs-14${view === "grid" ? " active" : ""}`} onClick={() => { setView("grid"); setGridPage(12); }} title="Grid view">
+                      <i className="ti ti-grid-dots" />
+                    </button>
                   </div>
                 </div>
-              </div>
-              {/* table header */}
-              {/* Contact List */}
-              <div className="custom-table">
-                <Datatable
-                  columns={columns}
-                  dataSource={data}
-                  Selection={true}
-                  searchText={searchText}
-                />
               </div>
 
-              {/* /Contact List */}
+              {/* Error */}
+              {loadError && (
+                <div className="alert alert-danger d-flex align-items-center gap-2">
+                  <i className="ti ti-alert-circle" />{loadError}
+                  <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={handleRefresh}>Retry</button>
+                </div>
+              )}
+
+              {loading ? null : view === "list" ? (
+                /* ── List view ── */
+                <div className="custom-table table-nowrap">
+                  <Datatable
+                    columns={columns}
+                    dataSource={filtered}
+                    Selection={false}
+                    searchText=""
+                    components={TABLE_COMPONENTS}
+                    scroll={{ x: "max-content" }}
+                    rowKey="id"
+                    onRow={(record: UserListItem) => ({
+                      onClick: () => navigate(route.userOverview.replace(":id", String(record.id))),
+                      style: { cursor: "pointer" },
+                    })}
+                  />
+                </div>
+              ) : (
+                /* ── Grid view ── */
+                <>
+                  {filtered.length === 0 ? (
+                    <div className="text-center py-5">
+                      <i className="ti ti-users fs-40 d-block mb-4 text-muted opacity-50" />
+                      <h6 className="fw-semibold mb-2">No Users Found</h6>
+                      <p className="text-muted mb-4 fs-14">Add your first user to get started.</p>
+                      {canCreate && (
+                        <Link to={route.newUser} className="btn btn-primary px-4">
+                          <i className="ti ti-square-rounded-plus-filled me-1" />New User
+                        </Link>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="row">
+                      {filtered.slice(0, gridPage).map(user => (
+                        <div key={user.id} className="col-xxl-3 col-xl-4 col-md-6">
+                          <div className="card border shadow" style={{ cursor: "pointer" }}>
+                            <div className="card-body">
+                              {/* Header */}
+                              <div className="d-flex align-items-center justify-content-between border-bottom pb-3 mb-3">
+                                <div className="d-flex align-items-center gap-2">
+                                  <UserAvatar user={user} size={36} />
+                                  <div>
+                                    <div className="fs-14 fw-semibold lh-sm">{user.name}</div>
+                                    {user.role && <div className="fs-12 text-muted">{user.role.name}</div>}
+                                  </div>
+                                </div>
+                                <span className={`badge ${user.is_active ? "badge-soft-success" : "badge-soft-danger"}`}>
+                                  {user.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+
+                              {/* Contact info */}
+                              <div className="d-flex flex-column gap-1 mb-3">
+                                {user.email && (
+                                  <div className="d-flex align-items-center gap-2 fs-13 text-muted">
+                                    <i className="ti ti-mail fs-14" />
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</span>
+                                  </div>
+                                )}
+                                <div className="d-flex align-items-center gap-2 fs-13 text-muted">
+                                  <i className="ti ti-phone fs-14" />
+                                  <span>{user.phone}</span>
+                                </div>
+                              </div>
+
+                              {/* Footer */}
+                              <div className="d-flex align-items-center">
+                                <span className="fs-12 text-muted d-flex align-items-center gap-1">
+                                  <i className="ti ti-calendar fs-13" />{fmtDate(user.created_at)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {filtered.length > gridPage && (
+                    <div className="load-btn text-center mt-3">
+                      <button type="button" className="btn btn-primary" onClick={() => setGridPage(p => p + 12)}>
+                        <i className="ti ti-loader me-1" />Load More
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
-          {/* card end */}
         </div>
-        {/* End Content */}
-        {/* Start Footer */}
         <Footer />
-        {/* End Footer */}
       </div>
-      {/* ========================
-			End Page Content
-		========================= */}
-        <ModalUserManagement/>
+
+      {/* ── Customize Columns Modal ── */}
+      {showColsModal && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={e => { if (e.target === e.currentTarget) closeColsModal(); }}
+        >
+          <div style={{ background: "#fff", borderRadius: 14, width: 580, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "85vh" }}>
+            <div style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 12, flexShrink: 0 }}>
+              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <i className="ti ti-adjustments-horizontal fs-18" style={{ color: "#ef4444" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Customize Columns</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>{draftVisible.size + 1} of {INITIAL_COLS.length + 1} columns visible</p>
+              </div>
+              <button type="button" onClick={closeColsModal}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+              </button>
+            </div>
+            <div style={{ padding: "14px 24px 10px", flexShrink: 0 }}>
+              <div className="input-icon input-icon-start position-relative">
+                <span className="input-icon-addon text-muted" style={{ left: 12 }}><i className="ti ti-search fs-15" /></span>
+                <input type="text" className="form-control ps-5" placeholder="Search columns…" value={colSearch} onChange={e => setColSearch(e.target.value)} />
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light" style={{ flexShrink: 0 }}>
+              <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
+              <i className="ti ti-lock text-muted fs-15" />
+              <span className="fs-14 text-muted">Name</span>
+              <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={filteredDraft.map(c => c.key)} strategy={verticalListSortingStrategy}>
+                  {filteredDraft.map(col => (
+                    <SortableColRow key={col.key} col={col} checked={draftVisible.has(col.key)} onToggle={() => toggleDraft(col.key)} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+            <div style={{ padding: "16px 24px 22px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button className="btn btn-danger me-2" onClick={saveColsModal}>Save</button>
+              <button className="btn btn-outline-light" onClick={closeColsModal}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast ── */}
+      <div role="region" aria-live="polite" className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
+        <Toast show={toast.show} onClose={() => setToast(t => ({ ...t, show: false }))} delay={4000} autohide
+          style={{ minWidth: 320, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.13)" }}>
+          <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
+            <span style={{ width: 36, height: 36, borderRadius: "50%", background: toast.type === "success" ? "#e6f9ee" : "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <i className={`ti ${toast.type === "success" ? "ti-check text-success" : "ti-x"} fs-18`} style={toast.type === "danger" ? { color: "#e03131" } : {}} />
+            </span>
+            <span className="fs-14 fw-medium text-dark">{toast.message}</span>
+            <button type="button" className="btn-close ms-auto" style={{ fontSize: 11 }} onClick={() => setToast(t => ({ ...t, show: false }))} />
+          </Toast.Body>
+        </Toast>
+      </div>
     </>
   );
 };

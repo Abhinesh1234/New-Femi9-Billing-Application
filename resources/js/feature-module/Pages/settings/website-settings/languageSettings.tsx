@@ -655,14 +655,14 @@ const LanguageSettings = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Language <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Language <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Code <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Code <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -727,8 +727,8 @@ const LanguageSettings = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Language <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Language <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -737,8 +737,8 @@ const LanguageSettings = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Code <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Code <span>*</span>
                   </label>
                   <input
                     type="text"

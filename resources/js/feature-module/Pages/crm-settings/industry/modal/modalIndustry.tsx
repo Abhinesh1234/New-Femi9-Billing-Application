@@ -20,8 +20,8 @@ const ModalIndustry = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Industry Name <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Industry Name <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -83,8 +83,8 @@ const ModalIndustry = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Industry Name <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Industry Name <span>*</span>
               </label>
               <input
                 type="text"

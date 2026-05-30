@@ -158,8 +158,8 @@ const ModalTask = () => {
           <div className="row">
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Title<span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Title<span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
@@ -174,8 +174,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Responsible Persons <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Responsible Persons <span>*</span>
                 </label>
                <MultipleSelect
                     value={selectedItems}
@@ -187,8 +187,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Start Date<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Start Date<span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -198,8 +198,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Due Date <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Due Date <span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -240,8 +240,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <textarea className="form-control" rows={3} defaultValue={""} />
               </div>
@@ -285,8 +285,8 @@ const ModalTask = () => {
           <div className="row">
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Title<span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Title<span>*</span>
                 </label>
                 <input
                   type="text"
@@ -305,8 +305,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Responsible Persons <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Responsible Persons <span>*</span>
                 </label>
                <MultipleSelect
                     value={selectedItems}
@@ -318,8 +318,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Start Date<span className="text-danger"> *</span>
+                <label className="form-label text-danger">
+                  Start Date<span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -329,8 +329,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Due Date <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Due Date <span>*</span>
                 </label>
                 <div className="input-group w-auto input-group-flat">
                   <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -371,8 +371,8 @@ const ModalTask = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <textarea
                   className="form-control"

@@ -27,16 +27,16 @@ const Modal = () => {
                 <div className="row">
                   <div className="col-12">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Event Name <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Event Name <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
                   </div>
                   <div className="col-12">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Event Date <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Event Date <span>*</span>
                       </label>
                       <div className="input-group w-auto input-group-flat">
                         <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -45,8 +45,8 @@ const Modal = () => {
                   </div>
                   <div className="col-12">
                     <div>
-                      <label className="form-label">
-                        Event Category <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Event Category <span>*</span>
                       </label>
                       <CommonSelect
                         options={Event_Category}
@@ -93,16 +93,16 @@ const Modal = () => {
                 <div className="row">
                   <div className="col-12">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Category Name <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Category Name <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
                   </div>
                   <div className="col-12">
                     <div>
-                      <label className="form-label">
-                        Category Color <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Category Color <span>*</span>
                       </label>
                       <CommonSelect
                         options={Category_Color}

@@ -395,20 +395,20 @@ const SecuritySettings = () => {
             <form >
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Current Password <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Current Password <span>*</span>
                   </label>
                   <input type="password" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    New Password <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    New Password <span>*</span>
                   </label>
                   <input type="password" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Confirm Password <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Confirm Password <span>*</span>
                   </label>
                   <input type="password" className="form-control" />
                 </div>
@@ -450,9 +450,9 @@ const SecuritySettings = () => {
               <div className="modal-body">
                 <div className="mb-3">
                   <div className="input-blocks">
-                    <label className="form-label">
+                    <label className="form-label text-danger">
                       Current Phone Number{" "}
-                      <span className="text-danger">*</span>
+                      <span>*</span>
                     </label>
                     <CommonPhoneInput
                       value={phone}
@@ -463,8 +463,8 @@ const SecuritySettings = () => {
                 </div>
                 <div className="mb-3">
                   <div>
-                    <label className="form-label">
-                      New Phone Number <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      New Phone Number <span>*</span>
                     </label>
                     <CommonPhoneInput
                       value={phone2}
@@ -478,8 +478,8 @@ const SecuritySettings = () => {
                   </p>
                 </div>
                 <div>
-                  <label className="form-label">
-                    Current Password <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Current Password <span>*</span>
                   </label>
                   <div className="input-group input-group-flat pass-group">
                     <input
@@ -533,17 +533,17 @@ const SecuritySettings = () => {
               <div className="modal-body">
                 <div className="mb-3">
                   <div className="input-blocks">
-                    <label className="form-label">
+                    <label className="form-label text-danger">
                       Current Email Address{" "}
-                      <span className="text-danger">*</span>
+                      <span>*</span>
                     </label>
                     <input type="email" className="form-control" />
                   </div>
                 </div>
                 <div className="mb-3">
                   <div>
-                    <label className="form-label">
-                      New Email Address<span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      New Email Address<span>*</span>
                     </label>
                     <input className="form-control" type="email" />
                   </div>
@@ -553,8 +553,8 @@ const SecuritySettings = () => {
                   </p>
                 </div>
                 <div>
-                  <label className="form-label">
-                    Confirm Password<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Confirm Password<span>*</span>
                   </label>
                   <div className="input-group input-group-flat pass-group">
                     <input

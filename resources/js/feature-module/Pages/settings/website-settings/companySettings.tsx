@@ -96,27 +96,27 @@ const CompanySettings = () => {
                       <div className="row">
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
+                            <label className="form-label text-danger">
                               Company Name{" "}
-                              <span className="text-danger">*</span>
+                              <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>
                         </div>
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
+                            <label className="form-label text-danger">
                               Company Email Address{" "}
-                              <span className="text-danger">*</span>
+                              <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>
                         </div>
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
+                            <label className="form-label text-danger">
                               Phone Number{" "}
-                              <span className="text-danger">*</span>
+                              <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>

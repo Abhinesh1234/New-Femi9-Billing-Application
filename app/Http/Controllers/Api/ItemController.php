@@ -10,6 +10,7 @@ use App\Models\CompositeItemComponent;
 use App\Models\CustomField;
 use App\Models\Item;
 use App\Models\ItemVariant;
+use App\Models\PartyItemReorderPoint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,8 +36,10 @@ class ItemController extends Controller
         $ctx = $this->buildCtx($request, 'ItemController::index');
 
         try {
+            $isParty = (bool) $request->attributes->get('party_scope_id');
+
             $query = Item::select([
-                    'id', 'name', 'item_type', 'form_type', 'sku',
+                    'id', 'name', 'item_type', 'form_type', 'sku', 'unit',
                     'selling_price', 'cost_price', 'image', 'refs',
                     'track_inventory', 'reorder_point', 'created_at',
                     'is_composite', 'composite_type',
@@ -47,6 +50,7 @@ class ItemController extends Controller
                         ->orderBy('sort_order')
                         ->with(['componentItem' => fn ($q2) => $q2->select(['id', 'name', 'item_type', 'sku', 'unit'])]),
                 ])
+                ->when($isParty, fn($q) => $q->where('admin_only', false))
                 ->search($request->query('search'))
                 ->ofType($request->query('item_type'))
                 ->when($request->boolean('exclude_composite'), fn($q) => $q->where('is_composite', false))
@@ -55,6 +59,21 @@ class ItemController extends Controller
 
             $perPage = max(1, min((int) $request->query('per_page', 20), 1000));
             $items   = $query->paginate($perPage);
+
+            // For party users, replace the company-level reorder_point with the
+            // party's own value from party_item_reorder_points (null if not set).
+            $partyScopeId = $request->attributes->get('party_scope_id');
+            if ($partyScopeId) {
+                $partyReorders = PartyItemReorderPoint::where('party_id', $partyScopeId)
+                    ->whereIn('item_id', $items->pluck('id'))
+                    ->pluck('reorder_point', 'item_id');
+
+                $items->getCollection()->each(function ($item) use ($partyReorders) {
+                    $item->reorder_point = $partyReorders->has($item->id)
+                        ? (float) $partyReorders->get($item->id)
+                        : null;
+                });
+            }
 
             return $this->successResponse(['data' => $items]);
 
@@ -233,18 +252,60 @@ class ItemController extends Controller
 
     /**
      * POST /api/items/upload-image
-     * Accepts a raw image file, compresses it (max 1200px, JPEG 80%), and stores it.
-     * Returns the relative path and public URL.
+     * Re-encodes via GD (max 1200px, 85% JPEG) — prevents polyglot/malformed files.
+     * Falls back to raw storage if GD is unavailable.
      */
     public function uploadImage(Request $request): JsonResponse
     {
         $request->validate([
-            'image' => 'required|file|mimes:jpeg,jpg|max:2048',
+            'image' => 'required|file|mimes:jpeg,jpg,png,gif,webp|max:5120',
         ]);
 
         try {
+            $file     = $request->file('image');
             $filename = 'items/' . Str::uuid() . '.jpg';
-            Storage::disk('public')->put($filename, file_get_contents($request->file('image')->getRealPath()));
+
+            if (function_exists('imagecreatefromstring')) {
+                $raw = file_get_contents($file->getRealPath());
+                $src = imagecreatefromstring($raw);
+
+                if ($src !== false) {
+                    [$origW, $origH] = [imagesx($src), imagesy($src)];
+                    $maxDim = 1200;
+
+                    if ($origW > $maxDim || $origH > $maxDim) {
+                        if ($origW >= $origH) {
+                            $newW = $maxDim;
+                            $newH = (int) round($maxDim * $origH / $origW);
+                        } else {
+                            $newH = $maxDim;
+                            $newW = (int) round($maxDim * $origW / $origH);
+                        }
+                        $dst = imagecreatetruecolor($newW, $newH);
+                        // Preserve transparency for PNG/GIF sources
+                        imagealphablending($dst, false);
+                        imagesavealpha($dst, true);
+                        imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $origW, $origH);
+                        imagedestroy($src);
+                        $src = $dst;
+                    }
+
+                    $tmp = tempnam(sys_get_temp_dir(), 'item_img_') . '.jpg';
+                    imagejpeg($src, $tmp, 85);
+                    imagedestroy($src);
+
+                    Storage::disk('public')->put($filename, file_get_contents($tmp));
+                    @unlink($tmp);
+
+                    return $this->successResponse([
+                        'path' => $filename,
+                        'url'  => Storage::disk('public')->url($filename),
+                    ], 201);
+                }
+            }
+
+            // GD unavailable — store as-is (already validated mime type)
+            Storage::disk('public')->put($filename, file_get_contents($file->getRealPath()));
 
             return $this->successResponse([
                 'path' => $filename,
@@ -519,11 +580,14 @@ class ItemController extends Controller
 
         if (empty($newLog)) return;
 
+        $partyUserId = request()?->attributes->get('party_user_id');
+
         AuditLog::create([
             'auditable_type' => $item->getTable(),
             'auditable_id'   => $item->id,
             'event'          => 'updated',
-            'user_id'        => auth()->id(),
+            'user_id'        => $partyUserId ? null : auth()->id(),
+            'party_user_id'  => $partyUserId ?: null,
             'ip_address'     => request()?->ip(),
             'user_agent'     => request()?->userAgent(),
             'old_values'     => ['variants' => $oldLog],
@@ -566,15 +630,31 @@ class ItemController extends Controller
             $start   = (int) ($tc['starting_number'] ?? 1);
             $suffix  = $tc['suffix']          ?? '';
 
-            // Count all items (including soft-deleted) that have this field filled.
-            // Use explicit JSON_UNQUOTE/JSON_EXTRACT for reliable MySQL JSON querying.
+            // Use MAX of the numeric suffix stored in the field rather than COUNT(*).
+            // COUNT is race-prone (two concurrent stores both count N → both produce N+1).
+            // MAX-of-stored-value is idempotent under concurrent reads: both see the same
+            // max and both try to write max+1; the second one will then fail a unique check
+            // if you add one, or at worst produce a duplicate — still safer than COUNT.
             $jsonPath = '$.' . $fieldKey;
-            $count = Item::withTrashed()
-                ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(`custom_fields`, ?)) IS NOT NULL", [$jsonPath])
-                ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(`custom_fields`, ?)) != ''", [$jsonPath])
-                ->count();
 
-            $number = $start + $count;
+            // Extract the stored numeric portion (strip known prefix/suffix, parse int)
+            $maxStored = DB::selectOne(
+                "SELECT MAX(CAST(
+                    REGEXP_REPLACE(
+                        TRIM(BOTH '-' FROM
+                            REPLACE(REPLACE(
+                                COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`custom_fields`, ?)), ''),
+                                ?, ''), ?, '')
+                        ),
+                    '[^0-9]', '') AS UNSIGNED)) AS mx
+                 FROM items
+                 WHERE deleted_at IS NULL
+                   AND JSON_UNQUOTE(JSON_EXTRACT(`custom_fields`, ?)) IS NOT NULL
+                   AND JSON_UNQUOTE(JSON_EXTRACT(`custom_fields`, ?)) != ''",
+                [$jsonPath, $prefix, $suffix, $jsonPath, $jsonPath]
+            );
+
+            $number = max($start, (int) ($maxStored->mx ?? 0) + 1);
             $padded = str_pad($number, 3, '0', STR_PAD_LEFT);
 
             $parts = array_values(array_filter([$prefix, $padded, $suffix], fn($p) => $p !== ''));

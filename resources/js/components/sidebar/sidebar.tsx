@@ -9,6 +9,7 @@ import "overlayscrollbars/overlayscrollbars.css";
 import { SidebarData } from "./sidebarData";
 import React from "react";
 import { all_routes } from "../../routes/all_routes";
+import { usePermission } from "../../core/hooks/usePermission";
 
 const Sidebar = () => {
   const route = all_routes;
@@ -22,7 +23,15 @@ const Sidebar = () => {
   const { enableCompositeItems, enablePriceLists } = useSelector(
     (state: any) => state.productSettings
   );
+  const authUser = useSelector((state: any) => state.auth.user);
   const dispatch = useDispatch();
+
+  const canViewModule = (module?: string): boolean => {
+    if (!module) return true;
+    if (!authUser) return false;
+    if (authUser.permissions === null) return true; // null = no individual overrides, full access
+    return !!(authUser.permissions?.[module]?.view);
+  };
 
   // Returns true when `link` is the current path OR the current path is a sub-page of `link`
   // (e.g. /items/123 is a sub-page of /items). The trailing-slash guard prevents /items-new
@@ -230,13 +239,17 @@ const Sidebar = () => {
                     <li>
                       <ul>
                         {mainLabel?.submenuItems?.map((title: any, i) => {
-                          // Filter feature-gated submenu children
+                          // Filter feature-gated and permission-gated submenu children
                           const visibleChildren = (title?.submenuItems ?? []).filter((item: any) => {
-                            if (item.link === route.compositeItems) return enableCompositeItems;
-                            if (item.link === route.priceList)       return enablePriceLists;
+                            if (item.link === route.compositeItems && !enableCompositeItems) return false;
+                            if (item.link === route.priceList       && !enablePriceLists)    return false;
+                            if (item.permModule && !canViewModule(item.permModule))          return false;
                             return true;
                           });
                           const titleWithFiltered = { ...title, submenuItems: visibleChildren };
+
+                          // Hide the parent group if it has children but none are visible
+                          if (title.submenuItems?.length > 0 && visibleChildren.length === 0) return null;
 
                           // Check if any submenu or subsubmenu is active
                           const isSubmenuActive =

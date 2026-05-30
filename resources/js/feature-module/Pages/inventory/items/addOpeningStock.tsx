@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
 import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
@@ -8,7 +8,9 @@ import type { LocationListItem } from "../../../../core/services/locationApi";
 import { getLocationList } from "../../../../core/cache/locationCache";
 import { readItemDetail, getItemDetail, bustItem } from "../../../../core/cache/itemCache";
 import { emitMutation } from "../../../../core/cache/mutationEvents";
-import { fetchOpeningStock, saveOpeningStock } from "../../../../core/services/openingStockApi";
+import { fetchOpeningStock, fetchItemStock, saveOpeningStock } from "../../../../core/services/openingStockApi";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StockRow {
   id: number;
@@ -25,9 +27,22 @@ interface RowError {
   opening_stock_value?: string;
 }
 
-let _nextRowId = 1;
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Location dropdown ─────────────────────────────────────────────────────────
+/** Format a raw number string for display (strips trailing zeros, 2–4 dp). */
+const fmtNum = (n: string | number): string => {
+  const num = parseFloat(String(n));
+  if (isNaN(num)) return "—";
+  // Show between 2 and 4 decimal places, trimming trailing zeros beyond 2
+  return num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+};
+
+/** Format a currency amount. */
+const fmtCurrency = (n: number): string =>
+  n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// ── Location dropdown (portal-based) ─────────────────────────────────────────
+
 interface LocationFieldProps {
   value: string;
   onChange: (name: string, id: number) => void;
@@ -44,6 +59,7 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
   const activeRef = useRef<HTMLDivElement>(null);
   const listRef   = useRef<HTMLDivElement>(null);
 
+  // Close on outside click
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
@@ -55,7 +71,7 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const calcPosition = () => {
+  const calcPosition = useCallback(() => {
     if (!wrapRef.current) return;
     const rect       = wrapRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
@@ -65,7 +81,7 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
     } else {
       setMenuStyle({ position: "fixed", top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 9999 });
     }
-  };
+  }, []);
 
   const toggle = () => {
     if (!open) calcPosition();
@@ -73,7 +89,7 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
     setSearch("");
   };
 
-  // Keep dropdown anchored to trigger while scrolling/resizing
+  // Re-anchor on scroll / resize while open
   useEffect(() => {
     if (!open) return;
     window.addEventListener("scroll", calcPosition, true);
@@ -82,8 +98,9 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
       window.removeEventListener("scroll", calcPosition, true);
       window.removeEventListener("resize", calcPosition);
     };
-  }, [open]);
+  }, [open, calcPosition]);
 
+  // Scroll active item into view when dropdown opens
   useEffect(() => {
     if (open && activeRef.current && listRef.current) {
       const list = listRef.current;
@@ -97,8 +114,9 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
     }
   }, [open]);
 
-  const filtered = locations.filter((l) =>
-    l.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () => locations.filter((l) => l.name.toLowerCase().includes(search.toLowerCase())),
+    [locations, search]
   );
 
   const select = (loc: LocationListItem) => {
@@ -137,10 +155,10 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
                 ref={isActive ? activeRef : undefined}
                 className="px-3 py-2 fs-15 d-flex align-items-center justify-content-between"
                 style={{
-                  cursor: isDisabled ? "not-allowed" : "pointer",
+                  cursor:     isDisabled ? "not-allowed" : "pointer",
                   background: isActive ? "#E41F07" : "transparent",
-                  color: isActive ? "#fff" : isDisabled ? "#bbb" : "#707070",
-                  opacity: isDisabled ? 0.6 : 1,
+                  color:      isActive ? "#fff" : isDisabled ? "#bbb" : "#707070",
+                  opacity:    isDisabled ? 0.6 : 1,
                 }}
                 onMouseEnter={(e) => { if (!isActive && !isDisabled) e.currentTarget.style.color = "#E41F07"; }}
                 onMouseLeave={(e) => { if (!isActive && !isDisabled) e.currentTarget.style.color = "#707070"; }}
@@ -179,7 +197,8 @@ const LocationField = ({ value, onChange, locations, error, disabledIds = [] }: 
   );
 };
 
-// ── Validation ────────────────────────────────────────────────────────────────
+// ── Row validation ────────────────────────────────────────────────────────────
+
 function validateRows(rows: StockRow[]): { errors: Record<number, RowError>; valid: boolean } {
   const errors: Record<number, RowError> = {};
   const seenLocations = new Set<number>();
@@ -223,30 +242,55 @@ function validateRows(rows: StockRow[]): { errors: Record<number, RowError>; val
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
 const AddOpeningStock = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { id }      = useParams<{ id: string }>();
+  const navigate    = useNavigate();
+  const routerLoc   = useRouterLocation();
+  const returnTo    = (routerLoc.state as any)?.returnTo as string | undefined;
+  const backUrl     = returnTo ?? `/items/${id}`;
 
-  const [itemName, setItemName]     = useState<string>("");
-  const [locations, setLocations]   = useState<LocationListItem[]>([]);
-  const [rows, setRows]             = useState<StockRow[]>([]);
-  const [rowErrors, setRowErrors]   = useState<Record<number, RowError>>({});
-  const [saving, setSaving]         = useState(false);
-  const [loading, setLoading]       = useState(true);
-  const [loadError, setLoadError]   = useState<string | null>(null);
+  const [itemName, setItemName]   = useState<string>("");
+  const [locations, setLocations] = useState<LocationListItem[]>([]);
+  const [rows, setRows]           = useState<StockRow[]>([]);
+  const [rowErrors, setRowErrors] = useState<Record<number, RowError>>({});
+  const [saving, setSaving]       = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const loadRef = useRef(0);
+  // Stable row-ID counter — avoids module-level leakage across HMR cycles
+  const nextRowId          = useRef(1);
+  const loadRef            = useRef(0);
+  const refreshResolveRef  = useRef<(() => void) | null>(null);
 
-  const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
+  const handleRefresh = useCallback((): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      refreshResolveRef.current = resolve;
+      setRefreshKey((k) => k + 1);
+    });
+  }, []);
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({
+    show: false, type: "success", message: "",
+  });
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (type: "success" | "danger", message: string) => {
+
+  const showToast = useCallback((type: "success" | "danger", message: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ show: true, type, message });
-    toastTimerRef.current = setTimeout(() => setToast((t) => ({ ...t, show: false })), 4000);
-  };
+    toastTimerRef.current = setTimeout(
+      () => setToast((t) => ({ ...t, show: false })),
+      4000
+    );
+  }, []);
+
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
-  // ── Cache-first data load (item name + locations + existing stock) ──────────
+  // ── Cache-first data load ─────────────────────────────────────────────────
+
   useEffect(() => {
     const numId = Number(id);
     if (!id || isNaN(numId) || numId <= 0) {
@@ -258,8 +302,9 @@ const AddOpeningStock = () => {
     const token = ++loadRef.current;
     setLoading(true);
     setLoadError(null);
+    setRowErrors({});
 
-    // Sync cache hit for item name — avoid empty flash
+    // Sync cache hit — avoid empty flash while async loads
     const cachedItem = readItemDetail(numId);
     if (cachedItem) setItemName(cachedItem.name ?? "");
 
@@ -267,111 +312,224 @@ const AddOpeningStock = () => {
       getItemDetail(numId).catch(() => null),
       getLocationList().catch(() => [] as LocationListItem[]),
       fetchOpeningStock(numId),
-    ]).then(([itemData, allLocs, stockRes]) => {
-      if (token !== loadRef.current) return;
+      fetchItemStock(numId),
+    ]).then(([itemData, allLocs, stockRes, currentStockRes]) => {
+      if (token !== loadRef.current) return; // stale load — abort
 
-      // Item name (fallback if not already set from sync cache)
       if (itemData && !cachedItem) setItemName((itemData as any).name ?? "");
 
-      // Active locations only — locked locations still show even if inactive
-      const locs = allLocs.filter((l) => l.is_active !== false);
+      // Active locations only; locked (already saved) rows show even if inactive
+      let locs = allLocs.filter((l) => l.is_active !== false);
+
+      // Party users: GET /api/locations is blocked — fall back to stock endpoint
+      // which returns all active party locations via LEFT JOIN (even with 0 stock)
+      if (locs.length === 0 && currentStockRes.success && currentStockRes.data.length > 0) {
+        locs = currentStockRes.data.map((r) => ({
+          id: r.location_id,
+          name: r.location_name,
+          party_id: null,
+          type: "warehouse" as const,
+          parent_id: null,
+          logo_type: "",
+          logo_path: null,
+          is_active: true,
+          is_primary: false,
+          created_at: "",
+          txn_series_id: null,
+          default_txn_series_id: null,
+        }));
+      }
 
       if (locs.length === 0) {
         setLoadError("No active locations found. Please add an active location first.");
         setLoading(false);
+        refreshResolveRef.current?.(); refreshResolveRef.current = null;
         return;
       }
       setLocations(locs);
 
-      // Pre-populate from existing saved stock, or default to first row
       if (stockRes.success && Array.isArray((stockRes as any).data) && (stockRes as any).data.length > 0) {
+        // Pre-populate from existing saved stock — all rows locked (read-only)
         const existing = (stockRes as any).data as {
           location_id: number; location_name: string;
           opening_stock: number; opening_stock_value: number;
         }[];
-        setRows(existing.map((e) => ({
-          id: _nextRowId++,
-          location_id: e.location_id,
-          location_name: e.location_name,
-          opening_stock: String(e.opening_stock),
+        const lockedRows: StockRow[] = existing.map((e) => ({
+          id:                  nextRowId.current++,
+          location_id:         e.location_id,
+          location_name:       e.location_name,
+          opening_stock:       String(e.opening_stock),
           opening_stock_value: String(e.opening_stock_value),
-          locked: true,
-        })));
+          locked:              true,
+        }));
+
+        // If there are still un-opened locations, add one blank editable row
+        const savedIds = new Set(lockedRows.map((r) => r.location_id));
+        const remaining = locs.filter((l) => !savedIds.has(l.id));
+        if (remaining.length > 0) {
+          const primary = remaining.find((l) => !!l.is_primary) ?? remaining[0];
+          lockedRows.push({
+            id:                  nextRowId.current++,
+            location_id:         primary.id,
+            location_name:       primary.name,
+            opening_stock:       "",
+            opening_stock_value: "",
+            locked:              false,
+          });
+        }
+
+        setRows(lockedRows);
       } else {
+        // No saved stock yet — default to primary location
         const primary = locs.find((l) => !!l.is_primary) ?? locs[0];
         setRows([{
-          id: _nextRowId++,
-          location_id: primary?.id ?? null,
-          location_name: primary?.name ?? "",
-          opening_stock: "",
+          id:                  nextRowId.current++,
+          location_id:         primary?.id ?? null,
+          location_name:       primary?.name ?? "",
+          opening_stock:       "",
           opening_stock_value: "",
-          locked: false,
+          locked:              false,
         }]);
       }
 
       setLoading(false);
+      refreshResolveRef.current?.(); refreshResolveRef.current = null;
     }).catch(() => {
       if (token !== loadRef.current) return;
       setLoadError("Failed to load page data. Please refresh and try again.");
       setLoading(false);
+      refreshResolveRef.current?.(); refreshResolveRef.current = null;
     });
-  }, [id]);
+  }, [id, refreshKey]);
 
-  const updateRow = (rowId: number, field: keyof StockRow, val: any) => {
+  // ── Derived state ─────────────────────────────────────────────────────────
+
+  const unlockedRows   = useMemo(() => rows.filter((r) => !r.locked), [rows]);
+  const lockedRows     = useMemo(() => rows.filter((r) => r.locked),  [rows]);
+  const allLocked      = unlockedRows.length === 0;
+
+  /** IDs that are already committed (can never be re-selected). */
+  const lockedIds = useMemo(
+    () => lockedRows.map((r) => r.location_id).filter((id): id is number => id !== null),
+    [lockedRows]
+  );
+
+  /** All location IDs currently selected across ALL rows. */
+  const usedLocationIds = useMemo(
+    () => rows.map((r) => r.location_id).filter((id): id is number => id !== null),
+    [rows]
+  );
+
+  /** True when every active location already has an entry (locked or pending). */
+  const allLocationsCovered = locations.length > 0 && usedLocationIds.length >= locations.length;
+
+  /** Totals across ALL rows (locked + unlocked). */
+  const totals = useMemo(() => {
+    let qty   = 0;
+    let value = 0;
+    rows.forEach((r) => {
+      const q = parseFloat(r.opening_stock);
+      const v = parseFloat(r.opening_stock_value);
+      if (!isNaN(q)) {
+        qty   += q;
+        value += isNaN(v) ? 0 : q * v;
+      }
+    });
+    return { qty, value };
+  }, [rows]);
+
+  // ── Row mutation helpers ──────────────────────────────────────────────────
+
+  const updateRow = useCallback((rowId: number, field: keyof StockRow, val: any) => {
     setRows((prev) => prev.map((r) => r.id === rowId ? { ...r, [field]: val } : r));
-    // Clear field error on change
-    if (rowErrors[rowId]) {
-      setRowErrors((prev) => {
-        const updated = { ...prev };
-        if (updated[rowId]) {
-          delete (updated[rowId] as any)[field];
-          if (Object.keys(updated[rowId]).length === 0) delete updated[rowId];
-        }
-        return updated;
-      });
-    }
-  };
+    // Clear per-field error on change
+    setRowErrors((prev) => {
+      if (!prev[rowId]) return prev;
+      const upd = { ...prev };
+      const row = { ...upd[rowId] };
+      delete (row as any)[field];
+      if (Object.keys(row).length === 0) delete upd[rowId];
+      else upd[rowId] = row;
+      return upd;
+    });
+  }, []);
 
-  const copyStockToAll = () => {
-    const first = rows[0]?.opening_stock ?? "";
-    setRows((prev) => prev.map((r) => ({ ...r, opening_stock: first })));
-  };
+  /** Copy the first unlocked row's Opening Stock value to all unlocked rows. */
+  const copyStockToAll = useCallback(() => {
+    const first = unlockedRows[0];
+    if (!first) return;
+    const val = first.opening_stock;
+    setRows((prev) =>
+      prev.map((r) => r.locked ? r : { ...r, opening_stock: val })
+    );
+  }, [unlockedRows]);
 
-  const copyValueToAll = () => {
-    const first = rows[0]?.opening_stock_value ?? "";
-    setRows((prev) => prev.map((r) => ({ ...r, opening_stock_value: first })));
-  };
+  /** Copy the first unlocked row's Value Per Unit to all unlocked rows. */
+  const copyValueToAll = useCallback(() => {
+    const first = unlockedRows[0];
+    if (!first) return;
+    const val = first.opening_stock_value;
+    setRows((prev) =>
+      prev.map((r) => r.locked ? r : { ...r, opening_stock_value: val })
+    );
+  }, [unlockedRows]);
+
+  const addRow = useCallback(() => {
+    setRows((prev) => [
+      ...prev,
+      {
+        id:                  nextRowId.current++,
+        location_id:         null,
+        location_name:       "",
+        opening_stock:       "",
+        opening_stock_value: "",
+        locked:              false,
+      },
+    ]);
+  }, []);
+
+  const removeRow = useCallback((rowId: number) => {
+    setRows((prev) => prev.filter((r) => r.id !== rowId));
+    setRowErrors((prev) => {
+      const upd = { ...prev };
+      delete upd[rowId];
+      return upd;
+    });
+  }, []);
+
+  // ── Save ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    const numId   = Number(id);
-    const newRows = rows.filter((r) => !r.locked);
-    if (newRows.length === 0) return;
+    const numId = Number(id);
+    if (!unlockedRows.length) return;
 
-    const { errors, valid } = validateRows(newRows);
+    const { errors, valid } = validateRows(unlockedRows);
     setRowErrors(errors);
-    if (!valid) return;
+    if (!valid) {
+      showToast("danger", "Please fill in all required fields before saving.");
+      return;
+    }
 
     setSaving(true);
     try {
       const result = await saveOpeningStock(numId, {
-        entries: newRows.map((r) => ({
-          location_id: r.location_id!,
-          opening_stock: Number(r.opening_stock),
+        entries: unlockedRows.map((r) => ({
+          location_id:         r.location_id!,
+          opening_stock:       Number(r.opening_stock),
           opening_stock_value: Number(r.opening_stock_value),
         })),
       });
 
       if (result.success) {
-        // Invalidate item cache so overview/list pages reflect the new stock
         bustItem(numId);
         emitMutation("items:mutated");
-        navigate(`/items/${id}`, { state: { tab: "locations" } });
+        navigate(backUrl, { state: { tab: "locations" } });
         return;
       }
 
       showToast("danger", (result as any).message ?? "Failed to save opening stock.");
 
-      // Map server-side field errors back to row IDs
+      // Map server-side field errors back to UI rows
       const serverErrors = (result as any).errors as Record<string, string[]> | undefined;
       if (serverErrors) {
         const mapped: Record<number, RowError> = {};
@@ -380,7 +538,7 @@ const AddOpeningStock = () => {
           if (match) {
             const idx   = parseInt(match[1], 10);
             const field = match[2] as keyof RowError;
-            const row   = newRows[idx];
+            const row   = unlockedRows[idx];
             if (row) {
               if (!mapped[row.id]) mapped[row.id] = {};
               mapped[row.id][field] = msgs[0];
@@ -389,10 +547,14 @@ const AddOpeningStock = () => {
         });
         if (Object.keys(mapped).length > 0) setRowErrors(mapped);
       }
+    } catch {
+      showToast("danger", "Network error. Please check your connection and try again.");
     } finally {
       setSaving(false);
     }
   };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="page-wrapper">
@@ -403,55 +565,87 @@ const AddOpeningStock = () => {
           moduleTitle="Items"
           showModuleTile={true}
           showClose={true}
-          onClose={() => navigate(`/items/${id}`)}
+          onClose={() => navigate(backUrl)}
+          onRefresh={handleRefresh}
         />
 
         <div className="card border-0 rounded-0">
           <div className="card-body">
 
-            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-              <span className="btn btn-outline-light px-2 fs-16 fw-bold border-0">{itemName || "—"}</span>
-            </div>
+            {/* Item name */}
+            {itemName && (
+              <div className="mb-3">
+                <span className="fs-16 fw-semibold text-body">{itemName}</span>
+              </div>
+            )}
 
-            {loading ? (
-              <div className="text-center py-4 text-muted fs-14">Loading…</div>
-            ) : loadError ? (
+            {/* ── Loading ── */}
+
+            {/* ── Load error ── */}
+            {!loading && loadError && (
               <div className="d-flex flex-column align-items-center justify-content-center py-5 text-center">
                 <i className="ti ti-alert-circle fs-36 text-danger mb-2" />
                 <p className="fs-14 text-muted mb-3">{loadError}</p>
                 <button
                   type="button"
                   className="btn btn-outline-light btn-sm"
-                  onClick={() => navigate(`/items/${id}`)}
+                  onClick={() => navigate(backUrl)}
                 >
                   Back to Item
                 </button>
               </div>
-            ) : (
-              <>
-                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>
-                  <div className="border rounded" style={{ minWidth: 540 }}>
+            )}
 
-                    {/* Header */}
-                    <div className="d-flex align-items-start px-3 py-2 border-bottom" style={{ background: "#f8f9fa", gap: 12, borderRadius: "6px 6px 0 0" }}>
+            {/* ── Table ── */}
+            {!loading && !loadError && (
+              <>
+                {/* "All locked" info banner */}
+                {allLocked && (
+                  <div className="alert d-flex align-items-center gap-2 py-3 mb-3" style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, color: "#0369a1" }}>
+                    <i className="ti ti-info-circle fs-22 flex-shrink-0" />
+                    <span className="fs-15">
+                      Opening stock has been recorded for all available locations.
+                      To adjust existing stock, use <strong>Inventory Adjustments</strong>.
+                    </span>
+                  </div>
+                )}
+
+                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>
+                  <div className="border rounded" style={{ minWidth: 580 }}>
+
+                    {/* Table header */}
+                    <div
+                      className="d-flex align-items-start px-3 py-2 border-bottom"
+                      style={{ background: "#f8f9fa", gap: 12, borderRadius: "6px 6px 0 0" }}
+                    >
                       <div style={{ flex: 3 }}>
-                        <span className="fw-semibold fs-12 text-uppercase">Location</span>
+                        <span className="fw-semibold fs-12 text-uppercase text-muted">Location</span>
                       </div>
                       <div style={{ flex: 2 }}>
-                        <span className="fw-semibold fs-12 text-uppercase">Opening Stock</span>
-                        {rows.filter((r) => !r.locked).length > 1 && (
+                        <span className="fw-semibold fs-12 text-uppercase text-muted">Opening Stock</span>
+                        {unlockedRows.length > 1 && (
                           <div>
-                            <button type="button" className="btn btn-link p-0 fs-12 text-danger mt-1" style={{ textDecoration: "none" }} onClick={copyStockToAll}>
+                            <button
+                              type="button"
+                              className="btn btn-link p-0 fs-12 text-danger mt-1"
+                              style={{ textDecoration: "none" }}
+                              onClick={copyStockToAll}
+                            >
                               Copy to All
                             </button>
                           </div>
                         )}
                       </div>
                       <div style={{ flex: 2 }}>
-                        <span className="fw-semibold fs-12 text-uppercase">Opening Stock Value Per Unit</span>
-                        {rows.filter((r) => !r.locked).length > 1 && (
+                        <span className="fw-semibold fs-12 text-uppercase text-muted">Value Per Unit</span>
+                        {unlockedRows.length > 1 && (
                           <div>
-                            <button type="button" className="btn btn-link p-0 fs-12 text-danger mt-1" style={{ textDecoration: "none" }} onClick={copyValueToAll}>
+                            <button
+                              type="button"
+                              className="btn btn-link p-0 fs-12 text-danger mt-1"
+                              style={{ textDecoration: "none" }}
+                              onClick={copyValueToAll}
+                            >
                               Copy to All
                             </button>
                           </div>
@@ -461,122 +655,148 @@ const AddOpeningStock = () => {
                     </div>
 
                     {/* Rows */}
-                    {(() => {
-                      // Locked rows' IDs + other unlocked rows' IDs are disabled per-row
-                      const lockedIds    = rows.filter((r) => r.locked && r.location_id).map((r) => r.location_id!);
-                      const unlockedCount = rows.filter((r) => !r.locked).length;
-                      return rows.map((row) => {
-                        const err = rowErrors[row.id] ?? {};
-                        if (row.locked) {
-                          return (
-                            <div key={row.id} className="d-flex align-items-center px-3 py-3 border-bottom" style={{ gap: 12, background: "#f8f9fa" }}>
-                              <div style={{ flex: 3 }} className="d-flex align-items-center gap-2">
-                                <i className="ti ti-lock fs-14 text-muted" />
-                                <span className="fs-14 text-body">{row.location_name}</span>
-                              </div>
-                              <div style={{ flex: 2 }}>
-                                <span className="fs-14 text-body">{row.opening_stock}</span>
-                              </div>
-                              <div style={{ flex: 2 }}>
-                                <span className="fs-14 text-body">{row.opening_stock_value}</span>
-                              </div>
-                              <div style={{ width: 40, flexShrink: 0 }} />
-                            </div>
-                          );
-                        }
+                    {rows.map((row) => {
+                      const err = rowErrors[row.id] ?? {};
 
-                        // Disable locked IDs + every other unlocked row's selected location
-                        const otherUnlockedIds = rows
-                          .filter((r) => !r.locked && r.id !== row.id && r.location_id !== null)
-                          .map((r) => r.location_id!);
-                        const disabledIds = [...lockedIds, ...otherUnlockedIds];
-
+                      // ── Locked row (read-only) ──
+                      if (row.locked) {
                         return (
-                          <div key={row.id} className="d-flex align-items-start px-3 py-3 border-bottom" style={{ gap: 12 }}>
-                            <div style={{ flex: 3 }}>
-                              <LocationField
-                                value={row.location_name}
-                                locations={locations}
-                                error={err.location_id}
-                                disabledIds={disabledIds}
-                                onChange={(name, locId) => {
-                                  setRows((prev) => prev.map((r) =>
-                                    r.id === row.id ? { ...r, location_id: locId, location_name: name } : r
-                                  ));
-                                  if (rowErrors[row.id]?.location_id) {
-                                    setRowErrors((prev) => {
-                                      const upd = { ...prev };
-                                      if (upd[row.id]) {
-                                        delete upd[row.id].location_id;
-                                        if (Object.keys(upd[row.id]).length === 0) delete upd[row.id];
-                                      }
-                                      return upd;
-                                    });
-                                  }
-                                }}
-                              />
+                          <div
+                            key={row.id}
+                            className="d-flex align-items-center px-3 py-3 border-bottom"
+                            style={{ gap: 12, background: "#f8f9fa" }}
+                          >
+                            <div style={{ flex: 3 }} className="d-flex align-items-center gap-2">
+                              <i className="ti ti-lock fs-13 text-muted" />
+                              <span className="fs-14 text-body">{row.location_name}</span>
                             </div>
                             <div style={{ flex: 2 }}>
-                              <input
-                                type="number"
-                                className={`form-control${err.opening_stock ? " is-invalid" : ""}`}
-                                placeholder="0"
-                                min={0}
-                                step="any"
-                                value={row.opening_stock}
-                                onChange={(e) => updateRow(row.id, "opening_stock", e.target.value)}
-                              />
-                              {err.opening_stock && <div className="invalid-feedback">{err.opening_stock}</div>}
+                              <span className="fs-14 text-body fw-medium">{fmtNum(row.opening_stock)}</span>
                             </div>
                             <div style={{ flex: 2 }}>
-                              <input
-                                type="number"
-                                className={`form-control${err.opening_stock_value ? " is-invalid" : ""}`}
-                                placeholder="0"
-                                min={0}
-                                step="any"
-                                value={row.opening_stock_value}
-                                onChange={(e) => updateRow(row.id, "opening_stock_value", e.target.value)}
-                              />
-                              {err.opening_stock_value && <div className="invalid-feedback">{err.opening_stock_value}</div>}
+                              <span className="fs-14 text-body fw-medium">₹{fmtNum(row.opening_stock_value)}</span>
                             </div>
-                            <div style={{ width: 40, flexShrink: 0, display: "flex", justifyContent: "center", paddingTop: 8 }}>
-                              <button
-                                type="button"
-                                className="btn p-0 border-0 bg-transparent text-danger"
-                                title="Remove row"
-                                disabled={unlockedCount === 1}
-                                onClick={() => setRows((prev) => prev.filter((r) => r.id !== row.id))}
-                              >
-                                <i className="ti ti-trash fs-16" />
-                              </button>
-                            </div>
+                            <div style={{ width: 40, flexShrink: 0 }} />
                           </div>
                         );
-                      });
-                    })()}
+                      }
+
+                      // ── Editable row ──
+                      // Disabled IDs = locked locations + other unlocked rows' selections
+                      const otherUnlockedIds = rows
+                        .filter((r) => !r.locked && r.id !== row.id && r.location_id !== null)
+                        .map((r) => r.location_id!);
+                      const disabledIds = [...lockedIds, ...otherUnlockedIds];
+
+                      return (
+                        <div
+                          key={row.id}
+                          className="d-flex align-items-start px-3 py-3 border-bottom"
+                          style={{ gap: 12 }}
+                        >
+                          <div style={{ flex: 3 }}>
+                            <LocationField
+                              value={row.location_name}
+                              locations={locations}
+                              error={err.location_id}
+                              disabledIds={disabledIds}
+                              onChange={(name, locId) => {
+                                setRows((prev) =>
+                                  prev.map((r) =>
+                                    r.id === row.id ? { ...r, location_id: locId, location_name: name } : r
+                                  )
+                                );
+                                setRowErrors((prev) => {
+                                  if (!prev[row.id]?.location_id) return prev;
+                                  const upd = { ...prev };
+                                  const rowErr = { ...upd[row.id] };
+                                  delete rowErr.location_id;
+                                  if (Object.keys(rowErr).length === 0) delete upd[row.id];
+                                  else upd[row.id] = rowErr;
+                                  return upd;
+                                });
+                              }}
+                            />
+                          </div>
+                          <div style={{ flex: 2 }}>
+                            <input
+                              type="number"
+                              className={`form-control${err.opening_stock ? " is-invalid" : ""}`}
+                              placeholder="0"
+                              min={0}
+                              step="0.0001"
+                              value={row.opening_stock}
+                              onChange={(e) => updateRow(row.id, "opening_stock", e.target.value)}
+                            />
+                            {err.opening_stock && (
+                              <div className="invalid-feedback">{err.opening_stock}</div>
+                            )}
+                          </div>
+                          <div style={{ flex: 2 }}>
+                            <input
+                              type="number"
+                              className={`form-control${err.opening_stock_value ? " is-invalid" : ""}`}
+                              placeholder="0.00"
+                              min={0}
+                              step="0.0001"
+                              value={row.opening_stock_value}
+                              onChange={(e) => updateRow(row.id, "opening_stock_value", e.target.value)}
+                            />
+                            {err.opening_stock_value && (
+                              <div className="invalid-feedback">{err.opening_stock_value}</div>
+                            )}
+                          </div>
+                          <div style={{ width: 40, flexShrink: 0, display: "flex", justifyContent: "center", paddingTop: 8 }}>
+                            <button
+                              type="button"
+                              className="btn p-0 border-0 bg-transparent text-danger"
+                              title="Remove row"
+                              disabled={unlockedRows.length === 1}
+                              onClick={() => removeRow(row.id)}
+                            >
+                              <i className="ti ti-trash fs-16" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Totals footer */}
+                    {rows.length > 0 && (
+                      <div
+                        className="d-flex align-items-center px-3 py-2"
+                        style={{ background: "#f8f9fa", gap: 12, borderRadius: "0 0 6px 6px" }}
+                      >
+                        <div style={{ flex: 3 }}>
+                          <span className="fw-semibold fs-12 text-uppercase text-muted">Total</span>
+                        </div>
+                        <div style={{ flex: 2 }}>
+                          <span className="fw-semibold fs-13 text-body">{fmtNum(totals.qty)}</span>
+                        </div>
+                        <div style={{ flex: 2 }}>
+                          <span className="fw-semibold fs-13 text-body">₹{fmtCurrency(totals.value)}</span>
+                        </div>
+                        <div style={{ width: 40, flexShrink: 0 }} />
+                      </div>
+                    )}
 
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn btn-link p-0 text-primary fs-13 d-flex align-items-center gap-1 mt-3"
-                  style={{ textDecoration: "none" }}
-                  onClick={() => {
-                    setRows((prev) => [...prev, {
-                      id: _nextRowId++,
-                      location_id: null,
-                      location_name: "",
-                      opening_stock: "",
-                      opening_stock_value: "",
-                      locked: false,
-                    }]);
-                  }}
-                >
-                  <i className="ti ti-circle-plus" />
-                  Add Row
-                </button>
+                {/* Add Row */}
+                {!allLocked && (
+                  <button
+                    type="button"
+                    className="btn btn-link p-0 text-primary fs-13 d-flex align-items-center gap-1 mt-3"
+                    style={{ textDecoration: "none" }}
+                    disabled={allLocationsCovered}
+                    title={allLocationsCovered ? "All locations are already in use" : undefined}
+                    onClick={addRow}
+                  >
+                    <i className="ti ti-circle-plus" />
+                    Add Row
+                  </button>
+                )}
               </>
             )}
 
@@ -585,19 +805,19 @@ const AddOpeningStock = () => {
 
       </div>
 
-      {/* ── Sticky bottom bar ─────────────────────────────────────────────────── */}
+      {/* ── Sticky save bar ───────────────────────────────────────────────────── */}
       <div
         className="bg-white border-top d-flex align-items-center gap-2 px-4"
         style={{ position: "sticky", bottom: 0, zIndex: 100, height: 60 }}
       >
         <button
           type="button"
-          className="btn btn-danger me-2"
-          disabled={saving || loading || !!loadError || rows.every((r) => r.locked)}
+          className="btn btn-primary me-2"
+          disabled={saving || loading || !!loadError || allLocked}
           onClick={handleSave}
         >
           {saving ? (
-            <><span className="spinner-border spinner-border-sm me-1" role="status" />Saving…</>
+            <><span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" />Saving…</>
           ) : "Save"}
         </button>
         <button
@@ -614,9 +834,7 @@ const AddOpeningStock = () => {
       <div
         role="region"
         aria-live="polite"
-        aria-atomic="true"
-        className="position-fixed top-0 start-50 translate-middle-x pt-4"
-        style={{ zIndex: 9999, pointerEvents: "none" }}
+        className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}
       >
         <Toast
           show={toast.show}
@@ -635,7 +853,9 @@ const AddOpeningStock = () => {
         >
           <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
             <span
-              className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${toast.type === "success" ? "bg-success" : "bg-danger"}`}
+              className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${
+                toast.type === "success" ? "bg-success" : "bg-danger"
+              }`}
               style={{ width: 36, height: 36 }}
             >
               <i className={`ti fs-16 text-white ${toast.type === "success" ? "ti-check" : "ti-x"}`} />

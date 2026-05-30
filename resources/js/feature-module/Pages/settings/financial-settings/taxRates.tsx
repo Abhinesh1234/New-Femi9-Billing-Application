@@ -333,14 +333,14 @@ const TaxRates = () => {
             <form >
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Tax Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tax Name<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Tax Rate(%)<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tax Rate(%)<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -382,8 +382,8 @@ const TaxRates = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Tax Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tax Name<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -392,8 +392,8 @@ const TaxRates = () => {
                   />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Tax Rate(%)<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tax Rate(%)<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -474,14 +474,14 @@ const TaxRates = () => {
             <form >
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Tax Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tax Name<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Sub Taxes<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Sub Taxes<span>*</span>
                   </label>
                   <input
                     className="input-tags form-control border-0 h-100"
@@ -532,8 +532,8 @@ const TaxRates = () => {
             <form >
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Tax Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tax Name<span>*</span>
                   </label>
                   <input
                     type="text"
@@ -542,8 +542,8 @@ const TaxRates = () => {
                   />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Sub Taxes<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Sub Taxes<span>*</span>
                   </label>
                   <input
                     className="input-tags form-control border-0 h-100"

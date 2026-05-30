@@ -290,20 +290,20 @@ const EmailSettings = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                Email Password <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Email Password <span>*</span>
               </label>
               <input type="password" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                From Email Name <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Name <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -342,20 +342,20 @@ const EmailSettings = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                Email Password <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Email Password <span>*</span>
               </label>
               <input type="password" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                From Host <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Host <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -394,8 +394,8 @@ const EmailSettings = () => {
         <form>
           <div className="modal-body">
             <div className="mb-0">
-              <label className="form-label">
-                Enter Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Enter Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>

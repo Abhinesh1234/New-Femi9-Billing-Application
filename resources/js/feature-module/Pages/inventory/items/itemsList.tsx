@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
 import { Link, useNavigate } from "react-router";
-import { Modal, Toast } from "react-bootstrap";
+import { useSelector } from "react-redux";
+import { Toast } from "react-bootstrap";
 import {
   DndContext,
   closestCenter,
@@ -23,9 +24,11 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import Datatable from "../../../../components/dataTable";
 import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
-import { type ItemListRecord } from "../../../../core/services/itemApi";
-import { readItemList, getItemList } from "../../../../core/cache/itemCache";
+import { usePermission } from "../../../../core/hooks/usePermission";
+import { type ItemListRecord, fetchStockTotals } from "../../../../core/services/itemApi";
+import { readItemList, getItemList, bustAllItemCache } from "../../../../core/cache/itemCache";
 import { onMutation } from "../../../../core/cache/mutationEvents";
+import { useWindowFocusRefresh } from "../../../../core/hooks/useWindowFocusRefresh";
 import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
 
 const route = all_routes;
@@ -37,28 +40,13 @@ interface ColDef {
 }
 
 const INITIAL_COLS: ColDef[] = [
-  { key: "sku",                  label: "SKU" },
-  { key: "item_type",            label: "Type" },
-  { key: "selling_price",        label: "Selling Price" },
-  { key: "track_inventory",      label: "Stock On Hand" },
-  { key: "reorder_point",        label: "Reorder Level" },
-  { key: "account_name",         label: "Account Name" },
-  { key: "brand",                label: "Brand" },
-  { key: "description",          label: "Description" },
-  { key: "dimensions",           label: "Dimensions" },
-  { key: "ean",                  label: "EAN" },
-  { key: "isbn",                 label: "ISBN" },
-  { key: "mpn",                  label: "MPN" },
-  { key: "manufacturer",         label: "Manufacturer" },
-  { key: "product",              label: "Product" },
-  { key: "purchase_account",     label: "Purchase Account Name" },
-  { key: "purchase_description", label: "Purchase Description" },
-  { key: "purchase_rate",        label: "Purchase Rate" },
-  { key: "rate",                 label: "Rate" },
-  { key: "show_in_store",        label: "Show In Store" },
-  { key: "upc",                  label: "UPC" },
-  { key: "usage_unit",           label: "Usage Unit" },
-  { key: "weight",               label: "Weight" },
+  { key: "sku",             label: "SKU" },
+  { key: "item_type",       label: "Type" },
+  { key: "selling_price",   label: "Selling Price" },
+  { key: "track_inventory", label: "Stock on Hand" },
+  { key: "reorder_point",   label: "Reorder Level" },
+  { key: "cost_price",      label: "Purchase Rate" },
+  { key: "unit",            label: "Unit" },
 ];
 
 const DEFAULT_VISIBLE = new Set(["sku", "item_type", "selling_price", "track_inventory", "reorder_point"]);
@@ -69,8 +57,10 @@ const DEFAULT_COL_WIDTHS: Record<string, number> = {
   sku:             160,
   item_type:       140,
   selling_price:   200,
-  track_inventory: 200,
-  reorder_point:   200,
+  track_inventory: 180,
+  reorder_point:   160,
+  cost_price:      160,
+  unit:            120,
 };
 const COL_WIDTHS_LS_KEY  = "femi9_items_col_widths";
 const COL_ORDER_LS_KEY   = "femi9_items_col_order";
@@ -220,7 +210,12 @@ type SortOption = "newest" | "oldest" | "name_asc" | "name_desc";
 
 // ─── Main component ───────────────────────────────────────────────────────────
 const ItemsList = () => {
-  const navigate = useNavigate();
+  const canCreate = usePermission("items", "create");
+  const canEdit   = usePermission("items", "edit");
+  const canDelete = usePermission("items", "delete");
+  const navigate  = useNavigate();
+  const authUser  = useSelector((state: any) => state.auth.user);
+  const isParty   = authUser?.user_type === "party";
   const [view, setView] = useState<"list" | "grid">(() => {
     try { return localStorage.getItem(VIEW_LS_KEY) === "grid" ? "grid" : "list"; }
     catch { return "list"; }
@@ -236,13 +231,14 @@ const ItemsList = () => {
   const [deletedLoading, setDeletedLoading] = useState(false);
   const [expandedRowKeys, setExpandedRowKeys] = useState<number[]>([]);
   const [folderBtnLeft, setFolderBtnLeft]     = useState(48);
+  const [stockMap, setStockMap]               = useState<Record<string, string>>({});
 
   // ── Toast ──
-  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ show: false, message: "", type: "success" });
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = (type: "success" | "danger", message: string) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ show: true, message, type });
+    setToast({ show: true, type, message });
     toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
@@ -338,8 +334,11 @@ const ItemsList = () => {
   };
 
   const filteredDraft = useMemo(
-    () => draftOrder.filter((c) => c.label.toLowerCase().includes(colSearch.toLowerCase())),
-    [draftOrder, colSearch],
+    () => draftOrder.filter((c) =>
+      c.label.toLowerCase().includes(colSearch.toLowerCase()) &&
+      !(isParty && c.key === "cost_price")
+    ),
+    [draftOrder, colSearch, isParty],
   );
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -350,12 +349,28 @@ const ItemsList = () => {
     try {
       const data = await getItemList();
       setItems(data);
-      setTotal(data.length);
     } catch (e: any) {
       setLoadError(e.message ?? "Failed to load items.");
     }
     setLoading(false);
   }, []);
+
+  // Silent refresh — busts cache and updates data in place without wiping the table
+  const handleRefresh = useCallback(async () => {
+    bustAllItemCache();
+    try {
+      const data = await getItemList();
+      setItems(data);
+    } catch { /* ignore — data stays as is */ }
+    if (itemTypeFilter === "deleted") {
+      setDeletedLoading(true);
+      try {
+        const deleted = await getItemList(true);
+        setDeletedItems(deleted);
+      } catch {}
+      setDeletedLoading(false);
+    }
+  }, [itemTypeFilter]);
 
   useEffect(() => {
     const cached = readItemList();
@@ -367,8 +382,9 @@ const ItemsList = () => {
   // Reset grid page when filter changes
   useEffect(() => { setGridPage(12); }, [itemTypeFilter]);
 
-  // Reload when any page mutates item data (cache already busted by the mutating page)
-  useEffect(() => onMutation("items:mutated", loadFresh), [loadFresh]);
+  // Reload when any page mutates item data — silent so table stays visible
+  useEffect(() => onMutation("items:mutated", handleRefresh), [handleRefresh]);
+  useWindowFocusRefresh(handleRefresh);
 
   // Reload on window focus — cache-first so no network hit if data is still fresh
   useEffect(() => {
@@ -380,6 +396,15 @@ const ItemsList = () => {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  // Fetch total stock on hand across all locations whenever the active items list changes
+  useEffect(() => {
+    const trackedIds = items.filter(i => i.track_inventory).map(i => i.id);
+    if (trackedIds.length === 0) { setStockMap({}); return; }
+    fetchStockTotals(trackedIds).then(res => {
+      if (res.success) setStockMap(res.data);
+    }).catch(() => {});
+  }, [items]);
 
   // Lazy-fetch deleted items when filter switches to "deleted" (cache-first)
   useEffect(() => {
@@ -524,6 +549,7 @@ const ItemsList = () => {
 
     for (const col of colOrder) {
       if (!visibleCols.has(col.key)) continue;
+      if (isParty && col.key === "cost_price") continue;
       switch (col.key) {
         case "sku":
           cols.push({
@@ -567,8 +593,13 @@ const ItemsList = () => {
             dataIndex: "track_inventory",
             width: colWidths["track_inventory"] ?? DEFAULT_COL_WIDTHS["track_inventory"],
             onHeaderCell: resizeCell("track_inventory"),
-            render: (_: boolean, record: ItemListRecord) =>
-              record.track_inventory ? "0.00" : <span className="text-muted">—</span>,
+            render: (_: boolean, record: ItemListRecord) => {
+              if (!record.track_inventory) return <span className="text-muted">—</span>;
+              const val = stockMap[String(record.id)];
+              return val !== undefined
+                ? parseFloat(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : <span className="text-muted">—</span>;
+            },
           });
           break;
         case "reorder_point":
@@ -580,6 +611,28 @@ const ItemsList = () => {
             onHeaderCell: resizeCell("reorder_point"),
             render: (val: number | null) =>
               val != null ? val : <span className="text-muted">—</span>,
+          });
+          break;
+        case "cost_price":
+          cols.push({
+            title: "Purchase Rate",
+            key: "cost_price",
+            dataIndex: "cost_price",
+            width: colWidths["cost_price"] ?? DEFAULT_COL_WIDTHS["cost_price"],
+            onHeaderCell: resizeCell("cost_price"),
+            render: (text: string | null) =>
+              text ? `₹${parseFloat(text).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : <span className="text-muted">—</span>,
+          });
+          break;
+        case "unit":
+          cols.push({
+            title: "Unit",
+            key: "unit",
+            dataIndex: "unit",
+            width: colWidths["unit"] ?? DEFAULT_COL_WIDTHS["unit"],
+            onHeaderCell: resizeCell("unit"),
+            render: (text: string | null) =>
+              text ? text : <span className="text-muted">—</span>,
           });
           break;
         default:
@@ -608,7 +661,7 @@ const ItemsList = () => {
     }
 
     return cols;
-  }, [visibleCols, colOrder, colWidths, handleResize, expandedRowKeys]);
+  }, [visibleCols, colOrder, colWidths, handleResize, expandedRowKeys, stockMap, isParty]);
 
   // ── Grid search filter (mirrors Datatable's internal search for grid view) ──
   const gridItems = useMemo(() => {
@@ -637,7 +690,7 @@ const ItemsList = () => {
 
   const handleExportPdf = () => {
     try { exportToPdfPrint("Items", exportHeaders, buildExportRows()); }
-    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+    catch (e: any) { showToast("danger", e.message ?? "PDF export failed."); }
   };
 
   const handleExportExcel = () => {
@@ -659,7 +712,7 @@ const ItemsList = () => {
       { header: "Stock Tracked", key: "stock_tracked", width: 14 },
       { header: "Reorder Level", key: "reorder_level", width: 16 },
       { header: "Added On",      key: "added_on",      width: 16 },
-    ], rows).catch(() => showToast("Excel export failed.", "error"));
+    ], rows).catch(() => showToast("danger", "Excel export failed."));
   };
 
   const sortLabel: Record<SortOption, string> = {
@@ -674,7 +727,7 @@ const ItemsList = () => {
       <div className="page-wrapper">
         <div className="content">
 
-          <PageHeader title="Items" badgeCount={total} showModuleTile={false} showExport={true} onRefresh={loadFresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
+          <PageHeader title="Items" badgeCount={filtered.length} showModuleTile={false} showExport={true} onRefresh={handleRefresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
 
           <div className="card border-0 rounded-0">
             <div className="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -684,10 +737,12 @@ const ItemsList = () => {
                 </span>
                 <SearchInput value={searchText} onChange={setSearchText} />
               </div>
-              <Link to={route.addItem} className="btn btn-primary">
-                <i className="ti ti-square-rounded-plus-filled me-1" />
-                New Item
-              </Link>
+              {canCreate && (
+                <Link to={route.addItem} className="btn btn-primary">
+                  <i className="ti ti-square-rounded-plus-filled me-1" />
+                  New Item
+                </Link>
+              )}
             </div>
 
             <div className="card-body">
@@ -761,12 +816,7 @@ const ItemsList = () => {
                   <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={loadFresh}>Retry</button>
                 </div>
               )}
-              {(loading || (itemTypeFilter === "deleted" && deletedLoading)) ? (
-                <div className="text-center py-5 text-muted">
-                  <span className="spinner-border spinner-border-sm me-2" />
-                  {itemTypeFilter === "deleted" ? "Loading deleted items…" : "Loading items…"}
-                </div>
-              ) : view === "list" ? (
+              {(loading || (itemTypeFilter === "deleted" && deletedLoading)) ? null : view === "list" ? (
                 <div className="items-custom-table custom-table table-nowrap">
                   <Datatable
                     columns={columns}
@@ -821,9 +871,16 @@ const ItemsList = () => {
                 /* ── Grid view ─────────────────────────────────────── */
                 <>
                   {gridItems.length === 0 ? (
-                    <div className="text-center py-5 text-muted">
-                      <i className="ti ti-mood-empty fs-32 d-block mb-2" />
-                      No items found
+                    <div className="text-center py-5">
+                      <i className="ti ti-box fs-40 d-block mb-4 text-muted opacity-50" />
+                      <h6 className="fw-semibold mb-2">No Items</h6>
+                      <p className="text-muted mb-4 fs-14">Get started by adding your first item to the inventory.</p>
+                      {canCreate && (
+                        <Link to={route.addItem} className="btn btn-primary px-4">
+                          <i className="ti ti-square-rounded-plus-filled me-1" />
+                          Add New Item
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     <div className="row">
@@ -940,96 +997,85 @@ const ItemsList = () => {
       </div>
 
       {/* ── Customize Columns Modal ─────────────────────────────────────────── */}
-      <Modal show={showColsModal} onHide={closeColsModal} centered size="lg">
-        <Modal.Header className="px-4 py-3 border-bottom">
-          <div className="d-flex align-items-center justify-content-between w-100">
-            <div className="d-flex align-items-center gap-2">
-              <i className="ti ti-adjustments-horizontal fs-20 text-muted" />
-              <Modal.Title className="fs-17 fw-semibold mb-0">Customize Columns</Modal.Title>
-            </div>
-            <div className="d-flex align-items-center gap-3">
-              <span className="text-muted fs-14">
-                {draftVisible.size + 2} of {INITIAL_COLS.length + 2} Selected
-              </span>
-              <button type="button" className="btn-close" onClick={closeColsModal} aria-label="Close" />
-            </div>
-          </div>
-        </Modal.Header>
-
-        <Modal.Body className="p-0">
-          {/* Search */}
-          <div className="px-4 pt-3 pb-2">
-            <div className="input-icon input-icon-start position-relative">
-              <span className="input-icon-addon text-muted" style={{ left: 12 }}>
-                <i className="ti ti-search fs-15" />
-              </span>
-              <input
-                type="text"
-                className="form-control ps-5"
-                placeholder="Search columns…"
-                value={colSearch}
-                onChange={(e) => setColSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Fixed: Name */}
-          <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light">
-            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
-            <i className="ti ti-lock text-muted fs-15" />
-            <span className="fs-14 text-muted">Name</span>
-            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
-          </div>
-
-          {/* Sortable list */}
-          <div style={{ maxHeight: 380, overflowY: "auto" }}>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext
-                items={filteredDraft.map((c) => c.key)}
-                strategy={verticalListSortingStrategy}
+      {showColsModal && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={e => { if (e.target === e.currentTarget) closeColsModal(); }}
+        >
+          <div style={{ background: "#fff", borderRadius: 14, width: 580, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "85vh" }}>
+            <div style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 12, flexShrink: 0 }}>
+              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <i className="ti ti-adjustments-horizontal fs-18" style={{ color: "#ef4444" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Customize Columns</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
+                  {draftVisible.size - (isParty && draftVisible.has("cost_price") ? 1 : 0) + 1} of {INITIAL_COLS.length - (isParty ? 1 : 0) + 1} columns visible
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeColsModal}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
               >
-                {filteredDraft.map((col) => (
-                  <SortableColRow
-                    key={col.key}
-                    col={col}
-                    checked={draftVisible.has(col.key)}
-                    onToggle={() => toggleDraft(col.key)}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
+                <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+              </button>
+            </div>
+            <div style={{ padding: "14px 24px 10px", flexShrink: 0 }}>
+              <div className="input-icon input-icon-start position-relative">
+                <span className="input-icon-addon text-muted" style={{ left: 12 }}>
+                  <i className="ti ti-search fs-15" />
+                </span>
+                <input
+                  type="text"
+                  className="form-control ps-5"
+                  placeholder="Search columns…"
+                  value={colSearch}
+                  onChange={e => setColSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light" style={{ flexShrink: 0 }}>
+              <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
+              <i className="ti ti-lock text-muted fs-15" />
+              <span className="fs-14 text-muted">Name</span>
+              <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={filteredDraft.map(c => c.key)} strategy={verticalListSortingStrategy}>
+                  {filteredDraft.map(col => (
+                    <SortableColRow key={col.key} col={col} checked={draftVisible.has(col.key)} onToggle={() => toggleDraft(col.key)} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+            <div style={{ padding: "16px 24px 22px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button className="btn btn-danger me-2" onClick={saveColsModal}>Save</button>
+              <button className="btn btn-outline-light" onClick={closeColsModal}>Cancel</button>
+            </div>
           </div>
-
-          {/* Fixed: Action */}
-          <div className="d-flex align-items-center gap-3 px-4 py-3 border-top bg-light">
-            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
-            <i className="ti ti-lock text-muted fs-15" />
-            <span className="fs-14 text-muted">Action</span>
-            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
-          </div>
-        </Modal.Body>
-
-        <Modal.Footer className="px-4 py-3 border-top justify-content-start gap-2">
-          <button type="button" className="btn btn-sm btn-primary" onClick={saveColsModal}>Save</button>
-          <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
-        </Modal.Footer>
-      </Modal>
+        </div>
+      )}
 
       {/* ── Toast notification ───────────────────────────────────────────────── */}
-      <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 1090 }}>
+      <div className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
-          onClose={() => setToast(t => ({ ...t, show: false }))}
-          delay={4000}
-          autohide
-          style={{ minWidth: 320, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.13)" }}
+          onClose={() => setToast((t) => ({ ...t, show: false }))}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+          style={{ pointerEvents: "auto", borderRadius: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.10)", border: "none", minWidth: 320, background: "#fff" }}
         >
           <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
-            <span style={{ width: 36, height: 36, borderRadius: "50%", background: toast.type === "success" ? "#e6f9ee" : "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <i className={`ti ${toast.type === "success" ? "ti-check text-success" : "ti-x"} fs-18`} style={toast.type === "error" ? { color: "#e03131" } : {}} />
+            <span
+              className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${toast.type === "success" ? "bg-success" : "bg-danger"}`}
+              style={{ width: 36, height: 36 }}
+            >
+              <i className={`ti fs-16 text-white ${toast.type === "success" ? "ti-check" : "ti-x"}`} />
             </span>
-            <span className="fs-14 fw-medium text-dark">{toast.message}</span>
-            <button type="button" className="btn-close ms-auto" style={{ fontSize: 11 }} onClick={() => setToast(t => ({ ...t, show: false }))} />
+            <span className="fw-medium fs-14">{toast.message}</span>
           </Toast.Body>
         </Toast>
       </div>

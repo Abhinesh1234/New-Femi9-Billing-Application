@@ -182,8 +182,8 @@ const Sitemap = () => {
         <form>
           <div className="modal-body">
             <div className="mb-0">
-              <label className="form-label">
-                Sitemap URL<span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Sitemap URL<span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -225,8 +225,8 @@ const Sitemap = () => {
         <form>
           <div className="modal-body">
             <div className="mb-0">
-              <label className="form-label">
-                Sitemap URL<span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Sitemap URL<span>*</span>
               </label>
               <input
                 type="text"

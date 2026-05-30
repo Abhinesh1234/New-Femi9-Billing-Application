@@ -5,7 +5,7 @@ import type { ApiResponse, ProductConfiguration } from "../services/settingApi";
 const TTL = 5 * 60 * 1000; // 5 min — fresh enough for settings, avoids hitting server on every tab switch
 
 // Typed as unknown; callers cast to their module config type via the generic
-const cache = new TTLCache<string, unknown>();
+const cache = new TTLCache<string, unknown>("settings");
 
 // ── Synchronous read (cache-only, no network) ─────────────────────────────────
 

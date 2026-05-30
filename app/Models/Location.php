@@ -5,14 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany; // kept for children
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Party;
 
 class Location extends Model
 {
     use SoftDeletes;
 
     protected $fillable = [
+        'party_id',
+        'distribution_location_node_id',
         'name',
         'type',
         'parent_id',
@@ -23,6 +26,7 @@ class Location extends Model
         'txn_series_id',
         'default_txn_series_id',
         'address',
+        'shipping_address',
         'access_users',
         'is_active',
         'is_primary',
@@ -30,13 +34,19 @@ class Location extends Model
     ];
 
     protected $casts = [
-        'address'      => 'array',
-        'access_users' => 'array',
+        'address'          => 'array',
+        'shipping_address' => 'array',
+        'access_users'     => 'array',
         'is_active'    => 'boolean',
         'is_primary'   => 'boolean',
     ];
 
     // ── Relationships ─────────────────────────────────────────────────────────
+
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class, 'party_id');
+    }
 
     public function parent(): BelongsTo
     {
@@ -56,6 +66,11 @@ class Location extends Model
     public function defaultTxnSeries(): BelongsTo
     {
         return $this->belongsTo(TransactionSeries::class, 'default_txn_series_id');
+    }
+
+    public function distributionLocationNode(): BelongsTo
+    {
+        return $this->belongsTo(DistributionLocationNode::class, 'distribution_location_node_id');
     }
 
     public function createdBy(): BelongsTo

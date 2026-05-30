@@ -6,7 +6,7 @@ class CustomFieldSupport
 {
     public const MODULES = [
         'products', 'contacts', 'companies', 'invoices',
-        'sales_orders', 'purchase_orders', 'vendors', 'customers',
+        'sales_orders', 'purchase_orders', 'vendors', 'customers', 'payments',
     ];
 
     public const DATA_TYPES = [

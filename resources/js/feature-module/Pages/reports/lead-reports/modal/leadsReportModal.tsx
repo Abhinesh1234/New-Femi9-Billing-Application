@@ -26,8 +26,8 @@ const LeadsReportModal = () => {
             <form action="#">
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    File Type <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    File Type <span>*</span>
                   </label>
                   <CommonSelect
                     options={File_Type}
@@ -39,8 +39,8 @@ const LeadsReportModal = () => {
                   <h5>Filters</h5>
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    File Type <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    File Type <span>*</span>
                   </label>
                   <CommonSelect
                     options={File_Type_2}
@@ -49,8 +49,8 @@ const LeadsReportModal = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Position<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Position<span>*</span>
                   </label>
                   <CommonSelect
                     options={Position}
@@ -59,8 +59,8 @@ const LeadsReportModal = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Source<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Source<span>*</span>
                   </label>
                   <CommonSelect
                     options={Source}
@@ -69,8 +69,8 @@ const LeadsReportModal = () => {
                   />
                 </div>
                 <div>
-                  <label className="form-label">
-                    Select Year<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Select Year<span>*</span>
                   </label>
                   <CommonSelect
                     options={Select_Year}

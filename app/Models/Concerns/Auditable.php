@@ -54,12 +54,18 @@ trait Auditable
     private static function writeAuditLog(string $event, $model, ?array $oldValues, ?array $newValues): void
     {
         try {
-            $request = app('request');
+            $request     = app('request');
+            // ScopeToParty middleware sets this attribute for party user requests.
+            // Using it (instead of instanceof checks) avoids false negatives when an
+            // admin session cookie overrides a party Bearer token on the same domain.
+            $partyUserId = $request?->attributes->get('party_user_id');
+
             AuditLog::create([
                 'auditable_type' => $model->getTable(),
                 'auditable_id'   => $model->getKey(),
                 'event'          => $event,
-                'user_id'        => auth()->id(),
+                'user_id'        => $partyUserId ? null : auth()->id(),
+                'party_user_id'  => $partyUserId ?: null,
                 'ip_address'     => $request?->ip(),
                 'user_agent'     => $request?->userAgent(),
                 'old_values'     => $oldValues ?: null,

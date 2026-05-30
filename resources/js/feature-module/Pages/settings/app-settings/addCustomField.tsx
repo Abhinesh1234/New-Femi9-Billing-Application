@@ -66,6 +66,7 @@ const MODULE_LABELS: Record<string, string> = {
   purchase_orders: "Purchase Orders",
   vendors:         "Vendors",
   customers:       "Customers",
+  payments:        "Payments Received",
 };
 
 const VALID_MODULES = Object.keys(MODULE_LABELS);
@@ -165,9 +166,16 @@ const AddCustomField = () => {
     ? searchParams.get("module")!
     : "products";
 
+  const MODULE_BACK_ROUTES: Record<string, string> = {
+    products:  all_routes.projectSettings          + "?tab=field",
+    customers: all_routes.customerSettings         + "?tab=field",
+    invoices:  all_routes.invoiceSettings          + "?tab=field_customization",
+    payments:  all_routes.paymentReceivedSettings,
+  };
+
   const goBack = useCallback(
-    () => navigate(all_routes.projectSettings + "?tab=field"),
-    [navigate]
+    () => navigate(MODULE_BACK_ROUTES[module] ?? all_routes.projectSettings + "?tab=field"),
+    [navigate, module]
   );
 
   // ── Ref-based dropdown portals ────────────────────────────────────────────
@@ -549,23 +557,27 @@ const AddCustomField = () => {
     setErrors({});
     setSaving(true);
 
-    const res = await storeCustomField(module, config);
+    try {
+      const res = await storeCustomField(module, config);
 
-    if (res.success) {
-      setIsDirty(false);
-      showToast("success", "Custom field created successfully.");
-      setSaving(false);
-      setTimeout(() => goBack(), 1500);
-    } else {
-      const serverErrors: Record<string, string> = {};
-      if (res.errors) {
-        Object.entries(res.errors).forEach(([key, msgs]) => {
-          serverErrors[key.replace("config.", "")] = msgs[0];
-        });
+      if (res.success) {
+        setIsDirty(false);
+        showToast("success", "Custom field created successfully.");
+        setTimeout(() => goBack(), 1500);
+      } else {
+        const serverErrors: Record<string, string> = {};
+        if (res.errors) {
+          Object.entries(res.errors).forEach(([key, msgs]) => {
+            serverErrors[key.replace("config.", "")] = msgs[0];
+          });
+        }
+        setErrors(serverErrors);
+        showToast("danger", res.message);
       }
-      setErrors(serverErrors);
+    } catch {
+      showToast("danger", "Network error. Please check your connection and try again.");
+    } finally {
       setSaving(false);
-      showToast("danger", res.message);
     }
   }, [buildConfig, validate, module, goBack, showToast]);
 
@@ -741,7 +753,7 @@ const AddCustomField = () => {
                             </OverlayTrigger>
                           </label>
                           <div className="col-sm-8">
-                            <div style={{ position: "relative" }} ref={lookupModuleRef}>
+                            <div style={{ position: "relative", ...(lookupModuleOpen ? { zIndex: 10 } : {}) }} ref={lookupModuleRef}>
                               <div
                                 className="form-select"
                                 style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
@@ -862,7 +874,7 @@ const AddCustomField = () => {
                               </div>
                             ) : (
                               <div className="d-flex align-items-center gap-2">
-                                <div className="position-relative flex-grow-1" ref={inputFormatRef}>
+                                <div className="flex-grow-1" style={{ position: "relative", ...(inputFormatOpen ? { zIndex: 10 } : {}) }} ref={inputFormatRef}>
                                   <div className="form-select" style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
                                     onClick={() => { setInputFormatOpen((o) => !o); setInputFormatSearch(""); }}>
                                     {inputFormat ? inputFormatOptions.find((o) => o.value === inputFormat)?.label : <span>&nbsp;</span>}
@@ -945,7 +957,7 @@ const AddCustomField = () => {
                                         onChange={(e) => setDropdownSelected((p) => e.target.checked ? [...p, opt.id] : p.filter((id) => id !== opt.id))} />
 
                                       {dropdownAddColor && (
-                                        <div style={{ position: "relative", flexShrink: 0 }}
+                                        <div style={{ position: "relative", flexShrink: 0, ...(dropdownColorPickerOpen === opt.id ? { zIndex: 10 } : {}) }}
                                           ref={dropdownColorPickerOpen === opt.id ? dropdownColorPickerRef : undefined}>
                                           <button type="button" className="btn p-0 d-flex align-items-center gap-1 border-0" style={{ background: "none" }}
                                             onClick={() => {
@@ -1011,7 +1023,7 @@ const AddCustomField = () => {
                                           onClick={() => addDropdownOptionAfter(opt.id)}>
                                           <i className="ti ti-square-rounded-plus fs-16" />
                                         </button>
-                                        <div style={{ position: "relative" }}
+                                        <div style={{ position: "relative", ...(dropdownMoreMenuOpen === opt.id ? { zIndex: 10 } : {}) }}
                                           ref={dropdownMoreMenuOpen === opt.id ? dropdownMoreMenuRef : undefined}>
                                           <button type="button" className="p-0 border-0 bg-transparent text-muted"
                                             onClick={() => setDropdownMoreMenuOpen(dropdownMoreMenuOpen === opt.id ? null : opt.id)}>
@@ -1113,7 +1125,7 @@ const AddCustomField = () => {
                                         onClick={() => addMultiselectOptionAfter(opt.id)}>
                                         <i className="ti ti-square-rounded-plus fs-16" />
                                       </button>
-                                      <div style={{ position: "relative" }}
+                                      <div style={{ position: "relative", ...(multiselectMoreMenuOpen === opt.id ? { zIndex: 10 } : {}) }}
                                         ref={multiselectMoreMenuOpen === opt.id ? multiselectMoreMenuRef : undefined}>
                                         <button type="button" className="p-0 border-0 bg-transparent text-muted"
                                           onClick={() => setMultiselectMoreMenuOpen(multiselectMoreMenuOpen === opt.id ? null : opt.id)}>
@@ -1277,7 +1289,7 @@ const AddCustomField = () => {
                                     </Link>
                                   </div>
                                 ) : (
-                                  <div ref={dateDefaultRef} style={{ position: "relative" }}>
+                                  <div ref={dateDefaultRef} style={{ position: "relative", ...(dateDefaultOpen ? { zIndex: 10 } : {}) }}>
                                     <div className="form-select" style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
                                       onClick={() => { setDateDefaultOpen((o) => !o); setDateDefaultSearch(""); }}>
                                       {dateDefaultValue ? relativeDateOptions.find((o) => o.value === dateDefaultValue)?.label : <span>&nbsp;</span>}
@@ -1351,7 +1363,7 @@ const AddCustomField = () => {
                             </OverlayTrigger>
                           </label>
                           <div className="col-sm-8">
-                            <div className="position-relative" ref={modulesRef}>
+                            <div ref={modulesRef} style={{ position: "relative", ...(modulesOpen ? { zIndex: 10 } : {}) }}>
                               <div className="form-select" style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
                                 onClick={() => { setModulesOpen((o) => !o); setModulesSearch(""); }}>
                                 {includeModules.length === 0
@@ -1533,15 +1545,18 @@ const AddCustomField = () => {
       </div>
 
       {/* Toast */}
-      <div className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
+      <div role="region" aria-live="polite" className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
           onClose={() => setToast((t) => ({ ...t, show: false }))}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           style={{ pointerEvents: "auto", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.10)", border: "none", minWidth: "320px", background: "#fff" }}
         >
           <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
             <span className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${toast.type === "success" ? "bg-success" : "bg-danger"}`}
-              style={{ width: "36px", height: "36px" }}>
+              style={{ width: 36, height: 36 }}>
               <i className={`ti fs-16 text-white ${toast.type === "success" ? "ti-check" : "ti-x"}`} />
             </span>
             <span className="fw-medium fs-14">{toast.message}</span>

@@ -15,14 +15,21 @@ const Datatable: React.FC<DatatableProps> = ({
   onRow,
   expandable,
   rowKey,
+  serverTotal,
+  serverPage,
+  serverPageSize,
+  onServerPageChange,
 }) => {
+  const isServerMode = serverTotal !== undefined && onServerPageChange !== undefined;
+
   const [selectedRowKeys, setSelectedRowKeys] = useState<any[]>([]);
   const [Selections, setSelections] = useState<any>(true);
+
+  // Client-side mode state
   const [filteredDataSource, setFilteredDataSource] = useState(dataSource);
   const [pageSize, setPageSize] = useState(10);
   const [current, setCurrent] = useState(1);
 
-  // Debounce searchText
   const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
@@ -30,7 +37,7 @@ const Datatable: React.FC<DatatableProps> = ({
     if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
     debounceTimeout.current = setTimeout(() => {
       setDebouncedSearchText(searchText);
-    }, 300); // 300ms debounce
+    }, 300);
     return () => {
       if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
     };
@@ -40,15 +47,17 @@ const Datatable: React.FC<DatatableProps> = ({
     setSelections(Selection);
   }, [Selection]);
 
+  // Client-side filtering (only when not in server mode)
   useEffect(() => {
+    if (isServerMode) return;
     const filteredData = dataSource.filter((record) =>
       Object.values(record).some((field) =>
         String(field).toLowerCase().includes(debouncedSearchText.toLowerCase())
       )
     );
     setFilteredDataSource(filteredData);
-    setCurrent(1); // Reset to first page on search
-  }, [debouncedSearchText, dataSource]);
+    setCurrent(1);
+  }, [debouncedSearchText, dataSource, isServerMode]);
 
   const onSelectChange = (newSelectedRowKeys: any[]) => {
     setSelectedRowKeys(newSelectedRowKeys);
@@ -59,10 +68,24 @@ const Datatable: React.FC<DatatableProps> = ({
     onChange: onSelectChange,
   };
 
-  const handlePageChange = (page: number, pageSize: number) => {
+  const handleClientPageChange = (page: number, size: number) => {
     setCurrent(page);
-    setPageSize(pageSize);
+    setPageSize(size);
   };
+
+  const handleServerPageChange = (page: number, size: number) => {
+    onServerPageChange!(page, size);
+  };
+
+  // What the table actually renders
+  const tableData = isServerMode
+    ? dataSource
+    : filteredDataSource.slice((current - 1) * pageSize, current * pageSize);
+
+  const paginationTotal = isServerMode ? (serverTotal ?? 0) : filteredDataSource.length;
+  const paginationCurrent = isServerMode ? (serverPage ?? 1) : current;
+  const paginationPageSize = isServerMode ? (serverPageSize ?? 50) : pageSize;
+  const onPageChange = isServerMode ? handleServerPageChange : handleClientPageChange;
 
   return (
     <>
@@ -71,7 +94,7 @@ const Datatable: React.FC<DatatableProps> = ({
         rowSelection={Selections ? rowSelection : undefined}
         columns={columns}
         rowHoverable={false}
-        dataSource={filteredDataSource.slice((current - 1) * pageSize, current * pageSize)}
+        dataSource={tableData}
         pagination={false}
         rowKey={rowKey}
         components={components}
@@ -87,8 +110,8 @@ const Datatable: React.FC<DatatableProps> = ({
           <label>
             Show
             <Select
-              value={pageSize}
-              onChange={(value) => handlePageChange(1, value)}
+              value={paginationPageSize}
+              onChange={(value) => onPageChange(1, value)}
               style={{ width: 70 }}
             >
               <Option value={10}>10</Option>
@@ -101,18 +124,14 @@ const Datatable: React.FC<DatatableProps> = ({
         </div>
 
         <Pagination
-          current={current}
-          pageSize={pageSize}
-          total={filteredDataSource.length}
-          onChange={handlePageChange}
+          current={paginationCurrent}
+          pageSize={paginationPageSize}
+          total={paginationTotal}
+          onChange={onPageChange}
           showSizeChanger={false}
           itemRender={(_page, type, originalElement) => {
-            if (type === 'prev') {
-              return <a><i className="ti ti-chevron-left" /></a>;
-            }
-            if (type === 'next') {
-              return <a><i className="ti ti-chevron-right" /></a>;
-            }
+            if (type === 'prev') return <a><i className="ti ti-chevron-left" /></a>;
+            if (type === 'next') return <a><i className="ti ti-chevron-right" /></a>;
             return originalElement;
           }}
         />

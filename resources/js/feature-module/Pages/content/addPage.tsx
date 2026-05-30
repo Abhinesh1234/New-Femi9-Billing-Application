@@ -27,24 +27,24 @@ const AddPage = () => {
                 <div className="row">
                   <div className="col-lg-12">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Title <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Title <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
                   </div>
                   <div className="col-lg-12">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Slug <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Slug <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
                   </div>
                   <div className="col-lg-12">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Keywords <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Keywords <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>

@@ -8,12 +8,14 @@ export interface AuditLogEntry {
   auditable_id:   number;
   event:          "created" | "updated" | "deleted" | "restored" | string;
   user_id:        number | null;
+  party_user_id:  number | null;
   ip_address:     string | null;
   user_agent:     string | null;
   old_values:     Record<string, any> | null;
   new_values:     Record<string, any> | null;
   created_at:     string;
   user:           { id: number; name: string; email: string } | null;
+  party_user:     { id: number; name: string; email: string } | null;
 }
 
 interface AuditLogPage {
@@ -104,6 +106,21 @@ export async function fetchSeriesAuditLogs(
 ): Promise<AuditLogResult> {
   try {
     const { data } = await axios.get<SuccessResponse>(`${BASE}/transaction_series/${seriesId}`, {
+      params: { page, per_page: perPage },
+    });
+    return data;
+  } catch (e) {
+    return handleError(e);
+  }
+}
+
+export async function fetchPartyAuditLogs(
+  partyId: number,
+  page = 1,
+  perPage = 25
+): Promise<AuditLogResult> {
+  try {
+    const { data } = await axios.get<SuccessResponse>(`${BASE}/party/${partyId}`, {
       params: { page, per_page: perPage },
     });
     return data;

@@ -7,7 +7,8 @@ import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
 import CommonSelect from "../../../../components/common-select/commonSelect";
 import CommonDatePicker from "../../../../components/common-datePicker/commonDatePicker";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import ReactSelect from "react-select";
+import { Link, useSearchParams } from "react-router";
 import { Input_Type, Module } from "../../../../core/json/selectOption";
 import { all_routes } from "../../../../routes/all_routes";
 import {
@@ -18,35 +19,10 @@ import {
 import {
   getSettings,
   updateSettings,
+  bustSettings,
 } from "../../../../core/cache/settingCache";
-import {
-  fetchCustomFields,
-  updateCustomField,
-  deleteCustomField,
-  type CustomField,
-  type CustomFieldConfig,
-} from "../../../../core/services/customFieldApi";
-
-const DATA_TYPE_LABELS: Record<string, string> = {
-  text_single:   "Text Box (Single Line)",
-  text_multi:    "Text Box (Multi-line)",
-  email:         "Email",
-  url:           "URL",
-  phone:         "Phone",
-  number:        "Number",
-  decimal:       "Decimal",
-  amount:        "Amount",
-  percent:       "Percent",
-  date:          "Date",
-  datetime:      "Date and Time",
-  checkbox:      "Check Box",
-  auto_generate: "Auto-Generate Number",
-  dropdown:      "Dropdown",
-  multiselect:   "Multi-select",
-  lookup:        "Lookup",
-  attachment:    "Attachment",
-  image:         "Image",
-};
+import FieldCustomizationTab from "../../../../components/field-customization/FieldCustomizationTab";
+import { fetchUsers } from "../../../../core/services/userApi";
 
 const dimensionOptions = [
   { value: "cm", label: "cm" },
@@ -79,9 +55,6 @@ const decimalRateOptions = [
   { value: "6", label: "6" },
 ];
 
-const notifyEmailOptions = [
-  { value: "abhikongu1@gmail.com", label: "abhikongu1@gmail.com" },
-];
 
 const trackingOptions = [
   { value: "packages", label: "Packages, Purchase Receives & Return Receipts" },
@@ -116,13 +89,12 @@ const DEFAULTS: ProductConfiguration = {
   stock_level: "org",
   out_of_stock_warning: false,
   notify_reorder_point: false,
-  notify_to_email: "",
+  notify_to_user_ids: [],
   track_landed_cost: false,
 };
 
 const ProjectSettings = () => {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"general" | "field">(
     searchParams.get("tab") === "field" ? "field" : "general"
@@ -137,6 +109,8 @@ const ProjectSettings = () => {
   const [loadError, setLoadError]     = useState<string | null>(null);
   const [saving, setSaving]           = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ValidationErrors>({});
+  const [cfRefreshKey, setCfRefreshKey] = useState(0);
+  const cfRefreshResolveRef = useRef<(() => void) | null>(null);
 
   // ── Toast state ──────────────────────────────────────────────────────────
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger" | "warning"; message: string }>({
@@ -183,39 +157,22 @@ const ProjectSettings = () => {
   const [allowDiffSellingPrice, setAllowDiffSellingPrice] = useState(false);
 
   // ── Reorder point notification ───────────────────────────────────────────
-  const [notifyToEmail, setNotifyToEmail] = useState("");
+  const [notifyToUserIds, setNotifyToUserIds] = useState<number[]>([]);
   const [flashReorder, setFlashReorder] = useState(false);
-
-  // ── Custom Fields tab ────────────────────────────────────────────────────
-  const [customFields, setCustomFields]     = useState<CustomField[]>([]);
-  const [cfLoading, setCfLoading]           = useState(false);
-  const [cfFetchError, setCfFetchError]     = useState<string | null>(null);
-  const [cfActionId, setCfActionId]         = useState<number | null>(null);
-
-  type DeleteModal = { show: boolean; field: CustomField | null; deleting: boolean };
-  const [deleteModal, setDeleteModal] = useState<DeleteModal>({
-    show: false, field: null, deleting: false,
-  });
+  const [companyUserOptions, setCompanyUserOptions] = useState<{ value: string; label: string }[]>([]);
 
 
-  // ── Load custom fields when Field Customization tab is opened ───────────
-  const loadCustomFields = useCallback(async () => {
-    setCfLoading(true);
-    setCfFetchError(null);
-    const res = await fetchCustomFields("products");
-    if (res.success) {
-      setCustomFields(res.data);
-    } else {
-      setCfFetchError(res.message);
-    }
-    setCfLoading(false);
-  }, []);
-
+  // ── Load company users for notify-to multi-select ────────────────────────
   useEffect(() => {
-    if (activeTab !== "field") return;
-    if (customFields.length > 0 && !cfFetchError) return;
-    loadCustomFields();
-  }, [activeTab, loadCustomFields]);
+    fetchUsers().then((result) => {
+      setCompanyUserOptions(
+        result.data.map((u) => ({
+          value: String(u.id),
+          label: u.email ? `${u.name} (${u.email})` : u.name,
+        }))
+      );
+    }).catch(() => {});
+  }, []);
 
   // ── Scroll + flash highlight when arriving from reorder point link ────────
   // Run only after settings have loaded (element is in the DOM)
@@ -233,7 +190,7 @@ const ProjectSettings = () => {
   }, [loading, searchParams]);
 
   // ── Load saved settings ──────────────────────────────────────────────────
-  const applyConfig = useCallback((c: ProductConfiguration) => {
+  const applyConfig = (c: ProductConfiguration) => {
     setDecimalRate(c.decimal_rate);
     setDimensionUnit(c.dimension_unit);
     setWeightUnit(c.weight_unit);
@@ -255,9 +212,9 @@ const ProjectSettings = () => {
     setStockLevel(c.stock_level ?? "org");
     setOutOfStockWarning(c.out_of_stock_warning ?? false);
     setNotifyReorderPoint(c.notify_reorder_point ?? false);
-    setNotifyToEmail(c.notify_to_email ?? "");
+    setNotifyToUserIds(c.notify_to_user_ids ?? []);
     setTrackLandedCost(c.track_landed_cost);
-  }, []);
+  };
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -269,49 +226,21 @@ const ProjectSettings = () => {
       setLoadError(err instanceof Error ? err.message : "Failed to load settings.");
     }
     setLoading(false);
-  }, [applyConfig]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
-  const handleRefresh = useCallback(() => {
-    if (activeTab === "field") return loadCustomFields();
+  const handleRefresh = useCallback((): Promise<void> | void => {
+    if (activeTab === "field") {
+      return new Promise<void>((resolve) => {
+        cfRefreshResolveRef.current = resolve;
+        setCfRefreshKey((k) => k + 1);
+      });
+    }
+    bustSettings("products");
     return loadSettings();
-  }, [activeTab, loadCustomFields, loadSettings]);
-
-  // ── Custom field action handlers ─────────────────────────────────────────
-
-  const handleCfAction = async (field: CustomField, patch: Partial<CustomFieldConfig>) => {
-    setCfActionId(field.id);
-    const res = await updateCustomField(field.id, { ...field.config, ...patch });
-    if (res.success) {
-      setCustomFields((prev) => prev.map((f) => (f.id === field.id ? res.data : f)));
-      showToast("success", res.message);
-    } else {
-      showToast("danger", res.message);
-    }
-    setCfActionId(null);
-  };
-
-  const openDeleteModal = (field: CustomField) => {
-    setDeleteModal({ show: true, field, deleting: false });
-  };
-
-  const handleDeleteConfirm = async () => {
-    const { field } = deleteModal;
-    if (!field) return;
-
-    setDeleteModal((m) => ({ ...m, deleting: true }));
-    const res = await deleteCustomField(field.id);
-
-    if (res.success) {
-      setCustomFields((prev) => prev.filter((f) => f.id !== field.id));
-      setDeleteModal({ show: false, field: null, deleting: false });
-      showToast("success", "Custom field deleted successfully.");
-    } else {
-      setDeleteModal((m) => ({ ...m, deleting: false }));
-      showToast("danger", res.message);
-    }
-  };
+  }, [activeTab, loadSettings]);
 
   // ── Build payload from current state ────────────────────────────────────
   const buildPayload = (): ProductConfiguration => ({
@@ -336,7 +265,7 @@ const ProjectSettings = () => {
     stock_level: stockLevel,
     out_of_stock_warning: outOfStockWarning,
     notify_reorder_point: notifyReorderPoint,
-    notify_to_email: notifyReorderPoint ? notifyToEmail : "",
+    notify_to_user_ids: notifyReorderPoint ? notifyToUserIds : [],
     track_landed_cost: trackLandedCost,
   });
 
@@ -355,28 +284,32 @@ const ProjectSettings = () => {
     setFieldErrors({});
     setSaving(true);
 
-    const res = await updateSettings<ProductConfiguration>("products", payload);
-    if (res.success) {
-      if (res.configuration) {
-        applyConfig(res.configuration);
-        dispatch(setProductSettings({
-          enableCompositeItems: res.configuration.enable_composite_items ?? false,
-          enablePriceLists:     res.configuration.enable_price_lists     ?? false,
-        }));
+    try {
+      const res = await updateSettings<ProductConfiguration>("products", payload);
+      if (res.success) {
+        if (res.configuration) {
+          applyConfig(res.configuration);
+          dispatch(setProductSettings({
+            enableCompositeItems: res.configuration.enable_composite_items ?? false,
+            enablePriceLists:     res.configuration.enable_price_lists     ?? false,
+          }));
+        }
+        showToast("success", res.message ?? "Product settings saved successfully.");
+      } else {
+        // Show server-side field errors if returned
+        if (res.errors) {
+          const mapped: ValidationErrors = {};
+          Object.entries(res.errors).forEach(([key, msgs]) => {
+            mapped[key] = msgs[0];
+          });
+          setFieldErrors(mapped);
+        }
+        showToast("danger", res.message);
       }
+    } catch {
+      showToast("danger", "Network error. Please check your connection and try again.");
+    } finally {
       setSaving(false);
-      showToast("success", res.message ?? "Product settings saved successfully.");
-    } else {
-      // Show server-side field errors if returned
-      if (res.errors) {
-        const mapped: ValidationErrors = {};
-        Object.entries(res.errors).forEach(([key, msgs]) => {
-          mapped[key] = msgs[0];
-        });
-        setFieldErrors(mapped);
-      }
-      setSaving(false);
-      showToast("danger", res.message);
     }
   };
 
@@ -397,34 +330,36 @@ const ProjectSettings = () => {
                 <div className="card-body p-0">
 
                   {/* Internal Tabs */}
-                  <div className="border-bottom px-4 pt-3">
-                    <ul className="nav nav-tabs border-0">
-                      <li className="nav-item me-3">
-                        <button
-                          className={`nav-link px-0 pb-3 border-0 rounded-0 fw-medium bg-transparent ${activeTab === "general" ? "active text-primary border-bottom border-3 border-primary" : "text-muted"}`}
-                          onClick={() => handleTabChange("general")}
-                        >
-                          General
-                        </button>
-                      </li>
-                      <li className="nav-item">
-                        <button
-                          className={`nav-link px-0 pb-3 border-0 rounded-0 fw-medium bg-transparent ${activeTab === "field" ? "active text-primary border-bottom border-3 border-primary" : "text-muted"}`}
-                          onClick={() => handleTabChange("field")}
-                        >
-                          Field Customization
-                        </button>
-                      </li>
-                    </ul>
+                  <div className="px-4 pt-3 pb-3">
+                    <div className="d-inline-flex rounded" style={{ background: "#f1f3f5", padding: 4, gap: 2 }}>
+                      {([
+                        { key: "general" as const, label: "General" },
+                        { key: "field"   as const, label: "Field Customization" },
+                      ] as const).map(t => {
+                        const isActive = activeTab === t.key;
+                        return (
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => handleTabChange(t.key)}
+                            style={{
+                              padding: "9px 20px", borderRadius: 6, border: "none",
+                              background: isActive ? "#fff" : "transparent",
+                              color: isActive ? "#e03131" : "#6c757d",
+                              fontWeight: isActive ? 600 : 400,
+                              fontSize: 14,
+                              boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
+                              transition: "all 0.15s", cursor: "pointer", whiteSpace: "nowrap",
+                            }}
+                          >
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Loading overlay */}
-                  {loading && (
-                    <div className="d-flex align-items-center justify-content-center py-5">
-                      <div className="spinner-border text-primary me-2" role="status" />
-                      <span className="text-muted">Loading settings…</span>
-                    </div>
-                  )}
 
                   {/* Settings load error */}
                   {!loading && loadError && (
@@ -837,15 +772,30 @@ const ProjectSettings = () => {
                             <label className="form-label text-danger fw-medium mb-1">
                               Notify to*
                             </label>
-                            <div style={{ maxWidth: "280px" }}>
-                              <CommonSelect
-                                options={notifyEmailOptions}
-                                className="select"
-                                defaultValue={notifyEmailOptions.find((o) => o.value === notifyToEmail)}
-                                onChange={(opt) => setNotifyToEmail(opt?.value ?? "")}
+                            <div style={{ maxWidth: "480px" }}>
+                              <ReactSelect
+                                isMulti
+                                options={companyUserOptions}
+                                value={companyUserOptions.filter((o) => notifyToUserIds.includes(Number(o.value)))}
+                                onChange={(selected) =>
+                                  setNotifyToUserIds(selected ? selected.map((o) => Number(o.value)) : [])
+                                }
+                                placeholder="Select users to notify..."
+                                classNamePrefix="react-select"
+                                styles={{
+                                  menu: (b) => ({ ...b, zIndex: 9999 }),
+                                  menuPortal: (b) => ({ ...b, zIndex: 9999 }),
+                                  option: (b, s) => ({
+                                    ...b,
+                                    backgroundColor: s.isSelected ? "#E41F07" : s.isFocused ? "white" : "white",
+                                    color: s.isSelected ? "#fff" : s.isFocused ? "#E41F07" : "#707070",
+                                    cursor: "pointer",
+                                    "&:hover": { backgroundColor: "#E41F07", color: "#fff" },
+                                  }),
+                                }}
                               />
-                              {fieldErrors.notify_to_email && (
-                                <div className="text-danger small mt-1">{fieldErrors.notify_to_email}</div>
+                              {fieldErrors.notify_to_user_ids && (
+                                <div className="text-danger small mt-1">{fieldErrors.notify_to_user_ids}</div>
                               )}
                             </div>
                           </div>
@@ -869,158 +819,14 @@ const ProjectSettings = () => {
 
                   {/* Field Customization Tab */}
                   {!loading && !loadError && activeTab === "field" && (
-                    <div className="p-4">
-                      <div className="border-bottom mb-3 pb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
-                        <h5 className="mb-0 fs-17">Custom Fields</h5>
-                        <Link
-                          to="javascript:void(0)"
-                          className="btn btn-primary btn-sm"
-                          onClick={() => navigate(all_routes.productCustomField)}
-                        >
-                          <i className="ti ti-square-rounded-plus-filled me-1" />
-                          Add New Field
-                        </Link>
-                      </div>
-
-                      {/* Loading */}
-                      {cfLoading && (
-                        <div className="d-flex align-items-center gap-2 py-4 text-muted">
-                          <div className="spinner-border spinner-border-sm text-primary" role="status" />
-                          <span>Loading custom fields…</span>
-                        </div>
-                      )}
-
-                      {/* Fetch error */}
-                      {!cfLoading && cfFetchError && (
-                        <div className="alert alert-danger d-flex align-items-center gap-2 py-2 mb-3">
-                          <i className="ti ti-alert-circle fs-16 flex-shrink-0" />
-                          <span className="flex-grow-1">{cfFetchError}</span>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger ms-auto"
-                            onClick={loadCustomFields}
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Empty state */}
-                      {!cfLoading && !cfFetchError && customFields.length === 0 && (
-                        <div className="text-muted text-center py-5">
-                          <i className="ti ti-layout-list fs-32 d-block mb-2 opacity-50" />
-                          No custom fields yet. Click <strong>Add New Field</strong> to create one.
-                        </div>
-                      )}
-
-                      {/* Table */}
-                      {!cfLoading && !cfFetchError && customFields.length > 0 && (
-                        <div className="table-responsive">
-                          <table className="table table-nowrap">
-                            <thead className="table-light">
-                              <tr>
-                                <th>Field Name</th>
-                                <th>Data Type</th>
-                                <th>Mandatory</th>
-                                <th>Show in All PDFs</th>
-                                <th>Status</th>
-                                <th>Action</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {customFields.map((cf) => {
-                                const c = cf.config;
-                                const isActing = cfActionId === cf.id;
-                                return (
-                                  <tr key={cf.id} style={{ opacity: isActing ? 0.5 : 1, transition: "opacity 0.2s" }}>
-                                    <td>
-                                      {c.is_system && <i className="ti ti-lock text-muted me-1 fs-14" />}
-                                      {c.is_system
-                                        ? c.label
-                                        : <span className="text-primary">{c.label}</span>
-                                      }
-                                      <div className="text-muted" style={{ fontSize: "11px" }}>{c.field_key}</div>
-                                    </td>
-                                    <td>{DATA_TYPE_LABELS[c.data_type] ?? c.data_type}</td>
-                                    <td>
-                                      <div className="form-check form-switch p-0">
-                                        <label className="form-check-label d-flex align-items-center justify-content-center">
-                                          <input
-                                            className="form-check-input switchCheckDefault"
-                                            type="checkbox"
-                                            role="switch"
-                                            checked={c.is_system ? true : c.is_mandatory}
-                                            disabled={c.is_system || isActing}
-                                            onChange={() => !c.is_system && handleCfAction(cf, { is_mandatory: !c.is_mandatory })}
-                                          />
-                                        </label>
-                                      </div>
-                                    </td>
-                                    <td>{c.show_in_all_pdfs ? "Yes" : "No"}</td>
-                                    <td>
-                                      <span className={c.is_active ? "badge badge-tag badge-soft-success" : "badge badge-tag badge-soft-secondary"}>
-                                        {c.is_active ? "Active" : "Inactive"}
-                                      </span>
-                                    </td>
-                                    <td>
-                                      <div className="dropdown">
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline-light d-flex align-items-center justify-content-center"
-                                          style={{ width: 38, height: 38 }}
-                                          data-bs-toggle="dropdown"
-                                        >
-                                          <i className="ti ti-dots-vertical fs-14 text-muted" />
-                                        </button>
-                                        <div className="dropdown-menu dropdown-menu-right dropmenu-hover-primary">
-                                          {!c.is_system && (
-                                            <button
-                                              className="dropdown-item d-flex align-items-center gap-2 fs-13"
-                                              onClick={() => navigate(all_routes.productCustomFieldEdit.replace(":id", String(cf.id)))}
-                                              disabled={isActing}
-                                            >
-                                              <i className="ti ti-edit fs-13" /> Edit
-                                            </button>
-                                          )}
-                                          <button
-                                            className="dropdown-item d-flex align-items-center gap-2 fs-13"
-                                            onClick={() => handleCfAction(cf, { is_active: !c.is_active })}
-                                            disabled={isActing}
-                                          >
-                                            <i className={`ti ${c.is_active ? "ti-circle-x" : "ti-circle-check"} fs-13`} />
-                                            {c.is_active ? "Mark as Inactive" : "Mark as Active"}
-                                          </button>
-                                          <button
-                                            className="dropdown-item d-flex align-items-center gap-2 fs-13"
-                                            onClick={() => handleCfAction(cf, { show_in_all_pdfs: !c.show_in_all_pdfs })}
-                                            disabled={isActing}
-                                          >
-                                            <i className={`ti ${c.show_in_all_pdfs ? "ti-eye-off" : "ti-eye"} fs-13`} />
-                                            {c.show_in_all_pdfs ? "Hide in All PDFs" : "Show in All PDFs"}
-                                          </button>
-                                          {!c.is_system && (
-                                            <>
-                                              <hr className="dropdown-divider m-1" />
-                                              <button
-                                                className="dropdown-item d-flex align-items-center gap-2 fs-13 text-danger"
-                                                onClick={() => openDeleteModal(cf)}
-                                                disabled={isActing}
-                                              >
-                                                <i className="ti ti-trash fs-13" /> Delete
-                                              </button>
-                                            </>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
+                    <FieldCustomizationTab
+                      module="products"
+                      addRoute={all_routes.productCustomField}
+                      editRoute={all_routes.productCustomFieldEdit}
+                      refreshKey={cfRefreshKey}
+                      onRefreshDone={() => { cfRefreshResolveRef.current?.(); cfRefreshResolveRef.current = null; }}
+                      onToast={showToast}
+                    />
                   )}
 
                 </div>
@@ -1055,15 +861,23 @@ const ProjectSettings = () => {
       </div>
 
       {/* Inventory Tracking Preferences Modal */}
-      <Modal show={showTrackingModal} onHide={() => setShowTrackingModal(false)} centered>
-        <Modal.Header className="border-bottom px-4 py-3">
-          <Modal.Title className="fs-16 fw-semibold">Inventory Tracking Preferences</Modal.Title>
+      <Modal show={showTrackingModal} onHide={() => setShowTrackingModal(false)} centered backdropClassName="blurred-backdrop">
+        <Modal.Header closeButton={false} style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
+            <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <i className="ti ti-settings fs-18" style={{ color: "#ef4444" }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Inventory Tracking Preferences</p>
+            </div>
+          </div>
           <button
             type="button"
-            className="btn-close"
             onClick={() => setShowTrackingModal(false)}
-            aria-label="Close"
-          />
+            style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+          >
+            <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+          </button>
         </Modal.Header>
         <Modal.Body className="px-4 py-4">
           <p className="text-muted mb-3">
@@ -1100,17 +914,17 @@ const ProjectSettings = () => {
             </label>
           </div>
         </Modal.Body>
-        <Modal.Footer className="px-4 py-3 border-top d-flex justify-content-end gap-2">
+        <Modal.Footer style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button
             type="button"
-            className="btn btn-sm btn-light me-2"
+            className="btn btn-outline-light"
             onClick={() => setShowTrackingModal(false)}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-danger"
             onClick={() => {
               setTrackedInValue(modalTrackedIn);
               setMandatoryTracking(modalMandate);
@@ -1123,10 +937,7 @@ const ProjectSettings = () => {
       </Modal>
 
       {/* Toast Notifications */}
-      <div
-        className="position-fixed top-0 start-50 translate-middle-x pt-4"
-        style={{ zIndex: 9999, pointerEvents: "none" }}
-      >
+      <div role="region" aria-live="polite" className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
           onClose={() => setToast((t) => ({ ...t, show: false }))}
@@ -1168,54 +979,6 @@ const ProjectSettings = () => {
         </Toast>
       </div>
 
-      {/* Delete Custom Field Modal */}
-      <Modal
-        show={deleteModal.show}
-        onHide={() => !deleteModal.deleting && setDeleteModal((m) => ({ ...m, show: false }))}
-        centered
-        size="md"
-      >
-        <Modal.Body className="p-5">
-          <div className="text-center">
-            <div className="mb-4">
-              <span
-                className="avatar badge-soft-danger border-0 text-danger rounded-circle d-inline-flex align-items-center justify-content-center"
-                style={{ width: 72, height: 72 }}
-              >
-                <i className="ti ti-trash" style={{ fontSize: 34 }} />
-              </span>
-            </div>
-            <h3 className="mb-3 fw-semibold">Delete Confirmation</h3>
-            <p className="mb-0 text-muted fs-15">
-              Are you sure you want to delete <strong>{deleteModal.field?.config.label}</strong>?
-              This cannot be undone.
-            </p>
-            <div className="d-flex align-items-center justify-content-center gap-3 mt-5">
-              <button
-                type="button"
-                className="btn btn-cancel px-5 py-2 fs-15"
-                onClick={() => setDeleteModal((m) => ({ ...m, show: false }))}
-                disabled={deleteModal.deleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger px-5 py-2 fs-15"
-                onClick={handleDeleteConfirm}
-                disabled={deleteModal.deleting}
-              >
-                {deleteModal.deleting ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-1" role="status" />
-                    Deleting…
-                  </>
-                ) : "Yes, Delete"}
-              </button>
-            </div>
-          </div>
-        </Modal.Body>
-      </Modal>
     </>
   );
 };

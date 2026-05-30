@@ -39,7 +39,7 @@ export function getCompositeItemList(trashed = false): Promise<CompositeItemReco
   return listCache.resolve(key, TTL_LIST, async () => {
     const res = await fetchCompositeItems({ per_page: 500, trashed: trashed || undefined });
     if (!res.success) throw new Error((res as any).message ?? "Failed to fetch composite items.");
-    return (res as any).data.data as CompositeItemRecord[];
+    return (res as any).data as CompositeItemRecord[];
   });
 }
 
@@ -56,7 +56,7 @@ export function getCompositeItemAuditLogs(id: number, page: number): Promise<Aud
   return auditCache.resolve(key, TTL_AUDIT, async () => {
     const res = await fetchCompositeItemAuditLogs(id, page);
     if (!res.success) throw new Error((res as any).message ?? "Failed to fetch audit logs.");
-    return { logs: res.data.data, lastPage: res.data.last_page, total: res.data.total };
+    return { logs: res.data as AuditLogEntry[], lastPage: (res as any).meta.last_page, total: (res as any).meta.total };
   });
 }
 

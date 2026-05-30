@@ -61,16 +61,16 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Bill To<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Bill To<span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Ship To<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Ship To<span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
@@ -78,8 +78,8 @@ const ModalEstimation = () => {
                 <div className="col-md-12">
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between">
-                      <label className="form-label">
-                        Project<span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Project<span>*</span>
                       </label>
                       <Link
                         to="#"
@@ -100,8 +100,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Estimate By <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Estimate By <span>*</span>
                     </label>
                     <CommonSelect
                       options={Estimate_By}
@@ -112,16 +112,16 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Amount<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Amount<span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Currency <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Currency <span>*</span>
                     </label>
                     <CommonSelect
                       options={Currency}
@@ -132,8 +132,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Estimate Date<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Estimate Date<span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -142,8 +142,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Expiry Date <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Expiry Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -152,8 +152,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <CommonSelect
                       options={Status_Sent}
@@ -176,8 +176,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Attachment <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Attachment <span>*</span>
                     </label>
                     <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                       <span className="upload-img d-block mb-1">
@@ -199,8 +199,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <div className="editor pages-editor">
                       <TextEditor />
@@ -267,16 +267,16 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Bill To<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Bill To<span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Ship To<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Ship To<span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
@@ -284,8 +284,8 @@ const ModalEstimation = () => {
                 <div className="col-md-12">
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between">
-                      <label className="form-label">
-                        Project<span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Project<span>*</span>
                       </label>
                       <Link
                         to="#"
@@ -306,8 +306,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Estimate By <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Estimate By <span>*</span>
                     </label>
                     <CommonSelect
                       options={Estimate_By}
@@ -318,16 +318,16 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Amount<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Amount<span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Currency <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Currency <span>*</span>
                     </label>
                     <CommonSelect
                       options={Currency}
@@ -338,8 +338,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Estimate Date<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Estimate Date<span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -348,8 +348,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Expiry Date <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Expiry Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -358,8 +358,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <CommonSelect
                       options={Status_Sent}
@@ -382,8 +382,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Attachment <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Attachment <span>*</span>
                     </label>
                     <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                       <span className="upload-img d-block mb-1">
@@ -405,8 +405,8 @@ const ModalEstimation = () => {
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <div className="editor pages-editor">
                       <TextEditor />

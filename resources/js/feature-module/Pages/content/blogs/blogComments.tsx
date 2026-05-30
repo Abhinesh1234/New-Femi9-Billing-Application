@@ -210,14 +210,14 @@ const BlogComments = () => {
               <form>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Category <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Category <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Created Date <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Created Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                     <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -281,8 +281,8 @@ const BlogComments = () => {
               <form>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Category <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Category <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -291,8 +291,8 @@ const BlogComments = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Created Date <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Created Date <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                     <CommonDatePicker placeholder="dd/mm/yyyy" />

@@ -159,6 +159,18 @@ const includeModuleOptions = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+const MODULE_LABELS: Record<string, string> = {
+  products:        "Items",
+  contacts:        "Contacts",
+  companies:       "Companies",
+  invoices:        "Invoices",
+  sales_orders:    "Sales Orders",
+  purchase_orders: "Purchase Orders",
+  vendors:         "Vendors",
+  customers:       "Customers",
+  payments:        "Payments Received",
+};
+
 type DropdownOpt    = { id: number; label: string; color: string; active: boolean };
 type MultiselectOpt = { id: number; label: string; active: boolean };
 
@@ -245,6 +257,7 @@ const EditCustomField = () => {
   // ── Field state ───────────────────────────────────────────────────────────
   const [loading, setLoading]                       = useState(true);
   const [fetchError, setFetchError]                 = useState("");
+  const [fieldModule, setFieldModule]               = useState("products");
   const [originalFieldKey, setOriginalFieldKey]     = useState("");
   const [originalIsSystem, setOriginalIsSystem]     = useState(false);
 
@@ -446,6 +459,7 @@ const EditCustomField = () => {
 
     fetchCustomField(fieldIdNum).then((res) => {
       if (res.success) {
+        setFieldModule(res.data.module ?? "products");
         populateFromConfig(res.data);
       } else {
         setFetchError(res.message);
@@ -523,7 +537,13 @@ const EditCustomField = () => {
     });
   };
 
-  const goBack = () => navigate(all_routes.projectSettings + "?tab=field");
+  const MODULE_BACK_ROUTES: Record<string, string> = {
+    products:  all_routes.projectSettings          + "?tab=field",
+    customers: all_routes.customerSettings         + "?tab=field",
+    invoices:  all_routes.invoiceSettings          + "?tab=field_customization",
+    payments:  all_routes.paymentReceivedSettings,
+  };
+  const goBack = () => navigate(MODULE_BACK_ROUTES[fieldModule] ?? all_routes.projectSettings + "?tab=field");
 
   // ── Build config payload ──────────────────────────────────────────────────
   const buildConfig = (): CustomFieldConfig => {
@@ -630,22 +650,26 @@ const EditCustomField = () => {
     setErrors({});
     setSaving(true);
 
-    const res = await updateCustomField(fieldIdNum, config);
+    try {
+      const res = await updateCustomField(fieldIdNum, config);
 
-    if (res.success) {
-      showToast("success", "Custom field updated successfully.");
-      setSaving(false);
-      setTimeout(() => goBack(), 1500);
-    } else {
-      const serverErrors: Record<string, string> = {};
-      if (res.errors) {
-        Object.entries(res.errors).forEach(([key, msgs]) => {
-          serverErrors[key.replace("config.", "")] = msgs[0];
-        });
+      if (res.success) {
+        showToast("success", "Custom field updated successfully.");
+        setTimeout(() => goBack(), 1500);
+      } else {
+        const serverErrors: Record<string, string> = {};
+        if (res.errors) {
+          Object.entries(res.errors).forEach(([key, msgs]) => {
+            serverErrors[key.replace("config.", "")] = msgs[0];
+          });
+        }
+        setErrors(serverErrors);
+        showToast("danger", res.message);
       }
-      setErrors(serverErrors);
+    } catch {
+      showToast("danger", "Network error. Please check your connection and try again.");
+    } finally {
       setSaving(false);
-      showToast("danger", res.message);
     }
   };
 
@@ -655,8 +679,7 @@ const EditCustomField = () => {
   if (loading) {
     return (
       <div className="page-wrapper">
-        <div className="content d-flex align-items-center justify-content-center" style={{ minHeight: "60vh" }}>
-          <span className="spinner-border text-primary" />
+        <div className="content">
         </div>
         <Footer />
       </div>
@@ -680,7 +703,7 @@ const EditCustomField = () => {
       <div className="page-wrapper">
         <div className="content">
           <PageHeader
-            title="Edit Custom Field - Items"
+            title={`Edit Custom Field — ${MODULE_LABELS[fieldModule] ?? fieldModule}`}
             badgeCount={false}
             showModuleTile={false}
             showExport={false}
@@ -806,7 +829,7 @@ const EditCustomField = () => {
                             </OverlayTrigger>
                           </label>
                           <div className="col-sm-8">
-                            <div style={{ position: "relative" }} ref={lookupModuleRef}>
+                            <div style={{ position: "relative", ...(lookupModuleOpen ? { zIndex: 10 } : {}) }} ref={lookupModuleRef}>
                               <div
                                 className="form-select"
                                 style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
@@ -1011,7 +1034,7 @@ const EditCustomField = () => {
                             </div>
                           ) : (
                             <div className="d-flex align-items-center gap-2">
-                              <div className="position-relative flex-grow-1" ref={inputFormatRef}>
+                              <div className="flex-grow-1" style={{ position: "relative", ...(inputFormatOpen ? { zIndex: 10 } : {}) }} ref={inputFormatRef}>
                                 <div
                                   className="form-select"
                                   style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
@@ -1139,7 +1162,7 @@ const EditCustomField = () => {
 
                                   {dropdownAddColor && (
                                     <div
-                                      style={{ position: "relative", flexShrink: 0 }}
+                                      style={{ position: "relative", flexShrink: 0, ...(dropdownColorPickerOpen === opt.id ? { zIndex: 10 } : {}) }}
                                       ref={dropdownColorPickerOpen === opt.id ? dropdownColorPickerRef : undefined}
                                     >
                                       <button
@@ -1256,7 +1279,7 @@ const EditCustomField = () => {
                                       <i className="ti ti-square-rounded-plus fs-16" />
                                     </button>
                                     <div
-                                      style={{ position: "relative" }}
+                                      style={{ position: "relative", ...(dropdownMoreMenuOpen === opt.id ? { zIndex: 10 } : {}) }}
                                       ref={dropdownMoreMenuOpen === opt.id ? dropdownMoreMenuRef : undefined}
                                     >
                                       <button
@@ -1399,7 +1422,7 @@ const EditCustomField = () => {
                                     <i className="ti ti-square-rounded-plus fs-16" />
                                   </button>
                                   <div
-                                    style={{ position: "relative" }}
+                                    style={{ position: "relative", ...(multiselectMoreMenuOpen === opt.id ? { zIndex: 10 } : {}) }}
                                     ref={multiselectMoreMenuOpen === opt.id ? multiselectMoreMenuRef : undefined}
                                   >
                                     <button
@@ -1567,7 +1590,7 @@ const EditCustomField = () => {
                                     </Link>
                                   </div>
                                 ) : (
-                                  <div ref={dateDefaultRef} style={{ position: "relative" }}>
+                                  <div ref={dateDefaultRef} style={{ position: "relative", ...(dateDefaultOpen ? { zIndex: 10 } : {}) }}>
                                     <div
                                       className="form-select"
                                       style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
@@ -1657,7 +1680,7 @@ const EditCustomField = () => {
                             </OverlayTrigger>
                           </label>
                           <div className="col-sm-8">
-                            <div className="position-relative" ref={modulesRef}>
+                            <div ref={modulesRef} style={{ position: "relative", ...(modulesOpen ? { zIndex: 10 } : {}) }}>
                               <div
                                 className="form-select"
                                 style={{ cursor: "pointer", userSelect: "none", minHeight: "38px", display: "flex", alignItems: "center" }}
@@ -1844,16 +1867,19 @@ const EditCustomField = () => {
       </div>
 
       {/* Toast */}
-      <div className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
+      <div role="region" aria-live="polite" className="position-fixed top-0 start-50 translate-middle-x pt-4" style={{ zIndex: 9999, pointerEvents: "none" }}>
         <Toast
           show={toast.show}
           onClose={() => setToast((t) => ({ ...t, show: false }))}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           style={{ pointerEvents: "auto", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.10)", border: "none", minWidth: "320px", background: "#fff" }}
         >
           <Toast.Body className="d-flex align-items-center gap-3 px-4 py-3">
             <span
               className={`d-flex align-items-center justify-content-center rounded-circle flex-shrink-0 ${toast.type === "success" ? "bg-success" : "bg-danger"}`}
-              style={{ width: "36px", height: "36px" }}
+              style={{ width: 36, height: 36 }}
             >
               <i className={`ti fs-16 text-white ${toast.type === "success" ? "ti-check" : "ti-x"}`} />
             </span>

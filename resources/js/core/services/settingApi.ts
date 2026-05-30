@@ -4,6 +4,16 @@ const BASE_URL = "/api/settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface CustomerConfiguration {
+  allow_duplicate_names: boolean;
+  default_customer_type: "business" | "individual";
+  credit_limit_enabled: boolean;
+  credit_limit_action: "restrict" | "warn";
+  include_sales_orders_in_credit: boolean;
+  billing_address_format: string;
+  shipping_address_format: string;
+}
+
 export interface ProductConfiguration {
   decimal_rate: number;
   dimension_unit: string;
@@ -26,8 +36,27 @@ export interface ProductConfiguration {
   stock_level: "org" | "location";
   out_of_stock_warning: boolean;
   notify_reorder_point: boolean;
-  notify_to_email: string;
+  notify_to_user_ids: number[];
   track_landed_cost: boolean;
+}
+
+export interface InvoiceConfiguration {
+  allow_edit_sent_invoice: boolean;
+  invoice_order_number: "sales_order_number" | "sales_order_ref_number";
+  notify_online_payment: boolean;
+  include_payment_receipt_thank_you: boolean;
+  automate_thank_you_note: boolean;
+  enable_qr_code: boolean;
+  qr_code_type: "upi_id" | "invoice_url" | "custom";
+  qr_upi_id: string;
+  qr_upi_confirm: string;
+  qr_description: string;
+  qr_custom_content: string;
+  hide_zero_value_line_items: boolean;
+  terms_and_conditions: string;
+  customer_notes: string;
+  advanced_payment_enabled: boolean;
+  advanced_payment_categories: number[];
 }
 
 export interface ApiSuccessResponse<T> {
@@ -93,16 +122,45 @@ export function validateProductSettings(
     errors.tracking_preference = "Please select a valid tracking preference.";
   }
 
-  if (data.notify_reorder_point && !data.notify_to_email) {
-    errors.notify_to_email = "Notification email is required.";
-  } else if (
-    data.notify_reorder_point &&
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.notify_to_email)
-  ) {
-    errors.notify_to_email = "Please enter a valid email address.";
+  if (data.notify_reorder_point && (!data.notify_to_user_ids || data.notify_to_user_ids.length === 0)) {
+    errors.notify_to_user_ids = "Please select at least one user to notify.";
   }
 
   return errors;
+}
+
+export function validateCustomerSettings(
+  data: CustomerConfiguration
+): ValidationErrors {
+  const errors: ValidationErrors = {};
+
+  if (!["business", "individual"].includes(data.default_customer_type)) {
+    errors.default_customer_type = "Invalid customer type selected.";
+  }
+
+  if (data.credit_limit_enabled) {
+    if (!["restrict", "warn"].includes(data.credit_limit_action)) {
+      errors.credit_limit_action = "Please select a valid credit limit action.";
+    }
+  }
+
+  if (!data.billing_address_format || data.billing_address_format.trim() === "") {
+    errors.billing_address_format = "Billing address format is required.";
+  } else if (data.billing_address_format.length > 2000) {
+    errors.billing_address_format = "Billing address format must not exceed 2000 characters.";
+  }
+
+  if (!data.shipping_address_format || data.shipping_address_format.trim() === "") {
+    errors.shipping_address_format = "Shipping address format is required.";
+  } else if (data.shipping_address_format.length > 2000) {
+    errors.shipping_address_format = "Shipping address format must not exceed 2000 characters.";
+  }
+
+  return errors;
+}
+
+export function validateInvoiceSettings(_data: InvoiceConfiguration): ValidationErrors {
+  return {};
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────

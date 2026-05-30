@@ -67,16 +67,16 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    First Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    First Name <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    User Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    User Name <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -84,8 +84,8 @@ const ModalUserManagement = () => {
               <div className="col-md-6">
                 <div className="mb-3">
                   <div className="d-flex justify-content-between align-items-center">
-                    <label className="form-label">
-                      Email <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Email <span>*</span>
                     </label>
                     <div className="form-check form-switch form-check-reverse">
                       <input
@@ -106,16 +106,16 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Role <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Role <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Phone 1 <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Phone 1 <span>*</span>
                   </label>
                  <CommonPhoneInput
                             value={phone}
@@ -154,8 +154,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Repeat Password <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Repeat Password <span>*</span>
                   </label>
                   <div className="input-group input-group-flat pass-group">
                     <input
@@ -174,8 +174,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Location <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Location <span>*</span>
                   </label>
                   <CommonSelect
                             options={Location}
@@ -250,8 +250,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    First Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    First Name <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -262,8 +262,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    User Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    User Name <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -275,8 +275,8 @@ const ModalUserManagement = () => {
               <div className="col-md-6">
                 <div className="mb-3">
                   <div className="d-flex justify-content-between align-items-center">
-                    <label className="form-label">
-                      Email <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Email <span>*</span>
                     </label>
                     <div className="form-check form-switch form-check-reverse">
                       <input
@@ -302,8 +302,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Role <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Role <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -314,8 +314,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Phone 1 <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Phone 1 <span>*</span>
                   </label>
                 <CommonPhoneInput
                             value={phone}
@@ -354,8 +354,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Repeat Password <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Repeat Password <span>*</span>
                   </label>
                   <div className="input-group input-group-flat pass-group">
                     <input
@@ -374,8 +374,8 @@ const ModalUserManagement = () => {
               </div>
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Location <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Location <span>*</span>
                   </label>
                   <CommonSelect
                             options={Location}

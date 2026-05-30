@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Models\CompositeItemComponent;
 use App\Models\CustomField;
 use App\Models\Item;
+use App\Models\PartyItemReorderPoint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +68,30 @@ class CompositeItemController extends Controller
             $perPage = max(1, min((int) $request->query('per_page', 20), 100));
             $items   = $query->paginate($perPage);
 
-            return $this->successResponse(['data' => $items]);
+            // For party users, replace company-level reorder_point with the
+            // party's own value from party_item_reorder_points (null if not set).
+            $partyScopeId = $request->attributes->get('party_scope_id');
+            if ($partyScopeId) {
+                $partyReorders = PartyItemReorderPoint::where('party_id', $partyScopeId)
+                    ->whereIn('item_id', collect($items->items())->pluck('id'))
+                    ->pluck('reorder_point', 'item_id');
+
+                foreach ($items->items() as $item) {
+                    $item->reorder_point = $partyReorders->has($item->id)
+                        ? (float) $partyReorders->get($item->id)
+                        : null;
+                }
+            }
+
+            return $this->successResponse([
+                'data' => $items->items(),
+                'meta' => [
+                    'current_page' => $items->currentPage(),
+                    'last_page'    => $items->lastPage(),
+                    'total'        => $items->total(),
+                    'per_page'     => $items->perPage(),
+                ],
+            ]);
 
         } catch (Throwable $e) {
             $this->logException('CompositeItemController::index', $e, $ctx);
@@ -274,20 +298,59 @@ class CompositeItemController extends Controller
 
     /**
      * POST /api/composite-items/upload-image
-     * Accepts a JPEG file, stores it, returns path + URL.
+     * Re-encodes via GD (max 1200px, 85% JPEG) — prevents polyglot/malformed files.
+     * Falls back to raw storage if GD is unavailable.
      */
     public function uploadImage(Request $request): JsonResponse
     {
         $request->validate([
-            'image' => 'required|file|mimes:jpeg,jpg|max:2048',
+            'image' => 'required|file|mimes:jpeg,jpg,png,gif,webp|max:5120',
         ]);
 
         try {
+            $file     = $request->file('image');
             $filename = 'items/' . Str::uuid() . '.jpg';
-            Storage::disk('public')->put(
-                $filename,
-                file_get_contents($request->file('image')->getRealPath())
-            );
+
+            if (function_exists('imagecreatefromstring')) {
+                $raw = file_get_contents($file->getRealPath());
+                $src = imagecreatefromstring($raw);
+
+                if ($src !== false) {
+                    [$origW, $origH] = [imagesx($src), imagesy($src)];
+                    $maxDim = 1200;
+
+                    if ($origW > $maxDim || $origH > $maxDim) {
+                        if ($origW >= $origH) {
+                            $newW = $maxDim;
+                            $newH = (int) round($maxDim * $origH / $origW);
+                        } else {
+                            $newH = $maxDim;
+                            $newW = (int) round($maxDim * $origW / $origH);
+                        }
+                        $dst = imagecreatetruecolor($newW, $newH);
+                        imagealphablending($dst, false);
+                        imagesavealpha($dst, true);
+                        imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $origW, $origH);
+                        imagedestroy($src);
+                        $src = $dst;
+                    }
+
+                    $tmp = tempnam(sys_get_temp_dir(), 'comp_img_') . '.jpg';
+                    imagejpeg($src, $tmp, 85);
+                    imagedestroy($src);
+
+                    Storage::disk('public')->put($filename, file_get_contents($tmp));
+                    @unlink($tmp);
+
+                    return $this->successResponse([
+                        'path' => $filename,
+                        'url'  => Storage::disk('public')->url($filename),
+                    ], 201);
+                }
+            }
+
+            // GD unavailable — store as-is (already validated mime type)
+            Storage::disk('public')->put($filename, file_get_contents($file->getRealPath()));
 
             return $this->successResponse([
                 'path' => $filename,

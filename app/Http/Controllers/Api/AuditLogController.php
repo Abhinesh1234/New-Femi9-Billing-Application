@@ -3,18 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\EnforcesPartyScope;
 use App\Models\Account;
 use App\Models\AuditLog;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\GstRate;
 use App\Models\HsnCode;
+use App\Models\PartyUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
 
 class AuditLogController extends Controller
 {
+    use EnforcesPartyScope;
+
     /**
      * GET /api/audit-logs
      * Global feed — filterable by type, id, user, event.
@@ -34,6 +38,7 @@ class AuditLogController extends Controller
         'transaction_series', // SeriesController (manual)
         'Setting',            // SettingController (manual)
         'CustomField',        // SettingController (manual)
+        'party',              // PartyController (manual)
     ];
 
     public function index(Request $request): JsonResponse
@@ -57,8 +62,17 @@ class AuditLogController extends Controller
                 ->latest('created_at');
 
             $perPage = max(1, min((int) $request->query('per_page', 25), 100));
+            $result  = $query->paginate($perPage);
 
-            return $this->successResponse(['data' => $query->paginate($perPage)]);
+            return $this->successResponse([
+                'data' => $result->items(),
+                'meta' => [
+                    'current_page' => $result->currentPage(),
+                    'last_page'    => $result->lastPage(),
+                    'total'        => $result->total(),
+                    'per_page'     => $result->perPage(),
+                ],
+            ]);
 
         } catch (Throwable $e) {
             $this->logException('AuditLogController::index', $e, $ctx);
@@ -82,10 +96,20 @@ class AuditLogController extends Controller
         ]);
 
         try {
-            $perPage = max(1, min((int) $request->query('per_page', 25), 100));
+            $perPage  = max(1, min((int) $request->query('per_page', 25), 100));
+            $isParty  = $this->isPartyUser();
+            $partyId  = $this->partyScopeId();
 
-            $logs = AuditLog::with('user:id,name,phone')
+            $logs = AuditLog::with(['user:id,name,phone', 'partyUser:id,name,email'])
                 ->forModel($type, $id)
+                // Company users: show only their own actions (no party-originated entries)
+                ->when(!$isParty, fn($q) => $q->whereNull('party_user_id'))
+                // Party users: show only entries made by users of the same party
+                ->when($isParty, fn($q) => $q->whereNotNull('party_user_id')
+                    ->whereIn('party_user_id',
+                        PartyUser::where('party_id', $partyId)->pluck('id')
+                    )
+                )
                 ->when($request->query('event'), fn($q, $v) => $q->event($v))
                 ->latest('created_at')
                 ->paginate($perPage);
@@ -94,7 +118,15 @@ class AuditLogController extends Controller
                 $this->resolveItemRefs($logs->items());
             }
 
-            return $this->successResponse(['data' => $logs]);
+            return $this->successResponse([
+                'data' => $logs->items(),
+                'meta' => [
+                    'current_page' => $logs->currentPage(),
+                    'last_page'    => $logs->lastPage(),
+                    'total'        => $logs->total(),
+                    'per_page'     => $logs->perPage(),
+                ],
+            ]);
 
         } catch (Throwable $e) {
             $this->logException('AuditLogController::forRecord', $e, $ctx);

@@ -977,8 +977,8 @@ const Tickets = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Subject <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Subject <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
@@ -986,8 +986,8 @@ const Tickets = () => {
                 <div className="row">
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Created Date <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Created Date <span>*</span>
                       </label>
                       <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -997,8 +997,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Due Date <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Due Date <span>*</span>
                       </label>
                       <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -1008,8 +1008,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Assigned Name <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Assigned Name <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
@@ -1017,8 +1017,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Assignee Name <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Assignee Name <span>*</span>
                       </label>
                       <input type="text" className="form-control" />
                     </div>
@@ -1026,8 +1026,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Priority <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Priority <span>*</span>
                       </label>
                       <CommonSelect
                         options={Priority}
@@ -1039,8 +1039,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Status <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Status <span>*</span>
                       </label>
                       <CommonSelect
                         options={StatusResloved}
@@ -1095,8 +1095,8 @@ const Tickets = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Subject <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Subject <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -1108,8 +1108,8 @@ const Tickets = () => {
                 <div className="row">
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Created Date <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Created Date <span>*</span>
                       </label>
                       <div className="input-group w-auto input-group-flat">
                         <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -1119,8 +1119,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Due Date <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Due Date <span>*</span>
                       </label>
                       <div className="input-group w-auto input-group-flat">
                         <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -1130,8 +1130,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Assigned Name <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Assigned Name <span>*</span>
                       </label>
                       <input
                         type="text"
@@ -1143,8 +1143,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Assignee Name <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Assignee Name <span>*</span>
                       </label>
                       <input
                         type="text"
@@ -1156,8 +1156,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Priority <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Priority <span>*</span>
                       </label>
                       <CommonSelect
                         options={Priority}
@@ -1169,8 +1169,8 @@ const Tickets = () => {
                   {/* end col */}
                   <div className="col-lg-6">
                     <div className="mb-3">
-                      <label className="form-label">
-                        Status <span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Status <span>*</span>
                       </label>
                       <CommonSelect
                         options={StatusResloved}

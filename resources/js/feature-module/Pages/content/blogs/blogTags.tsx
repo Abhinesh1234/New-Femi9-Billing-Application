@@ -181,14 +181,14 @@ const BlogTags = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Tag <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tag <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Created Date <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Created Date <span>*</span>
                   </label>
                   <div className="input-group w-auto input-group-flat">
                     <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -229,8 +229,8 @@ const BlogTags = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Tag <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Tag <span>*</span>
                   </label>
                   <input
                     type="text"
@@ -239,8 +239,8 @@ const BlogTags = () => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Crerated Date <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Crerated Date <span>*</span>
                   </label>
                   <div className="input-group w-auto input-group-flat">
                     <CommonDatePicker placeholder="dd/mm/yyyy" />

@@ -1,15 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation as useRouterLocation } from "react-router";
-import { Toast, Modal } from "react-bootstrap";
+import { Toast } from "react-bootstrap";
 import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
 import CommonSelect, { Option } from "../../../../components/common-select/commonSelect";
 import { fetchLocation, storeLocation, updateLocation, uploadLocationLogo } from "../../../../core/services/locationApi";
+import { fetchDistributionCategories, type DistributionCategory } from "../../../../core/services/distributionCategoryApi";
 import { storeSeries } from "../../../../core/services/seriesApi";
 import { getLocationList, bustLocationLists, bustLocation } from "../../../../core/cache/locationCache";
 import { getSeriesList, bustSeriesLists } from "../../../../core/cache/seriesCache";
 import { emitMutation } from "../../../../core/cache/mutationEvents";
+import CreatableSelect from "react-select/creatable";
 import { fetchUsers, type UserListItem } from "../../../../core/services/authApi";
 
 /* ── Static option data ────────────────────────────────────────── */
@@ -21,68 +23,71 @@ const logoOptions: Option[] = [
   { value: "custom", label: "Upload a New Logo" },
 ];
 
-const countryOptions: Option[] = [
-  { value: "IN", label: "India" },
-  { value: "US", label: "United States" },
-  { value: "GB", label: "United Kingdom" },
-  { value: "AE", label: "United Arab Emirates" },
-  { value: "SG", label: "Singapore" },
-];
+/* ── Country / State via REST APIs (same pattern as addNewParty) ── */
 
-const stateOptions: Record<string, Option[]> = {
-  IN: [
-    { value: "AN", label: "Andaman and Nicobar Islands" },
-    { value: "AP", label: "Andhra Pradesh" },
-    { value: "AR", label: "Arunachal Pradesh" },
-    { value: "AS", label: "Assam" },
-    { value: "BR", label: "Bihar" },
-    { value: "CH", label: "Chandigarh" },
-    { value: "CT", label: "Chhattisgarh" },
-    { value: "DL", label: "Delhi" },
-    { value: "GA", label: "Goa" },
-    { value: "GJ", label: "Gujarat" },
-    { value: "HR", label: "Haryana" },
-    { value: "HP", label: "Himachal Pradesh" },
-    { value: "JK", label: "Jammu and Kashmir" },
-    { value: "JH", label: "Jharkhand" },
-    { value: "KA", label: "Karnataka" },
-    { value: "KL", label: "Kerala" },
-    { value: "LA", label: "Ladakh" },
-    { value: "MP", label: "Madhya Pradesh" },
-    { value: "MH", label: "Maharashtra" },
-    { value: "MN", label: "Manipur" },
-    { value: "ML", label: "Meghalaya" },
-    { value: "MZ", label: "Mizoram" },
-    { value: "NL", label: "Nagaland" },
-    { value: "OR", label: "Odisha" },
-    { value: "PB", label: "Punjab" },
-    { value: "PY", label: "Puducherry" },
-    { value: "RJ", label: "Rajasthan" },
-    { value: "SK", label: "Sikkim" },
-    { value: "TN", label: "Tamil Nadu" },
-    { value: "TG", label: "Telangana" },
-    { value: "TR", label: "Tripura" },
-    { value: "UP", label: "Uttar Pradesh" },
-    { value: "UK", label: "Uttarakhand" },
-    { value: "WB", label: "West Bengal" },
-  ],
-  US: [
-    { value: "CA", label: "California" },
-    { value: "NY", label: "New York" },
-    { value: "TX", label: "Texas" },
-  ],
-  GB: [
-    { value: "ENG", label: "England" },
-    { value: "SCT", label: "Scotland" },
-    { value: "WLS", label: "Wales" },
-  ],
-  AE: [
-    { value: "DXB", label: "Dubai" },
-    { value: "AUH", label: "Abu Dhabi" },
-  ],
-  SG: [
-    { value: "SG", label: "Singapore" },
-  ],
+interface CountryOption extends Option { phoneCode: string; }
+
+async function fetchWorldCountries(): Promise<CountryOption[]> {
+  const res = await fetch("https://restcountries.com/v3.1/all?fields=name,idd,cca2");
+  if (!res.ok) throw new Error("Failed to fetch countries");
+  const data: { name: { common: string }; idd: { root: string; suffixes: string[] }; cca2: string }[] = await res.json();
+  return data
+    .map((c) => {
+      const root     = c.idd?.root ?? "";
+      const suffixes = c.idd?.suffixes ?? [];
+      const phoneCode = suffixes.length === 1 ? root + suffixes[0] : root;
+      return { value: c.name.common, label: c.name.common, phoneCode };
+    })
+    .filter((c) => c.value)
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+async function fetchStatesForCountry(countryName: string): Promise<Option[]> {
+  const res = await fetch("https://countriesnow.space/api/v0.1/countries/states", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ country: countryName }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (data.error || !data.data?.states) return [];
+  return (data.data.states as { name: string }[])
+    .map((s) => ({ value: s.name, label: s.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+const indianStateOptions: Option[] = [
+  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat",
+  "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh",
+  "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab",
+  "Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh",
+  "Uttarakhand","West Bengal","Andaman and Nicobar Islands","Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu","Delhi","Jammu and Kashmir",
+  "Ladakh","Lakshadweep","Puducherry",
+].map((s) => ({ value: s, label: s }));
+
+let _countriesCache:   CountryOption[]         | null = null;
+let _countriesPromise: Promise<CountryOption[]> | null = null;
+function getCachedCountries(): Promise<CountryOption[]> {
+  if (_countriesCache) return Promise.resolve(_countriesCache);
+  if (!_countriesPromise) {
+    _countriesPromise = fetchWorldCountries()
+      .then((r) => { _countriesCache = r; return r; })
+      .finally(() => { _countriesPromise = null; });
+  }
+  return _countriesPromise;
+}
+
+const commonSelectStyles = {
+  option: (base: any, state: any) => ({
+    ...base,
+    backgroundColor: state.isSelected ? "#E41F07" : "white",
+    color: state.isSelected ? "#fff" : state.isFocused ? "#E41F07" : "#707070",
+    cursor: "pointer",
+    "&:hover": { backgroundColor: "#E41F07", color: "#fff" },
+  }),
+  menu:       (base: any) => ({ ...base, zIndex: 999 }),
+  menuPortal: (base: any) => ({ ...base, zIndex: 999 }),
 };
 
 interface SeriesEntry { id: number; name: string; }
@@ -152,6 +157,8 @@ interface AddSeriesModalProps {
 
 const AddSeriesModal = ({ show, onHide, onCreated }: AddSeriesModalProps) => {
   const [seriesName,         setSeriesName]         = useState("");
+  const [customerCategory,   setCustomerCategory]   = useState<string | null>(null);
+  const [categoryOptions,    setCategoryOptions]    = useState<{ value: string; label: string }[]>([]);
   const [modules,            setModules]            = useState<SeriesModule[]>(DEFAULT_MODULES.map(m => ({ ...m })));
   const [nameError,          setNameError]          = useState("");
   const [apiError,           setApiError]           = useState("");
@@ -160,8 +167,14 @@ const AddSeriesModal = ({ show, onHide, onCreated }: AddSeriesModalProps) => {
   const [hoveredPlaceholder, setHoveredPlaceholder] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!show) {
-      setSeriesName(""); setModules(DEFAULT_MODULES.map(m => ({ ...m })));
+    if (show) {
+      fetchDistributionCategories().then(res => {
+        if (res.success) {
+          setCategoryOptions(res.data.map((c: DistributionCategory) => ({ value: c.name, label: c.name })));
+        }
+      }).catch(() => {});
+    } else {
+      setSeriesName(""); setCustomerCategory(null); setModules(DEFAULT_MODULES.map(m => ({ ...m })));
       setNameError(""); setApiError(""); setSaving(false);
       setPlaceholderTarget(null); setHoveredPlaceholder(null);
     }
@@ -182,6 +195,7 @@ const AddSeriesModal = ({ show, onHide, onCreated }: AddSeriesModalProps) => {
     try {
       const res = await storeSeries({
         name: seriesName.trim(),
+        customer_category: customerCategory ?? null,
         modules: modules.map(m => ({
           module:            m.module,
           prefix:            m.prefix,
@@ -204,177 +218,209 @@ const AddSeriesModal = ({ show, onHide, onCreated }: AddSeriesModalProps) => {
 
   return (
     <>
-      <Modal show={show} onHide={onHide} centered size="xl" scrollable>
-        <Modal.Header closeButton className="px-4 py-3">
-          <div>
-            <Modal.Title className="fs-17 fw-semibold mb-0">New Transaction Series</Modal.Title>
-            <p className="text-muted fs-13 mb-0 mt-1">
-              Configure prefix, numbering and restart settings for each transaction type.
-            </p>
-          </div>
-        </Modal.Header>
+      {show && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={e => { if (e.target === e.currentTarget && !saving) onHide(); }}
+        >
+          <div style={{ background: "#fff", borderRadius: 14, width: "min(1140px, 95vw)", maxHeight: "88vh", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-        <Modal.Body className="px-4 py-4">
-          {apiError && (
-            <div className="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 mb-4 fs-14 rounded" role="alert">
-              <i className="ti ti-alert-circle fs-16 flex-shrink-0" />
-              {apiError}
-            </div>
-          )}
-
-          {/* Series Name */}
-          <div className="row mb-4 align-items-center">
-            <label className="col-sm-3 col-form-label fw-semibold fs-14 text-danger">
-              Series Name<span className="ms-1">*</span>
-            </label>
-            <div className="col-sm-9">
-              <input
-                autoFocus
-                type="text"
-                className={`form-control${nameError ? " is-invalid" : ""}`}
-                placeholder="e.g. Default Transaction Series"
-                value={seriesName}
-                onChange={e => { setSeriesName(e.target.value); setNameError(""); }}
-                onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
-              />
-              {nameError && <div className="invalid-feedback">{nameError}</div>}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="d-flex align-items-center gap-3 mb-3">
-            <span className="text-uppercase fw-semibold fs-11 text-muted" style={{ letterSpacing: "0.07em", whiteSpace: "nowrap" }}>
-              Module Settings
-            </span>
-            <div style={{ flex: 1, height: 1, background: "#f0f0f0" }} />
-          </div>
-
-          {/* Modules table */}
-          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <div className="border rounded overflow-hidden" style={{ minWidth: 860 }}>
-
-              {/* Header */}
-              <div
-                className="d-flex align-items-center px-3 py-2 border-bottom"
-                style={{ background: "#f8f9fa", gap: 24 }}
+            {/* Header */}
+            <div style={{ padding: "20px 28px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 14, flexShrink: 0 }}>
+              <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <i className="ti ti-file-invoice fs-20" style={{ color: "#ef4444" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 3px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>New Transaction Series</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>Configure prefix, numbering and restart settings for each transaction type.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !saving && onHide()}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: saving ? "not-allowed" : "pointer", flexShrink: 0, padding: 0, opacity: saving ? 0.5 : 1 }}
               >
-                <div style={{ width: 150, flexShrink: 0 }}>
-                  <span className="fw-semibold fs-12 text-uppercase text-muted">Module</span>
+                <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+              </button>
+            </div>
+
+            {/* Body — scrollable */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
+              {apiError && (
+                <div className="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 mb-4 fs-14 rounded" role="alert">
+                  <i className="ti ti-alert-circle fs-16 flex-shrink-0" />
+                  {apiError}
                 </div>
-                <div style={{ flex: 3 }}>
-                  <span className="fw-semibold fs-12 text-uppercase text-muted">Prefix</span>
-                </div>
-                <div style={{ flex: 2 }}>
-                  <span className="fw-semibold fs-12 text-uppercase text-muted">Starting No.</span>
-                </div>
-                <div style={{ flex: 2 }}>
-                  <span className="fw-semibold fs-12 text-uppercase text-muted">Restart Numbering</span>
-                </div>
-                <div style={{ flex: 2 }}>
-                  <span className="fw-semibold fs-12 text-uppercase text-muted">Preview</span>
+              )}
+
+              {/* Series Name */}
+              <div className="row mb-4 align-items-center">
+                <label className="col-sm-3 col-form-label fw-semibold fs-14 text-danger">
+                  Series Name<span className="ms-1">*</span>
+                </label>
+                <div className="col-sm-9">
+                  <input
+                    autoFocus
+                    type="text"
+                    className={`form-control${nameError ? " is-invalid" : ""}`}
+                    placeholder="e.g. Default Transaction Series"
+                    value={seriesName}
+                    onChange={e => { setSeriesName(e.target.value); setNameError(""); }}
+                    onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
+                  />
+                  {nameError && <div className="invalid-feedback">{nameError}</div>}
                 </div>
               </div>
 
-              {/* Rows */}
-              {modules.map((m, i) => (
-                <div
-                  key={m.module}
-                  className="d-flex align-items-center px-3 border-bottom"
-                  style={{ gap: 24, paddingTop: 10, paddingBottom: 10, background: "#fff" }}
-                >
-                  {/* Module name */}
-                  <div className="fs-14 fw-medium" style={{ width: 150, flexShrink: 0, color: "#344054", whiteSpace: "nowrap" }}>
-                    {m.module}
-                  </div>
+              {/* Customer Category */}
+              <div className="row mb-4 align-items-center">
+                <label className="col-sm-3 col-form-label fw-semibold fs-14">
+                  Customer Category
+                </label>
+                <div className="col-sm-9">
+                  <CommonSelect
+                    className="select"
+                    isClearable
+                    options={categoryOptions}
+                    value={categoryOptions.find(o => o.value === customerCategory) ?? null}
+                    placeholder="Select customer category…"
+                    onChange={(opt: Option | null) => setCustomerCategory(opt ? opt.value : null)}
+                    menuPortalTarget={document.body}
+                    menuPosition="fixed"
+                  />
+                </div>
+              </div>
 
-                  {/* Prefix + variable button */}
-                  <div style={{ flex: 3 }}>
-                    <div className="input-group" style={{ flexWrap: "nowrap" }}>
-                      <input
-                        type="text"
-                        className="form-control fs-14"
-                        style={{ height: 37 }}
-                        value={m.prefix}
-                        onChange={e => setMod(i, "prefix", e.target.value)}
-                        placeholder="e.g. INV-"
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-outline-danger d-flex align-items-center justify-content-center"
-                        style={{ width: 40, padding: 0, flexShrink: 0 }}
-                        title="Insert variable placeholder"
-                        onClick={e => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setPlaceholderTarget({ rowIdx: i, top: rect.bottom + 4, left: rect.left, right: window.innerWidth - rect.right });
-                        }}
-                      >
-                        <i className="ti ti-plus fs-14" />
-                      </button>
+              {/* Divider */}
+              <div className="d-flex align-items-center gap-3 mb-3">
+                <span className="text-uppercase fw-semibold fs-11 text-muted" style={{ letterSpacing: "0.07em", whiteSpace: "nowrap" }}>
+                  Module Settings
+                </span>
+                <div style={{ flex: 1, height: 1, background: "#f0f0f0" }} />
+              </div>
+
+              {/* Modules table */}
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                <div className="border rounded overflow-hidden" style={{ minWidth: 860 }}>
+
+                  {/* Header */}
+                  <div
+                    className="d-flex align-items-center px-3 py-2 border-bottom"
+                    style={{ background: "#f8f9fa", gap: 24 }}
+                  >
+                    <div style={{ width: 150, flexShrink: 0 }}>
+                      <span className="fw-semibold fs-12 text-uppercase text-muted">Module</span>
+                    </div>
+                    <div style={{ flex: 3 }}>
+                      <span className="fw-semibold fs-12 text-uppercase text-muted">Prefix</span>
+                    </div>
+                    <div style={{ flex: 2 }}>
+                      <span className="fw-semibold fs-12 text-uppercase text-muted">Starting No.</span>
+                    </div>
+                    <div style={{ flex: 2 }}>
+                      <span className="fw-semibold fs-12 text-uppercase text-muted">Restart Numbering</span>
+                    </div>
+                    <div style={{ flex: 2 }}>
+                      <span className="fw-semibold fs-12 text-uppercase text-muted">Preview</span>
                     </div>
                   </div>
 
-                  {/* Starting number */}
-                  <div style={{ flex: 2 }}>
-                    <input
-                      type="text"
-                      className="form-control fs-14"
-                      style={{ height: 37 }}
-                      value={m.startingNumber}
-                      onChange={e => setMod(i, "startingNumber", e.target.value)}
-                      placeholder="00001"
-                    />
-                  </div>
-
-                  {/* Restart numbering */}
-                  <div style={{ flex: 2 }}>
-                    <select
-                      className="form-select fs-14"
-                      style={{ height: 37 }}
-                      value={m.restartNumbering}
-                      onChange={e => setMod(i, "restartNumbering", e.target.value)}
+                  {/* Rows */}
+                  {modules.map((m, i) => (
+                    <div
+                      key={m.module}
+                      className="d-flex align-items-center px-3 border-bottom"
+                      style={{ gap: 24, paddingTop: 10, paddingBottom: 10, background: "#fff" }}
                     >
-                      {RESTART_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                  </div>
+                      <div className="fs-14 fw-medium" style={{ width: 150, flexShrink: 0, color: "#344054", whiteSpace: "nowrap" }}>
+                        {m.module}
+                      </div>
 
-                  {/* Preview */}
-                  <div
-                    className="fs-13 text-muted"
-                    style={{ flex: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    title={seriesPvw(m.prefix, m.startingNumber)}
-                  >
-                    {seriesPvw(m.prefix, m.startingNumber) || <span style={{ color: "#ccc" }}>—</span>}
-                  </div>
+                      <div style={{ flex: 3 }}>
+                        <div className="input-group" style={{ flexWrap: "nowrap" }}>
+                          <input
+                            type="text"
+                            className="form-control fs-14"
+                            style={{ height: 37 }}
+                            value={m.prefix}
+                            onChange={e => setMod(i, "prefix", e.target.value)}
+                            placeholder="e.g. INV-"
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger d-flex align-items-center justify-content-center"
+                            style={{ width: 40, padding: 0, flexShrink: 0 }}
+                            title="Insert variable placeholder"
+                            onClick={e => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setPlaceholderTarget({ rowIdx: i, top: rect.bottom + 4, left: rect.left, right: window.innerWidth - rect.right });
+                            }}
+                          >
+                            <i className="ti ti-plus fs-14" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ flex: 2 }}>
+                        <input
+                          type="text"
+                          className="form-control fs-14"
+                          style={{ height: 37 }}
+                          value={m.startingNumber}
+                          onChange={e => setMod(i, "startingNumber", e.target.value)}
+                          placeholder="00001"
+                        />
+                      </div>
+
+                      <div style={{ flex: 2 }}>
+                        <select
+                          className="form-select fs-14"
+                          style={{ height: 37 }}
+                          value={m.restartNumbering}
+                          onChange={e => setMod(i, "restartNumbering", e.target.value)}
+                        >
+                          {RESTART_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </div>
+
+                      <div
+                        className="fs-13 text-muted"
+                        style={{ flex: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={seriesPvw(m.prefix, m.startingNumber)}
+                      >
+                        {seriesPvw(m.prefix, m.startingNumber) || <span style={{ color: "#ccc" }}>—</span>}
+                      </div>
+                    </div>
+                  ))}
+
                 </div>
-              ))}
-
+              </div>
             </div>
-          </div>
-        </Modal.Body>
 
-        <Modal.Footer className="px-4 py-3 border-top justify-content-start gap-2">
-          <button
-            type="button"
-            className="btn btn-danger px-4"
-            onClick={handleSave}
-            disabled={saving}
-            style={{ height: 44, minWidth: 120 }}
-          >
-            {saving
-              ? <><span className="spinner-border spinner-border-sm me-2" />Saving…</>
-              : "Save Series"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-outline-light px-4"
-            onClick={onHide}
-            disabled={saving}
-            style={{ height: 44 }}
-          >
-            Cancel
-          </button>
-        </Modal.Footer>
-      </Modal>
+            {/* Footer */}
+            <div style={{ padding: "16px 28px 22px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button
+                type="button"
+                className="btn btn-danger me-2"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving
+                  ? <><span className="spinner-border spinner-border-sm me-1" />Saving…</>
+                  : "Save Series"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-light"
+                onClick={onHide}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Placeholder variable dropdown (portal) */}
       {placeholderTarget !== null && createPortal(
@@ -628,15 +674,19 @@ const AddLocation = () => {
   const [parentLocation, setParentLocation] = useState<Option | null>(null);
 
   // Address
-  const [attention, setAttention] = useState("");
-  const [street1,   setStreet1]   = useState("");
-  const [street2,   setStreet2]   = useState("");
-  const [city,      setCity]      = useState("");
-  const [pinCode,   setPinCode]   = useState("");
-  const [country,   setCountry]   = useState<Option | null>(countryOptions[0]);
-  const [state,     setState]     = useState<Option | null>(null);
-  const [phone,     setPhone]     = useState("");
-  const [fax,       setFax]       = useState("");
+  const [attention,       setAttention]       = useState("");
+  const [street1,         setStreet1]         = useState("");
+  const [street2,         setStreet2]         = useState("");
+  const [city,            setCity]            = useState("");
+  const [pinCode,         setPinCode]         = useState("");
+  const [country,         setCountry]         = useState<CountryOption | null>(null);
+  const [state,           setState]           = useState<Option | null>(null);
+  const [phone,           setPhone]           = useState("");
+  const [fax,             setFax]             = useState("");
+  const [countryList,     setCountryList]     = useState<CountryOption[]>([]);
+  const [countriesLoading, setCountriesLoading] = useState(true);
+  const [stateOptionsList, setStateOptionsList] = useState<Option[]>(indianStateOptions);
+  const [statesLoading,   setStatesLoading]   = useState(false);
 
   const [websiteUrl, setWebsiteUrl] = useState("");
 
@@ -839,10 +889,16 @@ const AddLocation = () => {
           setPhone(addr.phone        ?? "");
           setFax(addr.fax            ?? "");
 
-          const countryOpt = countryOptions.find(o => o.value === addr.country) ?? null;
-          setCountry(countryOpt);
-          if (addr.state && addr.country) {
-            setState((stateOptions[addr.country] ?? []).find(o => o.value === addr.state) ?? null);
+          if (addr.country) {
+            const countryOpt = countryList.find(c => c.value === addr.country) ?? null;
+            if (countryOpt) {
+              setCountry(countryOpt);
+              fetchStatesForCountry(countryOpt.value).then((states) => {
+                setStateOptionsList(states.length ? states : indianStateOptions);
+                if (addr.state) setState({ value: addr.state, label: addr.state });
+              }).catch(() => {});
+            }
+            if (addr.state) setState({ value: addr.state, label: addr.state });
           }
 
           // Transaction series — entries are already loaded above
@@ -880,6 +936,31 @@ const AddLocation = () => {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* ── Load countries (REST Countries API, module-level cache) ──── */
+  useEffect(() => {
+    getCachedCountries()
+      .then((countries) => {
+        setCountryList(countries);
+        if (!isEdit) {
+          const india = countries.find((c) => c.label === "India") ?? null;
+          setCountry(india);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCountriesLoading(false));
+  }, []);
+
+  /* ── Country change: fetch states from CountriesNow API ────────── */
+  const handleCountryChange = async (opt: CountryOption | null) => {
+    setCountry(opt);
+    setState(null);
+    if (!opt) { setStateOptionsList([]); return; }
+    setStatesLoading(true);
+    const states = await fetchStatesForCountry(opt.value).catch(() => [] as Option[]);
+    setStateOptionsList(states.length ? states : indianStateOptions);
+    setStatesLoading(false);
+  };
 
   /* ── Validation ───────────────────────────────────────────────── */
   const validate = (): boolean => {
@@ -982,8 +1063,6 @@ const AddLocation = () => {
   };
 
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate("/"));
-
-  const currentStates = stateOptions[country?.value ?? ""] ?? [];
 
   /* ── Render ───────────────────────────────────────────────────── */
   if (pageLoading) {
@@ -1263,19 +1342,27 @@ const AddLocation = () => {
                     </div>
                     <CommonSelect
                       className="select"
-                      options={countryOptions}
-                      defaultValue={countryOptions[0]}
+                      options={countryList as Option[]}
                       value={country}
-                      onChange={v => { setCountry(v); setState(null); }}
+                      isDisabled={countriesLoading}
+                      placeholder={countriesLoading ? "Loading countries…" : "Select country"}
+                      onChange={v => handleCountryChange(v as CountryOption | null)}
                     />
                     <div className="d-flex gap-3">
                       <div style={{ flex: 1 }}>
-                        <CommonSelect
-                          className="select"
-                          options={currentStates}
-                          value={state}
-                          onChange={v => setState(v)}
-                        />
+                        <div className="common-select">
+                          <CreatableSelect
+                            classNamePrefix="react-select"
+                            isClearable
+                            placeholder={statesLoading ? "Loading states…" : "Select or type to add"}
+                            isDisabled={statesLoading}
+                            value={state}
+                            onChange={v => setState(v)}
+                            options={stateOptionsList}
+                            styles={commonSelectStyles}
+                            components={{ IndicatorSeparator: () => null }}
+                          />
+                        </div>
                       </div>
                       <input type="text" className="form-control" placeholder="Phone"
                         maxLength={20} value={phone} onChange={e => setPhone(e.target.value)} style={{ flex: 1 }} />

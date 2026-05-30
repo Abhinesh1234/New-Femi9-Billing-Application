@@ -8,6 +8,7 @@ import PageHeader from "../../../../components/page-header/pageHeader";
 import CommonSelect from "../../../../components/common-select/commonSelect";
 import { assignSeriesLocations, storeSeries, updateSeries } from "../../../../core/services/seriesApi";
 import { type LocationListItem } from "../../../../core/services/locationApi";
+import { fetchDistributionCategories, type DistributionCategory } from "../../../../core/services/distributionCategoryApi";
 import { getSeriesDetail, bustSeries, bustSeriesLists } from "../../../../core/cache/seriesCache";
 import { getLocationList, bustLocationLists } from "../../../../core/cache/locationCache";
 import { emitMutation } from "../../../../core/cache/mutationEvents";
@@ -39,13 +40,6 @@ const DEFAULT_MODULES: SeriesModule[] = [
 
 const RESTART_OPTIONS = ["None", "Every Month", "Every Year"];
 
-const CUSTOMER_CATEGORY_OPTIONS = [
-  { value: "retail",      label: "Retail"      },
-  { value: "wholesale",   label: "Wholesale"   },
-  { value: "vip",         label: "VIP"         },
-  { value: "corporate",   label: "Corporate"   },
-  { value: "distributor", label: "Distributor" },
-];
 
 const PLACEHOLDER_ITEMS: { label: string; token?: string; sub: { label: string; token: string }[] | null }[] = [
   { label: "Fiscal Year Start", sub: [{ label: "YY", token: "%FYS_YY%" }, { label: "YYYY", token: "%FYS_YYYY%" }] },
@@ -90,6 +84,7 @@ const NewTransactionSeries = () => {
 
   const [seriesName,        setSeriesName]        = useState("");
   const [customerCategory,  setCustomerCategory]  = useState<string | null>(null);
+  const [categoryOptions,   setCategoryOptions]   = useState<{ value: string; label: string }[]>([]);
   const [modules,           setModules]           = useState<SeriesModule[]>(DEFAULT_MODULES.map(m => ({ ...m })));
   const [errors,            setErrors]            = useState<Record<string, string>>({});
   const [saving,            setSaving]            = useState(false);
@@ -104,9 +99,9 @@ const NewTransactionSeries = () => {
   const [hoveredPlaceholder, setHoveredPlaceholder] = useState<number | null>(null);
 
   // Toast — signature aligned with location.tsx: showToast(message, type)
-  const [toast, setToast] = useState<{ show: boolean; type: "success" | "error"; message: string }>({ show: false, type: "success", message: "" });
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "danger"; message: string }>({ show: false, type: "success", message: "" });
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = (message: string, type: "success" | "danger" = "success") => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ show: true, type, message });
     toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
@@ -126,9 +121,10 @@ const NewTransactionSeries = () => {
           getSeriesDetail(sid).catch(() => null),
           getLocationList().catch(() => null),
         ]);
+        fetchDistributionCategories().then(r => { if (r.success) setCategoryOptions(r.data.map((c: DistributionCategory) => ({ value: c.name, label: c.name }))); }).catch(() => {});
 
         if (!seriesResult) {
-          showToast("Failed to load series data.", "error");
+          showToast("Failed to load series data.", "danger");
         } else {
           setSeriesName(seriesResult.name ?? "");
           setCustomerCategory((seriesResult as any).customer_category ?? null);
@@ -148,7 +144,7 @@ const NewTransactionSeries = () => {
         }
 
         if (!locData) {
-          showToast("Failed to load locations.", "error");
+          showToast("Failed to load locations.", "danger");
         } else {
           setAllLocations(locData);
           if (seriesResult) {
@@ -161,10 +157,11 @@ const NewTransactionSeries = () => {
       } else {
         const locData = await getLocationList().catch(() => null);
         if (!locData) {
-          showToast("Failed to load locations.", "error");
+          showToast("Failed to load locations.", "danger");
         } else {
           setAllLocations(locData);
         }
+        fetchDistributionCategories().then(r => { if (r.success) setCategoryOptions(r.data.map((c: DistributionCategory) => ({ value: c.name, label: c.name }))); }).catch(() => {});
       }
 
       setLoadingInitial(false);
@@ -184,57 +181,21 @@ const NewTransactionSeries = () => {
 
   const handleRefresh = useCallback(async () => {
     try {
-      if (isEditMode && seriesId) {
-        const sid = Number(seriesId);
-        bustSeries(sid);
-        bustLocationLists();
-        const [s, locData] = await Promise.all([
-          getSeriesDetail(sid).catch(() => null),
-          getLocationList().catch(() => null),
-        ]);
-        if (!s) {
-          showToast("Failed to reload series data.", "error");
-        } else {
-          setSeriesName(s.name ?? "");
-          setCustomerCategory((s as any).customer_category ?? null);
-          const stored = s.modules_config?.modules ?? [];
-          if (stored.length > 0) {
-            const merged = DEFAULT_MODULES.map(def => {
-              const found = stored.find((m: any) => m.module === def.module);
-              return found ? {
-                module:           found.module,
-                prefix:           found.prefix ?? "",
-                startingNumber:   found.starting_number ?? def.startingNumber,
-                restartNumbering: found.restart_numbering ?? def.restartNumbering,
-              } : { ...def };
-            });
-            setModules(merged);
-          }
-        }
-        if (!locData) {
-          showToast("Failed to reload locations.", "error");
-        } else {
-          setAllLocations(locData);
-          if (s) {
-            const assigned = new Set(
-              locData.filter(l => l.default_txn_series_id === sid).map(l => l.id)
-            );
-            setSelectedLocations(assigned);
-          }
-        }
-      } else {
-        bustLocationLists();
-        const locData = await getLocationList().catch(() => null);
-        if (!locData) {
-          showToast("Failed to reload locations.", "error");
-        } else {
-          setAllLocations(locData);
-        }
-      }
+      bustLocationLists();
+      const locData = await getLocationList().catch(() => null);
+      if (!locData) { showToast("Failed to reload locations.", "danger"); return; }
+      setAllLocations(locData);
+      // Remove any selected location IDs that no longer exist in the refreshed list
+      const validIds = new Set(locData.map((l) => l.id));
+      setSelectedLocations((prev) => {
+        const next = new Set<number>();
+        prev.forEach((id) => { if (validIds.has(id)) next.add(id); });
+        return next;
+      });
     } catch {
-      showToast("Failed to refresh. Please try again.", "error");
+      showToast("Failed to refresh. Please try again.", "danger");
     }
-  }, [isEditMode, seriesId]);
+  }, []);
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
@@ -250,7 +211,7 @@ const NewTransactionSeries = () => {
 
   const handleSave = async () => {
     if (!validate()) {
-      showToast("Please fill in all required fields before saving.", "error");
+      showToast("Please fill in all required fields before saving.", "danger");
       return;
     }
     setSaving(true);
@@ -276,12 +237,11 @@ const NewTransactionSeries = () => {
         if (selectedLocations.size > 0) {
           const assignRes = await assignSeriesLocations(targetId, Array.from(selectedLocations)).catch(() => null);
           if (!assignRes?.success) {
-            showToast("Series saved but location assignments could not be applied — please retry.", "error");
+            showToast("Series saved but location assignments could not be applied — please retry.", "danger");
             bustSeries(targetId);
             bustLocationLists();
             emitMutation("series:mutated");
             emitMutation("locations:mutated");
-            setSaving(false);
             return;
           }
         }
@@ -301,7 +261,7 @@ const NewTransactionSeries = () => {
           }
         }, 1500);
       } else {
-        showToast(res.message ?? (isEditMode ? "Failed to update series." : "Failed to save series."), "error");
+        showToast(res.message ?? (isEditMode ? "Failed to update series." : "Failed to save series."), "danger");
         if ("errors" in res && res.errors) {
           const apiErrs: Record<string, string> = {};
           Object.entries(res.errors).forEach(([key, msgs]) => {
@@ -311,7 +271,7 @@ const NewTransactionSeries = () => {
         }
       }
     } catch {
-      showToast(isEditMode ? "Failed to update series." : "Failed to save series.", "error");
+      showToast(isEditMode ? "Failed to update series." : "Failed to save series.", "danger");
     } finally {
       setSaving(false);
     }
@@ -408,8 +368,8 @@ const NewTransactionSeries = () => {
                   <CommonSelect
                     className="select"
                     isClearable
-                    options={CUSTOMER_CATEGORY_OPTIONS}
-                    value={CUSTOMER_CATEGORY_OPTIONS.find(o => o.value === customerCategory) ?? null}
+                    options={categoryOptions}
+                    value={categoryOptions.find(o => o.value === customerCategory) ?? null}
                     placeholder="Select customer category…"
                     onChange={opt => setCustomerCategory(opt ? opt.value : null)}
                   />
@@ -573,6 +533,8 @@ const NewTransactionSeries = () => {
 
       {/* ── Toast Notifications ─────────────────────────────────────────── */}
       <div
+        role="region"
+        aria-live="polite"
         className="position-fixed top-0 start-50 translate-middle-x pt-4"
         style={{ zIndex: 9999, pointerEvents: "none" }}
       >

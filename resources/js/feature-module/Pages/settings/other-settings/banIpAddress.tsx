@@ -294,14 +294,14 @@ const BanIpAddress = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                IP Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                IP Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Reason <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Reason <span>*</span>
               </label>
               <textarea className="form-control" rows={4} defaultValue={""} />
             </div>
@@ -341,8 +341,8 @@ const BanIpAddress = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                IP Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                IP Address <span>*</span>
               </label>
               <input
                 type="text"
@@ -351,8 +351,8 @@ const BanIpAddress = () => {
               />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Reason <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Reason <span>*</span>
               </label>
               <textarea
                 className="form-control"

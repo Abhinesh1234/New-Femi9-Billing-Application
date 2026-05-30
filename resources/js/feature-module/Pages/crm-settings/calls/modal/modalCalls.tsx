@@ -20,8 +20,8 @@ const ModalCalls = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Reason <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Reason <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -83,8 +83,8 @@ const ModalCalls = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Reason <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Reason <span>*</span>
               </label>
               <input type="text" className="form-control" defaultValue="Busy" />
             </div>

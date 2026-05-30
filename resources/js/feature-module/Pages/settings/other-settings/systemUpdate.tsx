@@ -124,8 +124,8 @@ const SystemUpdate = () => {
               {/* Item */}
               <div className="mb-3">
                 <div className="w-100">
-                  <label className="form-label">
-                    Purchase Key<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Purchase Key<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>

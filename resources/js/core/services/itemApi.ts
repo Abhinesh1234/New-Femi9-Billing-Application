@@ -52,6 +52,7 @@ export interface ItemPayload {
   composite_type?:       "assembly" | "kit" | null;
   components?:           ComponentPayload[];
   admin_only?:           boolean;
+  points:                number;
 }
 
 export interface ComponentPayload {
@@ -70,10 +71,28 @@ export type ItemResult = ItemResponse | ErrorResponse;
 
 function handleError(err: unknown): ErrorResponse {
   if (err instanceof AxiosError && err.response) {
-    const body = err.response.data as ErrorResponse;
-    return { success: false, message: body?.message ?? "Unexpected error.", errors: body?.errors };
+    const status = err.response.status;
+    const body   = err.response.data as ErrorResponse;
+    const msg    = body?.message ?? "Unexpected error.";
+
+    // 422 = validation / business-rule failure; surface field errors to the form
+    if (status === 422) {
+      return { success: false, message: msg, errors: body?.errors };
+    }
+    // 403 = permission denied
+    if (status === 403) {
+      return { success: false, message: body?.message ?? "You don't have permission to perform this action." };
+    }
+    // 5xx = server-side failure; tell the user to retry
+    if (status >= 500) {
+      return { success: false, message: "A server error occurred. Please try again in a moment." };
+    }
+    return { success: false, message: msg, errors: body?.errors };
   }
-  return { success: false, message: "Network error. Please check your connection." };
+  if (err instanceof AxiosError && !err.response) {
+    return { success: false, message: "Network error. Please check your connection and try again." };
+  }
+  return { success: false, message: "An unexpected error occurred." };
 }
 
 export interface ItemComponentRecord {
@@ -98,6 +117,7 @@ export interface ItemListRecord {
   item_type:    string;
   form_type:    string;
   sku:          string | null;
+  unit:         string | null;
   selling_price:string | null;
   cost_price:   string | null;
   image:        string | null;
@@ -170,8 +190,13 @@ export type ImageUploadResult = ImageUploadResponse | ErrorResponse;
 /** Compress a File to a JPEG Blob using canvas (max 1200px, 85% quality). */
 function compressImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
     const img = new Image();
+
     img.onload = () => {
+      // Revoke after the image is decoded — safe here, canvas already has the pixels
+      URL.revokeObjectURL(objectUrl);
+
       const MAX = 1200;
       let { width, height } = img;
       if (width > MAX || height > MAX) {
@@ -181,16 +206,28 @@ function compressImage(file: File): Promise<Blob> {
       const canvas = document.createElement("canvas");
       canvas.width  = width;
       canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas 2D context unavailable"));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
       canvas.toBlob(
         (blob) => blob ? resolve(blob) : reject(new Error("Canvas toBlob failed")),
         "image/jpeg",
         0.85,
       );
-      URL.revokeObjectURL(img.src);
     };
-    img.onerror = () => reject(new Error("Failed to load image"));
-    img.src = URL.createObjectURL(file);
+
+    img.onerror = () => {
+      // Always revoke to prevent memory leaks, even on failure
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Failed to load image for compression"));
+    };
+
+    img.src = objectUrl;
   });
 }
 
@@ -215,4 +252,41 @@ export async function uploadCustomFieldFile(file: File): Promise<ImageUploadResu
   } catch (e) {
     return handleError(e) as ErrorResponse;
   }
+}
+
+export interface ItemStockEntry {
+  location_id:        number;
+  stock_on_hand:      string;
+  committed_stock:    string;
+  available_for_sale: string;
+}
+
+interface StockResponse  { success: true; data: ItemStockEntry[]; }
+type StockResult = StockResponse | ErrorResponse;
+
+export async function fetchItemStock(itemId: number): Promise<StockResult> {
+  try {
+    const { data } = await axios.get<StockResponse>(`${BASE}/${itemId}/stock`);
+    return data;
+  } catch (e) { return handleError(e) as ErrorResponse; }
+}
+
+interface StockBatchResponse { success: true; data: Record<string, string>; } // item_id string → available_for_sale
+type StockBatchResult = StockBatchResponse | ErrorResponse;
+
+export async function fetchStockBatch(itemIds: number[], locationId: number): Promise<StockBatchResult> {
+  try {
+    const { data } = await axios.post<StockBatchResponse>(`${BASE}/stock-batch`, { item_ids: itemIds, location_id: locationId });
+    return data;
+  } catch (e) { return handleError(e) as ErrorResponse; }
+}
+
+interface StockTotalsResponse { success: true; data: Record<string, string>; } // item_id string → stock_on_hand (all locations summed)
+type StockTotalsResult = StockTotalsResponse | ErrorResponse;
+
+export async function fetchStockTotals(itemIds: number[]): Promise<StockTotalsResult> {
+  try {
+    const { data } = await axios.post<StockTotalsResponse>(`${BASE}/stock-totals`, { item_ids: itemIds });
+    return data;
+  } catch (e) { return handleError(e) as ErrorResponse; }
 }

@@ -1,0 +1,1 @@
+const a=[{value:"cash",label:"Cash"},{value:"upi",label:"UPI"},{value:"bank_transfer",label:"Bank Transfer"},{value:"cheque",label:"Cheque"},{value:"credit_card",label:"Card / POS"}],e={value:"advance_payment",label:"Advance Payment"};export{e as A,a as P};

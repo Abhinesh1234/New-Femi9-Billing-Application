@@ -41,6 +41,7 @@ export async function fetchOpeningStock(itemId: number): Promise<{ success: true
 
 export interface ItemStockRow {
   location_id: number;
+  location_name: string;
   stock_on_hand: number;
   committed_stock: number;
   available_for_sale: number;

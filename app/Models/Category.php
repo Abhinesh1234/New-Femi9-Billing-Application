@@ -12,7 +12,10 @@ class Category extends Model
 {
     use SoftDeletes, Auditable;
 
-    protected $fillable = ['name', 'parent_id'];
+    protected $fillable = [
+        'name',
+        'parent_id',
+    ];
 
     public function parent(): BelongsTo
     {

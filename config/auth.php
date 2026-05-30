@@ -37,8 +37,13 @@ return [
 
     'guards' => [
         'web' => [
-            'driver' => 'session',
+            'driver'   => 'session',
             'provider' => 'users',
+        ],
+
+        'party' => [
+            'driver'   => 'session',
+            'provider' => 'party_users',
         ],
     ],
 
@@ -62,13 +67,13 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\User::class),
+            'model'  => env('AUTH_MODEL', App\Models\User::class),
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'party_users' => [
+            'driver' => 'eloquent',
+            'model'  => App\Models\PartyUser::class,
+        ],
     ],
 
     /*

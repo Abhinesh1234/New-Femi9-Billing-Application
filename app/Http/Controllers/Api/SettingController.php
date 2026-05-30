@@ -37,14 +37,8 @@ class SettingController extends Controller
             return $this->errorResponse("Unknown settings module: [{$module}].", 404);
         }
 
-        Log::info('[SettingController] Fetch started', $ctx);
-
         try {
             $configuration = $this->service->get($module);
-
-            Log::info('[SettingController] Fetch success', array_merge($ctx, [
-                'found' => $configuration !== null,
-            ]));
 
             return $this->successResponse([
                 'module'        => $module,
@@ -55,7 +49,6 @@ class SettingController extends Controller
                 'error'      => $e->getMessage(),
                 'error_file' => $e->getFile(),
                 'error_line' => $e->getLine(),
-                'trace'      => $e->getTraceAsString(),
             ]));
 
             return $this->errorResponse('Failed to fetch settings. Please try again.', 500);
@@ -74,10 +67,6 @@ class SettingController extends Controller
             return $this->errorResponse("Unknown settings module: [{$module}].", 404);
         }
 
-        Log::info('[SettingController] Update started', array_merge($ctx, [
-            'validated_keys' => array_keys($request->validated()),
-        ]));
-
         try {
             $oldConfiguration = $this->service->get($module);
             $configuration    = $this->service->update($module, $request->validated());
@@ -93,11 +82,7 @@ class SettingController extends Controller
                     'old_values'     => $oldConfiguration,
                     'new_values'     => $configuration,
                 ]);
-            } catch (Throwable) {}
-
-            Log::info('[SettingController] Update success', array_merge($ctx, [
-                'saved_keys' => array_keys($configuration),
-            ]));
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             return $this->successResponse([
                 'message'       => 'Settings saved successfully.',
@@ -109,7 +94,6 @@ class SettingController extends Controller
                 'error'      => $e->getMessage(),
                 'error_file' => $e->getFile(),
                 'error_line' => $e->getLine(),
-                'trace'      => $e->getTraceAsString(),
             ]));
 
             return $this->errorResponse('Failed to save settings. Please try again.', 500);
@@ -229,7 +213,7 @@ class SettingController extends Controller
                     'old_values'     => null,
                     'new_values'     => ['module' => $module, 'config' => $field->config],
                 ]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             Log::info('[SettingController] CustomField store success', array_merge($ctx, [
                 'id' => $field->id,
@@ -298,7 +282,7 @@ class SettingController extends Controller
                     'old_values'     => $oldConfig,
                     'new_values'     => $updated->config,
                 ]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             Log::info('[SettingController] CustomField update success', array_merge($ctx, ['id' => $id]));
 
@@ -358,7 +342,7 @@ class SettingController extends Controller
                     'old_values'     => $snapshot,
                     'new_values'     => null,
                 ]);
-            } catch (Throwable) {}
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
 
             Log::info('[SettingController] CustomField delete success', array_merge($ctx, ['id' => $id]));
 
@@ -393,5 +377,22 @@ class SettingController extends Controller
             'url'      => $request->fullUrl(),
             'user_id'  => $request->user()?->id,
         ];
+    }
+
+    /**
+     * GET /api/settings/reorder-notification-enabled
+     *
+     * Returns only the notify_reorder_point flag from product settings.
+     * No perm:settings,view check — safe to call from party portals.
+     */
+    public function reorderNotificationEnabled(): JsonResponse
+    {
+        try {
+            $config  = $this->service->get('products');
+            $enabled = (bool) ($config['notify_reorder_point'] ?? false);
+            return $this->successResponse(['enabled' => $enabled]);
+        } catch (Throwable $e) {
+            return $this->successResponse(['enabled' => false]);
+        }
     }
 }

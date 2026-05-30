@@ -117,8 +117,8 @@ const ProfileSettings = () => {
                       <div className="row">
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
-                              First Name <span className="text-danger">*</span>
+                            <label className="form-label text-danger">
+                              First Name <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>
@@ -126,8 +126,8 @@ const ProfileSettings = () => {
                         {/* end col */}
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
-                              Last Name <span className="text-danger">*</span>
+                            <label className="form-label text-danger">
+                              Last Name <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>
@@ -135,8 +135,8 @@ const ProfileSettings = () => {
                         {/* end col */}
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
-                              User Name <span className="text-danger">*</span>
+                            <label className="form-label text-danger">
+                              User Name <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>
@@ -144,9 +144,9 @@ const ProfileSettings = () => {
                         {/* end col */}
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
+                            <label className="form-label text-danger">
                               Phone Number{" "}
-                              <span className="text-danger">*</span>
+                              <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>
@@ -154,8 +154,8 @@ const ProfileSettings = () => {
                         {/* end col */}
                         <div className="col-md-4">
                           <div className="mb-3">
-                            <label className="form-label">
-                              Email <span className="text-danger">*</span>
+                            <label className="form-label text-danger">
+                              Email <span>*</span>
                             </label>
                             <input type="text" className="form-control" />
                           </div>

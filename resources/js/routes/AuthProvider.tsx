@@ -3,54 +3,95 @@ import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "../core/redux/store";
 import { setUser, clearAuth, setAuthLoading } from "../core/redux/authSlice";
 import { setProductSettings, clearProductSettings } from "../core/redux/productSettingsSlice";
+import { startLoading, stopLoading } from "../core/redux/loaderSlice";
+import { setPartyAuth, setPartyAuthLoading, clearPartyAuth } from "../core/redux/partyAuthSlice";
 import { me } from "../core/services/authApi";
-import { getSettings } from "../core/cache/settingCache";
-import type { ProductConfiguration } from "../core/services/settingApi";
+import { partyMe } from "../core/services/partyAuthApi";
 
 interface Props {
   children: React.ReactNode;
 }
 
-/**
- * AuthProvider
- * ------------
- * Mounted once at the app root.
- * On every page load, if a token is stored in localStorage, it verifies it
- * against GET /api/auth/me and restores the user session into Redux.
- * If the token is invalid or expired, it clears auth state and removes the token.
- */
 const AuthProvider = ({ children }: Props) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { token } = useSelector((state: RootState) => state.auth);
+  const { token, isAuthenticated, user } = useSelector((state: RootState) => state.auth);
+  const { isLoaded: settingsLoaded } = useSelector((state: RootState) => state.productSettings);
 
+  // After login (no page refresh): isAuthenticated flips true but the main effect already
+  // exited early. Pull settings directly from the user object that was just stored in Redux.
   useEffect(() => {
-    if (!token) {
+    if (!isAuthenticated || settingsLoaded) return;
+    const s = user?.settings;
+    dispatch(setProductSettings({
+      enableCompositeItems: s?.enable_composite_items ?? false,
+      enablePriceLists:     s?.enable_price_lists     ?? false,
+    }));
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Runs once on mount — restores the session from localStorage tokens.
+  useEffect(() => {
+    dispatch(startLoading("auth"));
+
+    const partyToken = localStorage.getItem("party_auth_token");
+    const adminToken = token; // from state.auth (sourced from localStorage.auth_token)
+
+    // ── Party portal session restoration ─────────────────────────────────────
+    if (partyToken && !adminToken) {
+      (async () => {
+        try {
+          const result = await partyMe();
+          if (result.success) {
+            dispatch(setPartyAuth({ user: result.user, token: partyToken }));
+          } else {
+            localStorage.removeItem("party_auth_token");
+            dispatch(clearPartyAuth());
+          }
+        } catch {
+          localStorage.removeItem("party_auth_token");
+          dispatch(clearPartyAuth());
+        } finally {
+          dispatch(setAuthLoading(false));
+          dispatch(stopLoading("auth"));
+        }
+      })();
+      return;
+    }
+
+    // ── Admin session restoration ─────────────────────────────────────────────
+    dispatch(setPartyAuthLoading(false));
+
+    if (!adminToken) {
       dispatch(setAuthLoading(false));
+      dispatch(stopLoading("auth"));
       return;
     }
 
     (async () => {
-      const result = await me();
-      if (result.success) {
-        // Fetch product settings first so feature flags are ready the moment routes render
-        try {
-          const settings = await getSettings<ProductConfiguration>("products");
+      try {
+        const result = await me();
+        if (result.success) {
+          const s = result.user.settings;
           dispatch(setProductSettings({
-            enableCompositeItems: settings.enable_composite_items ?? false,
-            enablePriceLists:     settings.enable_price_lists     ?? false,
+            enableCompositeItems: s?.enable_composite_items ?? false,
+            enablePriceLists:     s?.enable_price_lists     ?? false,
           }));
-        } catch {
-          dispatch(setProductSettings({ enableCompositeItems: false, enablePriceLists: false }));
+          dispatch(setUser(result.user));
+        } else {
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("auth_user_type");
+          dispatch(clearAuth());
+          dispatch(clearProductSettings());
         }
-        dispatch(setUser(result.user));
-      } else {
-        // Token is stale / invalid — clear everything
+      } catch {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user_type");
         dispatch(clearAuth());
         dispatch(clearProductSettings());
+      } finally {
+        dispatch(stopLoading("auth"));
       }
     })();
-  }, []); // run once on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <>{children}</>;
 };

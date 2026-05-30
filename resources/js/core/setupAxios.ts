@@ -2,17 +2,20 @@
  * setupAxios
  * ----------
  * Configures global axios defaults and interceptors.
- * Import this ONCE, as early as possible in main.tsx, before any service calls.
+ * Import this ONCE, as early as possible in main.tsx.
  *
- * Security measures:
- *  - Always sends Authorization: Bearer <token> if a token is stored
- *  - On 401 → clears token + auth state, redirects to login
- *  - Sets Accept + X-Requested-With headers on every request
+ * A single `auth_token` is used for all requests regardless of whether the
+ * authenticated user is an admin or a party user — both share the same portal.
  */
 import axios from "axios";
 import store from "./redux/store";
 import { clearAuth } from "./redux/authSlice";
 import { clearProductSettings } from "./redux/productSettingsSlice";
+import { base_path } from "../environment";
+
+function buildPath(path: string): string {
+  return (base_path.replace(/\/$/, "") + path).replace(/^\/\//, "/");
+}
 
 export function setupAxios(): void {
   // ── Request: attach token ────────────────────────────────────────────────
@@ -20,7 +23,7 @@ export function setupAxios(): void {
     config.headers["Accept"]           = "application/json";
     config.headers["X-Requested-With"] = "XMLHttpRequest";
 
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("party_auth_token");
     if (token) {
       config.headers["Authorization"] = `Bearer ${token}`;
     }
@@ -32,17 +35,15 @@ export function setupAxios(): void {
   axios.interceptors.response.use(
     (response) => response,
     (error) => {
-      const status = error?.response?.status;
-
-      if (status === 401) {
-        // Token is invalid or expired — clean up and redirect to login
+      if (error?.response?.status === 401) {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user_type");
         store.dispatch(clearAuth());
         store.dispatch(clearProductSettings());
 
-        const currentPath = window.location.pathname;
-        if (currentPath !== "/login") {
-          window.location.replace("/login");
+        const loginPath = buildPath("/login");
+        if (window.location.pathname !== loginPath) {
+          window.location.replace(loginPath);
         }
       }
 

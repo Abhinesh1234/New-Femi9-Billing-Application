@@ -1,12 +1,14 @@
 import { Outlet, useLocation } from "react-router";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 import Header from "../components/header/header";
 import Sidebar from "../components/sidebar/sidebar";
 import ThemeSettings from "../components/theme-settings/themeSettings";
 import GlobalToast from "../components/global-toast/GlobalToast";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { resetMobileSidebar } from "../core/redux/sidebarSlice";
 import { all_routes } from "../routes/all_routes";
+import ChunkLoader from "./ChunkLoader";
+import { useAppSelector } from "../core/hooks/useAppSelector";
 
 const NO_SIDEBAR_PATHS: string[] = [];
 
@@ -15,10 +17,8 @@ const Feature = () => {
   const dispatch = useDispatch();
   const hideSidebar = NO_SIDEBAR_PATHS.includes(location.pathname);
 
-  const themeSettings = useSelector((state: any) => state.theme.themeSettings);
-  const { miniSidebar, mobileSidebar, expandMenu } = useSelector(
-    (state: any) => state.sidebarSlice
-  );
+  const themeSettings                              = useAppSelector(s => s.theme.themeSettings);
+  const { miniSidebar, mobileSidebar, expandMenu } = useAppSelector(s => s.sidebarSlice);
 
   const dataLayout = themeSettings["data-layout"];
   const dataWidth  = themeSettings["data-width"];
@@ -62,7 +62,9 @@ const Feature = () => {
         <div className={`main-wrapper${hideSidebar ? " no-sidebar" : ""}`}>
           <Header />
           {!hideSidebar && <Sidebar />}
-          <Outlet />
+          <Suspense fallback={<ChunkLoader />}>
+            <Outlet />
+          </Suspense>
           <ThemeSettings />
           <GlobalToast />
         </div>

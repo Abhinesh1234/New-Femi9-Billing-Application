@@ -66,8 +66,8 @@ const AddInoivce = () => {
                 <div className="row">
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Patient Name <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Patient Name <span>*</span>
                       </label>
                       <div className="input-group">
                         <input type="text" className="form-control" />
@@ -77,8 +77,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Email <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Email <span>*</span>
                       </label>
                       <div className="input-group">
                         <input type="text" className="form-control" />
@@ -88,8 +88,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Department <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Department <span>*</span>
                       </label>
                       <div className="dropdown">
                         <Link
@@ -199,8 +199,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Tax <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Tax <span>*</span>
                       </label>
                       <div className="dropdown">
                         <Link
@@ -265,8 +265,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Invoice Date <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Invoice Date <span>*</span>
                       </label>
                       <div className="input-icon-end position-relative">
                         <input
@@ -283,8 +283,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Due Date <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Due Date <span>*</span>
                       </label>
                       <div className="input-icon-end position-relative">
                         <input
@@ -301,8 +301,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Patient Address <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Patient Address <span>*</span>
                       </label>
                       <div className="input-group">
                         <textarea
@@ -316,8 +316,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Billing Address <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Billing Address <span>*</span>
                       </label>
                       <div className="input-group">
                         <textarea
@@ -331,8 +331,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Payment Method <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Payment Method <span>*</span>
                       </label>
                       <div className="dropdown">
                         <Link
@@ -379,8 +379,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-6 col-md-6">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Payment Status <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Payment Status <span>*</span>
                       </label>
                       <div className="dropdown">
                         <Link
@@ -537,8 +537,8 @@ const AddInoivce = () => {
                   {/* end col */}
                   <div className="col-lg-12 col-md-12">
                     <div className="mb-3">
-                      <label className="form-label mb-1 text-dark fs-14 fw-medium">
-                        Other Information <span className="text-danger">*</span>
+                      <label className="form-label mb-1 text-dark fs-14 fw-medium text-danger">
+                        Other Information <span>*</span>
                       </label>
                       <div className="input-group">
                         <textarea

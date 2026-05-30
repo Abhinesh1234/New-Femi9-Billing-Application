@@ -43,6 +43,10 @@
     .ant-picker-clear {
       display: none;
     }
+    .ant-picker-suffix,
+    &:hover .ant-picker-suffix {
+      color: inherit !important;
+    }
   }
 }
 //Common Tag Input
@@ -758,6 +762,59 @@ box-shadow: var(--crms-box-shadow);
 .spin-animation {
   display: inline-block;
   animation: spin-360 0.7s linear infinite;
+}
+
+// Hide scrollbar visually while keeping scroll functionality
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+// Invoice / Payment print — only show the receipt card, hide everything else
+@media print {
+  body * { visibility: hidden !important; }
+  .invoice-receipt, .invoice-receipt * { visibility: visible !important; }
+  .invoice-receipt {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: 100% !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 99999 !important;
+  }
+  .invoice-receipt-actions { display: none !important; }
+
+  .assembly-receipt, .assembly-receipt * { visibility: visible !important; }
+  .assembly-receipt {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: 100% !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 99999 !important;
+  }
+
+  .payment-receipt, .payment-receipt * { visibility: visible !important; }
+  .payment-receipt {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: 100% !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: 99999 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 // Shell-gray cancel button (used in all modal Save/Cancel pairs)

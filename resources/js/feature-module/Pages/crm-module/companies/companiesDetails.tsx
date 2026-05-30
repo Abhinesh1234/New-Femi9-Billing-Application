@@ -571,9 +571,9 @@ const CompaniesDetails = () => {
                                   <div className="row gy-3">
                                     <div className="col-md-4">
                                       <div>
-                                        <label className="form-label">
+                                        <label className="form-label text-danger">
                                           Reminder{" "}
-                                          <span className="text-danger">*</span>
+                                          <span>*</span>
                                         </label>
                                         <CommonSelect
                                           options={Reminder}
@@ -584,9 +584,9 @@ const CompaniesDetails = () => {
                                     </div>
                                     <div className="col-md-4">
                                       <div>
-                                        <label className="form-label">
+                                        <label className="form-label text-danger">
                                           Task Priority{" "}
-                                          <span className="text-danger">*</span>
+                                          <span>*</span>
                                         </label>
                                         <CommonSelect
                                           options={Task_Priority}
@@ -597,9 +597,9 @@ const CompaniesDetails = () => {
                                     </div>
                                     <div className="col-md-4">
                                       <div>
-                                        <label className="form-label">
+                                        <label className="form-label text-danger">
                                           Assigned To{" "}
-                                          <span className="text-danger">*</span>
+                                          <span>*</span>
                                         </label>
                                         <CommonSelect
                                           options={Assigned_To}

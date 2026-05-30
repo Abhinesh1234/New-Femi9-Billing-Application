@@ -192,32 +192,32 @@ const PrintersSettings = () => {
               <form>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Printer Company <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Printer Company <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Printer Name <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Printer Name <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Connection Type <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Connection Type <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      IP Address <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      IP Address <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                   <div className="mb-0">
-                    <label className="form-label">
-                      Port <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Port <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
@@ -258,8 +258,8 @@ const PrintersSettings = () => {
               <form>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Printer Company <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Printer Company <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -268,8 +268,8 @@ const PrintersSettings = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Printer Name <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Printer Name <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -278,8 +278,8 @@ const PrintersSettings = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      Connection Type <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Connection Type <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -288,8 +288,8 @@ const PrintersSettings = () => {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">
-                      IP Address <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      IP Address <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -298,8 +298,8 @@ const PrintersSettings = () => {
                     />
                   </div>
                   <div className="mb-0">
-                    <label className="form-label">
-                      Port <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Port <span>*</span>
                     </label>
                     <input
                       type="text"

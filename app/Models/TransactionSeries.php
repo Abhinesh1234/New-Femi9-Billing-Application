@@ -13,6 +13,11 @@ class TransactionSeries extends Model
     protected $fillable = [
         'name',
         'customer_category',
+        'is_system_default',
+    ];
+
+    protected $casts = [
+        'is_system_default' => 'boolean',
     ];
 
     public function modulesConfig(): HasOne

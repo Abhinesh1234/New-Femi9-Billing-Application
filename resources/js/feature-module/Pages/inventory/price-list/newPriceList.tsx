@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { RootState } from "../../../../core/redux/store";
+import type { AppDispatch } from "../../../../core/redux/store";
+import { startLoading, stopLoading } from "../../../../core/redux/loaderSlice";
 import { useNavigate, useParams } from "react-router";
 import { Modal, OverlayTrigger, Toast, Tooltip } from "react-bootstrap";
 import { fetchPriceList, storePriceList, updatePriceList } from "../../../../core/services/priceListApi";
@@ -9,6 +13,7 @@ import Footer from "../../../../components/footer/footer";
 import PageHeader from "../../../../components/page-header/pageHeader";
 import { all_routes } from "../../../../routes/all_routes";
 import CommonSelect, { type Option } from "../../../../components/common-select/commonSelect";
+import { fetchDistributionCategories } from "../../../../core/services/distributionCategoryApi";
 
 const route = all_routes;
 
@@ -36,13 +41,6 @@ const adjMethodOpts: Option[]  = [
 const roundOffOpts: Option[]   = roundOffOptions.map((o) => ({ value: o, label: o }));
 const currencyOpts: Option[]   = currencyOptions.map((c) => ({ value: c, label: c }));
 
-const customerCategoryOpts: Option[] = [
-  { value: "retail",     label: "Retail"     },
-  { value: "wholesale",  label: "Wholesale"  },
-  { value: "vip",        label: "VIP"        },
-  { value: "corporate",  label: "Corporate"  },
-  { value: "distributor",label: "Distributor"},
-];
 
 // Example input used in the Rounding Examples dialog
 const ROUND_EXAMPLE_INPUT = "1000.678";
@@ -81,16 +79,18 @@ const mkRange = (): RangeRow => ({ id: _nextRangeId++, startQty: "", endQty: "",
 
 const NewPriceList = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
   const { id }        = useParams<{ id: string }>();
   const isEditMode    = Boolean(id);
   const editId        = id ? parseInt(id, 10) : null;
-
-  const [editLoading, setEditLoading] = useState(isEditMode);
+  const authUser      = useSelector((state: RootState) => state.auth.user);
+  const isParty       = authUser?.user_type === "party";
 
   // ── Fields ────────────────────────────────────────────────────────────────
-  const [name,            setName]            = useState("");
-  const [transactionType,   setTransactionType]   = useState<TransactionType>("sales");
-  const [customerCategory,  setCustomerCategory]  = useState<string | null>(null);
+  const [name,                 setName]                 = useState("");
+  const [transactionType,      setTransactionType]      = useState<TransactionType>("sales");
+  const [customerCategory,     setCustomerCategory]     = useState<string | null>(null);
+  const [customerCategoryOpts, setCustomerCategoryOpts] = useState<Option[]>([]);
   const [priceListScope,    setPriceListScope]     = useState<PriceListScope>("all_items");
   const [description,     setDescription]     = useState("");
 
@@ -180,8 +180,23 @@ const NewPriceList = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Customer categories allowed by the user's invoice permission (null = no restriction).
+  const allowedCategoryIds: number[] | null = (() => {
+    const ids = authUser?.permissions?.invoices?.others_data?.party_category_ids;
+    return Array.isArray(ids) && ids.length > 0 ? ids : null;
+  })();
+
   // New mode: fetch items on mount
   useEffect(() => {
+    fetchDistributionCategories().then(r => {
+      if (r.success) {
+        let opts = r.data.map(c => ({ value: String(c.id), label: c.name }));
+        if (allowedCategoryIds) {
+          opts = opts.filter(o => allowedCategoryIds.includes(Number(o.value)));
+        }
+        setCustomerCategoryOpts(opts);
+      }
+    }).catch(() => {});
     if (isEditMode) return;
     loadItems();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,14 +220,15 @@ const NewPriceList = () => {
     setBulkError("");
   };
 
-  // Refresh current record in edit mode — busts cache so the overview/list picks up changes too
-  const handleRefresh = useCallback(async () => {
-    if (!isEditMode || !editId) return;
-    bustPriceList(editId);
-    setErrors({});
-    const res = await fetchPriceList(editId);
-    if (!res.success) { showToast("danger", (res as any).message ?? "Failed to refresh."); return; }
-    const d = (res as any).data;
+  // Fetch the saved price list from the server and populate all form fields + items table.
+  // Throws on API failure so callers can handle the error.
+  const fetchAndPopulate = useCallback(async () => {
+    if (!editId) return;
+    const priceListRes = await fetchPriceList(editId);
+    if (!priceListRes.success) {
+      throw new Error((priceListRes as any).message ?? "Failed to load price list.");
+    }
+    const d = (priceListRes as any).data;
     const s = d.settings ?? {};
     setName(d.name ?? "");
     setTransactionType(d.transaction_type ?? "sales");
@@ -229,51 +245,42 @@ const NewPriceList = () => {
       setCurrency(s.currency ?? "INR - Indian Rupee");
       setIncludeDiscount(s.include_discount ?? false);
     }
-    showToast("success", "Data refreshed.");
-  }, [isEditMode, editId]);
+    const savedByItemId = new Map<number, any>(
+      Array.isArray(d.items) ? d.items.map((pi: any) => [Number(pi.item_id), pi]) : []
+    );
+    await loadItems(savedByItemId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, loadItems]);
+
+  // Silent refresh — re-fetches reference dropdowns in place without any spinner or toast
+  const handleRefresh = useCallback(async () => {
+    try {
+      if (isEditMode && editId) bustPriceList(editId);
+      const r = await fetchDistributionCategories();
+      if (r.success) {
+        const ids = authUser?.permissions?.invoices?.others_data?.party_category_ids;
+        const allowed: number[] | null = Array.isArray(ids) && ids.length > 0 ? ids : null;
+        let opts = r.data.map(c => ({ value: String(c.id), label: c.name }));
+        if (allowed) opts = opts.filter(o => allowed.includes(Number(o.value)));
+        setCustomerCategoryOpts(opts);
+        if (customerCategory && !opts.find(o => o.value === customerCategory)) {
+          setCustomerCategory(null);
+        }
+      }
+    } catch { /* ignore — dropdown stays as-is */ }
+  }, [isEditMode, editId, authUser, customerCategory]);
 
   // ── Populate form when in edit mode ──────────────────────────────────────
   useEffect(() => {
     if (!isEditMode || !editId) return;
     (async () => {
-      setEditLoading(true);
+      dispatch(startLoading("edit-price-list"));
       try {
-        const [priceListRes, itemsRes] = await Promise.all([
-          fetchPriceList(editId),
-          fetchItems({ per_page: 500 }),
-        ]);
-
-        if (priceListRes.success) {
-          const d = (priceListRes as any).data;
-          const s = d.settings ?? {};
-          setName(d.name ?? "");
-          setTransactionType(d.transaction_type ?? "sales");
-          setCustomerCategory(d.customer_category_id ? String(d.customer_category_id) : null);
-          setPriceListScope(d.price_list_type ?? "all_items");
-          setDescription(d.description ?? "");
-          setAdminOnly(d.admin_only ?? false);
-          if (d.price_list_type === "all_items") {
-            setAdjMethod(s.adjustment_method ?? "markup");
-            setPercentage(s.percentage != null ? String(s.percentage) : "");
-            setRoundOff(s.round_off ?? "Never mind");
-          } else {
-            setPricingScheme(s.pricing_scheme ?? "unit");
-            setCurrency(s.currency ?? "INR - Indian Rupee");
-            setIncludeDiscount(s.include_discount ?? false);
-          }
-
-          // Build saved prices map then merge with API items
-          const savedByItemId = new Map<number, any>(
-            Array.isArray(d.items) ? d.items.map((pi: any) => [Number(pi.item_id), pi]) : []
-          );
-          await loadItems(savedByItemId);
-        } else {
-          showToast("danger", (priceListRes as any).message ?? "Failed to load price list.");
-        }
-      } catch {
-        showToast("danger", "Failed to load price list data.");
+        await fetchAndPopulate();
+      } catch (e) {
+        showToast("danger", e instanceof Error ? e.message : "Failed to load price list data.");
       } finally {
-        setEditLoading(false);
+        dispatch(stopLoading("edit-price-list"));
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -381,18 +388,6 @@ const NewPriceList = () => {
   const goBack = () =>
     window.history.length > 1 ? navigate(-1) : navigate(route.priceList);
 
-  if (editLoading) {
-    return (
-      <div className="page-wrapper">
-        <div className="content d-flex align-items-center justify-content-center" style={{ minHeight: 300 }}>
-          <span className="spinner-border spinner-border-sm me-2 text-primary" />
-          <span className="text-muted">Loading price list…</span>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="page-wrapper">
@@ -404,7 +399,7 @@ const NewPriceList = () => {
             showExport={false}
             showClose
             onClose={goBack}
-            onRefresh={isEditMode ? handleRefresh : undefined}
+            onRefresh={handleRefresh}
           />
 
           <div className="card mb-0">
@@ -470,7 +465,7 @@ const NewPriceList = () => {
               <div className="row mb-3 align-items-start">
                 <label className="col-sm-2 col-form-label fw-medium fs-14">Price List Type</label>
                 <div className="col-sm-10">
-                  <div className="d-flex align-items-stretch gap-3">
+                  <div className="d-flex align-items-stretch gap-3" style={{ flexWrap: "wrap" }}>
                     {([
                       {
                         value: "all_items" as PriceListScope,
@@ -494,7 +489,7 @@ const NewPriceList = () => {
                             padding: "12px 16px",
                             cursor: "pointer",
                             background: active ? "rgba(220,53,69,0.04)" : "#fff",
-                            minWidth: 220,
+                            flex: "1 1 200px",
                             transition: "all .15s",
                           }}
                         >
@@ -538,27 +533,29 @@ const NewPriceList = () => {
                 </div>
               </div>
 
-              {/* ── Admin Only ───────────────────────────────────────── */}
-              <div className="row mb-3 align-items-center">
-                <div className="col-sm-2" />
-                <div className="col-sm-10">
-                  <div className="form-check mb-0">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      id="admin_only"
-                      checked={adminOnly}
-                      onChange={(e) => setAdminOnly(e.target.checked)}
-                    />
-                    <label className="form-check-label fw-medium fs-14" htmlFor="admin_only">
-                      Use this price list for admins only
-                    </label>
-                    <div className="fs-12 text-muted mt-1">
-                      When enabled, this price list will only be visible to admin users.
+              {/* ── Admin Only (hidden for party users) ─────────────── */}
+              {!isParty && (
+                <div className="row mb-3 align-items-center">
+                  <div className="col-sm-2" />
+                  <div className="col-sm-10">
+                    <div className="form-check mb-0">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id="admin_only"
+                        checked={adminOnly}
+                        onChange={(e) => setAdminOnly(e.target.checked)}
+                      />
+                      <label className="form-check-label fw-medium fs-14" htmlFor="admin_only">
+                        Use this price list for admins only
+                      </label>
+                      <div className="fs-12 text-muted mt-1">
+                        When enabled, this price list will only be visible to admin users.
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* ══ ALL ITEMS: Percentage + Round Off ════════════════ */}
               {priceListScope === "all_items" && (
@@ -993,9 +990,24 @@ const NewPriceList = () => {
         onHide={() => setShowRoundingExamples(false)}
         centered
         size="lg"
+        backdropClassName="blurred-backdrop"
       >
-        <Modal.Header closeButton className="px-4 py-3">
-          <Modal.Title className="fs-18 fw-semibold">Rounding Examples</Modal.Title>
+        <Modal.Header closeButton={false} style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
+            <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <i className="ti ti-percentage fs-18" style={{ color: "#ef4444" }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Rounding Examples</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowRoundingExamples(false)}
+            style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+          >
+            <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+          </button>
         </Modal.Header>
 
         <Modal.Body className="p-0">

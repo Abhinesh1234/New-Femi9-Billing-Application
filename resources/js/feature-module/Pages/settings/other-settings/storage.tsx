@@ -199,32 +199,32 @@ const Storage = () => {
             <form>
               <div className="modal-body">
                 <div className="mb-3">
-                  <label className="form-label">
-                    AWS Access Key<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    AWS Access Key<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Secret Key<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Secret Key<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Bucket Name<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Bucket Name<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">
-                    Region<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Region<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
                 <div className="mb-0">
-                  <label className="form-label">
-                    Base URL<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Base URL<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>

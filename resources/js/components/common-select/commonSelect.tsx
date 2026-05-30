@@ -16,16 +16,19 @@ export interface SelectProps {
   placeholder?: string;
   menuPortalTarget?: HTMLElement | null;
   menuPosition?: "fixed" | "absolute";
+  menuPlacement?: "auto" | "top" | "bottom";
   isDisabled?: boolean;
   onChange?: (option: Option | null) => void;
+  formatOptionLabel?: (option: Option, meta: { context: "menu" | "value" }) => React.ReactNode;
 }
 
 const customComponents = {
   IndicatorSeparator: () => null,
 };
 
-const CommonSelect: React.FC<SelectProps> = ({ options, defaultValue, value, className, onChange, isClearable, placeholder, menuPortalTarget, menuPosition, isDisabled }) => {
+const CommonSelect: React.FC<SelectProps> = ({ options, defaultValue, value, className, onChange, isClearable, placeholder, menuPortalTarget, menuPosition, menuPlacement, isDisabled, formatOptionLabel }) => {
   const [selectedOption, setSelectedOption] = useState<Option | undefined>(defaultValue);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const customStyles = {
     option: (base: any, state: any) => ({
@@ -38,35 +41,39 @@ const CommonSelect: React.FC<SelectProps> = ({ options, defaultValue, value, cla
         color: state.isSelected ? "white" : "#fff",
       },
     }),
-    menu: (base: any) => ({ ...base, zIndex: 999 }),
-    menuPortal: (base: any) => ({ ...base, zIndex: 999 }),
+    menu: (base: any) => ({ ...base, zIndex: 1050 }),
+    menuPortal: (base: any) => ({ ...base, zIndex: 1050 }),
   };
-
 
   const handleChange = (option: Option | null) => {
     setSelectedOption(option || undefined);
     onChange?.(option);
   };
+
   useEffect(() => {
     setSelectedOption(defaultValue || undefined);
-  }, [defaultValue])
-  
+  }, [defaultValue]);
+
   return (
-    <div className="common-select">
-    <Select
-     classNamePrefix="react-select"
-      className={className}
-      styles={customStyles}
-      options={options}
-      value={value !== undefined ? value : selectedOption}
-      onChange={handleChange}
-      components={customComponents}
-      placeholder={placeholder ?? "Select"}
-      isClearable={isClearable}
-      isDisabled={isDisabled}
-      menuPortalTarget={menuPortalTarget}
-      menuPosition={menuPosition}
-    />
+    <div className="common-select" style={menuOpen ? { position: "relative", zIndex: 10 } : undefined}>
+      <Select
+        classNamePrefix="react-select"
+        className={className}
+        styles={customStyles}
+        options={options}
+        value={value !== undefined ? value : selectedOption}
+        onChange={handleChange}
+        components={customComponents}
+        placeholder={placeholder ?? "Select"}
+        isClearable={isClearable}
+        isDisabled={isDisabled}
+        menuPortalTarget={menuPortalTarget}
+        menuPosition={menuPosition}
+        menuPlacement={menuPlacement ?? "auto"}
+        formatOptionLabel={formatOptionLabel as any}
+        onMenuOpen={() => setMenuOpen(true)}
+        onMenuClose={() => setMenuOpen(false)}
+      />
     </div>
   );
 };

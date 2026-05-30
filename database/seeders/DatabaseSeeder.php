@@ -54,6 +54,11 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             ProductCustomFieldSeeder::class,
+            CustomerCustomFieldSeeder::class,
+            InvoiceCustomFieldSeeder::class,
+            RoleSeeder::class,
+            UserPermissionsSeeder::class,
+            PartyUserPermissionSeeder::class,
         ]);
     }
 }

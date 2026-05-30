@@ -166,16 +166,16 @@ const options2 = [
               <div className="row mb-3">
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Subject <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Subject <span>*</span>
                     </label>
                     <input type="text" className="form-control" />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Date<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Date<span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -184,8 +184,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Open Till <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Open Till <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -194,8 +194,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Client <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Client <span>*</span>
                     </label>
                     <CommonSelect
                       options={Client}
@@ -207,8 +207,8 @@ const options2 = [
                 <div className="col-md-6">
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between">
-                      <label className="form-label">
-                        Project<span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Project<span>*</span>
                       </label>
                       <Link
                         to="#"
@@ -229,8 +229,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Related to <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Related to <span>*</span>
                     </label>
                     <CommonSelect
                       options={Related_TO}
@@ -242,8 +242,8 @@ const options2 = [
                 <div className="col-md-6">
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between">
-                      <label className="form-label">
-                        Deals<span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Deals<span>*</span>
                       </label>
                       <Link
                         to="#"
@@ -264,8 +264,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Currency <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Currency <span>*</span>
                     </label>
                     <CommonSelect
                       options={Currency}
@@ -276,8 +276,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <CommonSelect
                       options={Status_Accepted}
@@ -288,8 +288,8 @@ const options2 = [
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Assigned to <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Assigned to <span>*</span>
                     </label>
                     <MultipleSelect
                       value={selectedItems2}
@@ -301,8 +301,8 @@ const options2 = [
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Attachment <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Attachment <span>*</span>
                     </label>
                     <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                       <span className="upload-img d-block mb-1">
@@ -336,8 +336,8 @@ const options2 = [
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <div className="editor pages-editor">
                       <TextEditor />
@@ -383,8 +383,8 @@ const options2 = [
               <div className="row mb-3">
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Subject <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Subject <span>*</span>
                     </label>
                     <input
                       type="text"
@@ -395,8 +395,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Date<span className="text-danger"> *</span>
+                    <label className="form-label text-danger">
+                      Date<span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -405,8 +405,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Open Till <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Open Till <span>*</span>
                     </label>
                     <div className="input-group w-auto input-group-flat">
                       <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -415,8 +415,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Client <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Client <span>*</span>
                     </label>
                     <CommonSelect
                       options={Client}
@@ -428,8 +428,8 @@ const options2 = [
                 <div className="col-md-6">
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between">
-                      <label className="form-label">
-                        Project<span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Project<span>*</span>
                       </label>
                       <Link
                         to="#"
@@ -450,8 +450,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Related to <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Related to <span>*</span>
                     </label>
                     <CommonSelect
                       options={Related_TO}
@@ -463,8 +463,8 @@ const options2 = [
                 <div className="col-md-6">
                   <div className="mb-3">
                     <div className="d-flex align-items-center justify-content-between">
-                      <label className="form-label">
-                        Deals<span className="text-danger">*</span>
+                      <label className="form-label text-danger">
+                        Deals<span>*</span>
                       </label>
                       <Link
                         to="#"
@@ -485,8 +485,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Currency <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Currency <span>*</span>
                     </label>
                     <CommonSelect
                       options={Currency}
@@ -497,8 +497,8 @@ const options2 = [
                 </div>
                 <div className="col-md-6">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Status <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Status <span>*</span>
                     </label>
                     <CommonSelect
                       options={Status_Accepted}
@@ -509,8 +509,8 @@ const options2 = [
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Assigned to <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Assigned to <span>*</span>
                     </label>
                     <MultipleSelect
                       value={selectedItems2}
@@ -522,8 +522,8 @@ const options2 = [
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Attachment <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Attachment <span>*</span>
                     </label>
                     <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                       <span className="upload-img d-block mb-1">
@@ -557,8 +557,8 @@ const options2 = [
                 </div>
                 <div className="col-md-12">
                   <div className="mb-3">
-                    <label className="form-label">
-                      Description <span className="text-danger">*</span>
+                    <label className="form-label text-danger">
+                      Description <span>*</span>
                     </label>
                     <div className="editor pages-editor">
                       <TextEditor />

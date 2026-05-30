@@ -52,7 +52,7 @@ export function getPriceListAuditLogs(id: number, page: number): Promise<AuditPa
   return auditCache.resolve(key, TTL_AUDIT, async () => {
     const res = await fetchPriceListAuditLogs(id, page);
     if (!res.success) throw new Error((res as any).message ?? "Failed to fetch audit logs.");
-    return { logs: res.data.data, lastPage: res.data.last_page, total: res.data.total };
+    return { logs: res.data as AuditLogEntry[], lastPage: (res as any).meta.last_page, total: (res as any).meta.total };
   });
 }
 

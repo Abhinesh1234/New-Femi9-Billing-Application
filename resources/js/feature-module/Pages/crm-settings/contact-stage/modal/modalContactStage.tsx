@@ -19,8 +19,8 @@ const ModalContactStage = () => {
         <form>
           <div className="modal-body">
             <div className="mb-0">
-              <label className="form-label">
-                Contact Stage <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Contact Stage <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -59,8 +59,8 @@ const ModalContactStage = () => {
         <form>
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                Contact Stage <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Contact Stage <span>*</span>
               </label>
               <input
                 type="text"

@@ -14,6 +14,8 @@ export interface SeriesModule {
 export interface SeriesItem {
   id: number;
   name: string;
+  customer_category?: string | null;
+  is_system_default?: boolean;
   locations_count?: number;
   locations?: { id: number; name: string }[];
   modules_config?: {
@@ -21,8 +23,8 @@ export interface SeriesItem {
     series_id: number;
     modules: SeriesModule[];
   } | null;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   deleted_at?: string | null;
 }
 
@@ -98,6 +100,13 @@ export async function destroySeries(id: number): Promise<DeleteResult> {
 export async function assignSeriesLocations(id: number, locationIds: number[]): Promise<DeleteResult> {
   try {
     const { data } = await axios.patch<DeleteResponse>(`${BASE}/${id}/locations`, { location_ids: locationIds });
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
+export async function fetchSeriesForLocation(locationId: number): Promise<ListResult> {
+  try {
+    const { data } = await axios.get<ListResponse>(`${BASE}/for-location/${locationId}`);
     return data;
   } catch (e) { return handleError(e); }
 }

@@ -835,20 +835,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -890,20 +890,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -945,20 +945,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1000,20 +1000,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1055,20 +1055,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1110,20 +1110,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1165,20 +1165,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1220,20 +1220,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1275,20 +1275,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
@@ -1330,20 +1330,20 @@ const PaymentGateways = () => {
         <form >
           <div className="modal-body">
             <div className="mb-3">
-              <label className="form-label">
-                From Email Address <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                From Email Address <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-3">
-              <label className="form-label">
-                API Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                API Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>
             <div className="mb-0">
-              <label className="form-label">
-                Secret Key <span className="text-danger">*</span>
+              <label className="form-label text-danger">
+                Secret Key <span>*</span>
               </label>
               <input type="text" className="form-control" />
             </div>

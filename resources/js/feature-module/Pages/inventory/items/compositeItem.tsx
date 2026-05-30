@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDispatch } from "react-redux";
+import { startLoading, stopLoading } from "../../../../core/redux/loaderSlice";
 import ReactDOM from "react-dom";
 import dayjs from "dayjs";
 import ReactQuill from "react-quill-new";
@@ -19,6 +21,13 @@ import { fetchGstRates, storeGstRate, updateGstRate as apiGstUpdate, destroyGstR
 import { fetchAccounts, storeAccount, updateAccount as apiAccountUpdate, destroyAccount, type Account } from "../../../../core/services/accountApi";
 import { fetchItem, uploadItemImage, uploadCustomFieldFile, fetchItems, type ItemRefs, type ItemListRecord } from "../../../../core/services/itemApi";
 import { storeCompositeItem, updateCompositeItem, fetchCompositeItem, type CompositeItemPayload, type CompositeComponentRecord } from "../../../../core/services/compositeItemApi";
+import { bustCompositeItem, bustAllCompositeItemCache } from "../../../../core/cache/compositeItemCache";
+import { getBrands, bustBrands } from "../../../../core/cache/brandCache";
+import { getCategories, bustCategories } from "../../../../core/cache/categoryCache";
+import { getHsnCodes, bustHsnCodes } from "../../../../core/cache/hsnCodeCache";
+import { getGstRates, bustGstRates } from "../../../../core/cache/gstRateCache";
+import { getAccounts, bustAccounts } from "../../../../core/cache/accountCache";
+import { emitMutation } from "../../../../core/cache/mutationEvents";
 
 const toOpt = (v: string): Option | null => (v ? { value: v, label: v } : null);
 const stringsToOpts = (arr: string[]): Option[] => arr.filter(Boolean).map((s) => ({ value: s, label: s }));
@@ -83,11 +92,12 @@ interface ManageItemsModalProps {
   onUpdate: (id: number, name: string) => Promise<boolean>;
   onDelete?: (id: number) => Promise<boolean>;
   onSaveAndSelect: (entry: BrandEntry) => void;
+  icon?: string;
 }
 
 const ManageItemsModal = ({
   show, onHide, title, singular, plural, items,
-  onSave, onUpdate, onDelete, onSaveAndSelect,
+  onSave, onUpdate, onDelete, onSaveAndSelect, icon = "ti ti-list",
 }: ManageItemsModalProps) => {
   const [hoveredId, setHoveredId]     = useState<number | null>(null);
   const [editingId, setEditingId]     = useState<number | null>(null);
@@ -137,9 +147,23 @@ const ManageItemsModal = ({
   };
 
   return (
-    <Modal show={show} onHide={onHide} centered size="lg">
-      <Modal.Header closeButton className="px-4 py-3">
-        <Modal.Title className="fs-18 fw-semibold">{title}</Modal.Title>
+    <Modal show={show} onHide={onHide} centered size="lg" backdropClassName="blurred-backdrop">
+      <Modal.Header closeButton={false} style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
+          <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <i className={`${icon} fs-18`} style={{ color: "#ef4444" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 16, color: "#0f172a" }}>{title}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onHide}
+          style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+        >
+          <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+        </button>
       </Modal.Header>
       <Modal.Body className="p-0">
         {/* + New button */}
@@ -160,8 +184,8 @@ const ManageItemsModal = ({
         {/* New item inline form */}
         {showNewForm && (
           <div className="px-4 pt-3 pb-3 border-bottom">
-            <label className="form-label fw-medium fs-14 mb-1">
-              {singular} Name <span className="text-danger">*</span>
+            <label className="form-label fw-medium fs-14 mb-1 text-danger">
+              {singular} Name <span>*</span>
             </label>
             <input
               autoFocus
@@ -203,8 +227,8 @@ const ManageItemsModal = ({
             <div key={item.id}>
               {editingId === item.id ? (
                 <div className="py-3 border-bottom">
-                  <label className="form-label fw-medium fs-14 mb-1">
-                    {singular} Name <span className="text-danger">*</span>
+                  <label className="form-label fw-medium fs-14 mb-1 text-danger">
+                    {singular} Name <span>*</span>
                   </label>
                   <input
                     autoFocus
@@ -480,11 +504,25 @@ const GenerateSKUModal = ({ show, onHide, itemName, filledVariations, variantRow
   };
 
   return (
-    <Modal show={show} onHide={onHide} centered size="lg">
-      <Modal.Header closeButton className="px-4 py-3">
-        <Modal.Title className="fs-18 fw-semibold">
-          Generate SKU{itemName ? ` - ${itemName}` : ""}
-        </Modal.Title>
+    <Modal show={show} onHide={onHide} centered size="lg" backdropClassName="blurred-backdrop">
+      <Modal.Header closeButton={false} style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
+          <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <i className="ti ti-barcode fs-18" style={{ color: "#ef4444" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 16, color: "#0f172a" }}>
+              Generate SKU{itemName ? ` — ${itemName}` : ""}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onHide}
+          style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+        >
+          <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+        </button>
       </Modal.Header>
       <Modal.Body className="px-4 pt-3 pb-2">
         <p className="fs-14 text-muted mb-3 d-flex align-items-center gap-1">
@@ -637,7 +675,7 @@ const GenerateSKUModal = ({ show, onHide, itemName, filledVariations, variantRow
           </span>
         </div>
       </Modal.Body>
-      <Modal.Footer className="px-4 py-3 justify-content-start">
+      <Modal.Footer style={{ padding: "16px 24px 22px", borderTop: "1px solid #f1f5f9", justifyContent: "flex-start" }}>
         <button type="button" className="btn btn-danger me-2" onClick={handleApply}>
           Generate SKU
         </button>
@@ -726,8 +764,8 @@ const ManageCategoriesModal = ({
     excludeId?: number; onSave: () => void; saveLabel: string; onCancel: () => void;
   }) => (
     <div className="py-3 border-bottom">
-      <label className="form-label fw-medium fs-14 mb-1">
-        Category Name <span className="text-danger">*</span>
+      <label className="form-label fw-medium fs-14 mb-1 text-danger">
+        Category Name <span>*</span>
       </label>
       <input
         autoFocus
@@ -764,9 +802,23 @@ const ManageCategoriesModal = ({
   );
 
   return (
-    <Modal show={show} onHide={onHide} centered size="lg">
-      <Modal.Header closeButton className="px-4 py-3">
-        <Modal.Title className="fs-18 fw-semibold">Manage Categories</Modal.Title>
+    <Modal show={show} onHide={onHide} centered size="lg" backdropClassName="blurred-backdrop">
+      <Modal.Header closeButton={false} style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
+          <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <i className="ti ti-folder fs-18" style={{ color: "#ef4444" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Manage Categories</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onHide}
+          style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+        >
+          <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+        </button>
       </Modal.Header>
       <Modal.Body className="p-0">
         {/* + New button */}
@@ -867,6 +919,7 @@ const ManageCategoriesModal = ({
 // ─── Main Component ───────────────────────────────────────────────────────────
 const CompositeItem = () => {
   const navigate    = useNavigate();
+  const dispatch    = useDispatch();
   const { id }      = useParams<{ id: string }>();
   const isEditMode  = Boolean(id);
   const editId      = id ? parseInt(id, 10) : null;
@@ -1087,6 +1140,7 @@ const CompositeItem = () => {
   const [hsnCodeId, setHsnCodeId]       = useState<number | null>(null);
   const [gstValue, setGstValue]         = useState("");
   const [gstRateId, setGstRateId]       = useState<number | null>(null);
+  const [points, setPoints]             = useState("");
 
   const [variations, setVariations] = useState<VariationRow[]>([{ id: 1, attribute: "", options: [], inputValue: "" }]);
   const addVariation    = () => setVariations((p) => [...p, { id: _nextVarId++, attribute: "", options: [], inputValue: "" }]);
@@ -1164,7 +1218,6 @@ const CompositeItem = () => {
   const [variantImageFiles, setVariantImageFiles] = useState<Record<string, { file: File; preview: string }>>({});
   const [saving, setSaving]             = useState(false);
   const [errors, setErrors]             = useState<Record<string, string>>({});
-  const [editLoading, setEditLoading]               = useState(isEditMode);
   const [existingImagePath, setExistingImagePath]   = useState<string | null>(null);
 
   // ── Brand / Category lists ────────────────────────────────────────────────
@@ -1179,6 +1232,9 @@ const CompositeItem = () => {
   const [showHsnModal, setShowHsnModal] = useState(false);
   const [showGstModal, setShowGstModal] = useState(false);
 
+  // ── Product settings ──────────────────────────────────────────────────────
+  const [allowDuplicateNames, setAllowDuplicateNames] = useState(true);
+
   // ── Custom fields (from settings) ─────────────────────────────────────────
   const [customFields, setCustomFields]       = useState<CustomField[]>([]);
   const [cfValues, setCfValues]               = useState<Record<string, string>>({});
@@ -1189,18 +1245,23 @@ const CompositeItem = () => {
 
   useEffect(() => {
     const load = async () => {
-      const [cfRes, agpRes, settingsRes, brandsRes, catsRes, hsnRes, gstRes,
-             salesAccRes, purchaseAccRes, inventoryAccRes] = await Promise.all([
+      if (isEditMode) dispatch(startLoading("edit-composite"));
+      try {
+      const [cfRes, agpRes, settingsRes, brandsData, catsData, hsnData, gstData,
+             salesAccData, purchAccData, invAccData, itemRes] = await Promise.all([
         fetchCustomFields("products"),
-        fetchAutoGeneratePreview("items"),
+        // Auto-generate preview only needed for new items — skip the network call in edit mode
+        isEditMode ? Promise.resolve(null) : fetchAutoGeneratePreview("items"),
         fetchSettings<ProductConfiguration>("products"),
-        fetchBrands(),
-        fetchCategories(),
-        fetchHsnCodes(),
-        fetchGstRates(),
-        fetchAccounts("sales"),
-        fetchAccounts("purchase"),
-        fetchAccounts("inventory"),
+        getBrands().catch(() => [] as Brand[]),
+        getCategories().catch(() => [] as Category[]),
+        getHsnCodes().catch(() => [] as HsnCode[]),
+        getGstRates().catch(() => [] as GstRate[]),
+        getAccounts("sales").catch(() => [] as Account[]),
+        getAccounts("purchase").catch(() => [] as Account[]),
+        getAccounts("inventory").catch(() => [] as Account[]),
+        // Fetch item data concurrently with all reference lists (not sequentially after them)
+        isEditMode && editId ? fetchCompositeItem(editId) : Promise.resolve(null),
       ]);
 
       // ── Custom fields ──────────────────────────────────────────────────────
@@ -1208,35 +1269,27 @@ const CompositeItem = () => {
       setCustomFields(activeFields);
 
       // ── Auto-generate previews (only needed for new items) ─────────────────
-      if (!isEditMode && agpRes.success) setAutoGenPreviews(agpRes.data);
+      if (!isEditMode && agpRes && agpRes.success) setAutoGenPreviews(agpRes.data);
 
       // ── Settings ───────────────────────────────────────────────────────────
       if (settingsRes.success && settingsRes.configuration) {
         if (settingsRes.configuration.dimension_unit) setDimUnit(settingsRes.configuration.dimension_unit as DimensionUnit);
         if (settingsRes.configuration.weight_unit)    setWeightUnit(settingsRes.configuration.weight_unit as WeightUnit);
+        setAllowDuplicateNames(settingsRes.configuration.allow_duplicate_names ?? true);
       }
 
       // ── Reference lists ────────────────────────────────────────────────────
-      const brandsData: BrandEntry[]    = brandsRes.success    ? (brandsRes.data as Brand[]).map((b) => ({ id: b.id, name: b.name }))             : [];
-      const catsData: CategoryEntry[]   = catsRes.success      ? (catsRes.data as Category[]).map((c) => ({ id: c.id, name: c.name, parentId: c.parent_id })) : [];
-      const hsnData: BrandEntry[]       = hsnRes.success       ? (hsnRes.data as HsnCode[]).map((h) => ({ id: h.id, name: h.code }))              : [];
-      const gstData: BrandEntry[]       = gstRes.success       ? (gstRes.data as GstRate[]).map((g) => ({ id: g.id, name: g.label }))             : [];
-      const salesAccData: BrandEntry[]  = salesAccRes.success  ? (salesAccRes.data as Account[]).map((a) => ({ id: a.id, name: a.name }))         : [];
-      const purchAccData: BrandEntry[]  = purchaseAccRes.success ? (purchaseAccRes.data as Account[]).map((a) => ({ id: a.id, name: a.name }))    : [];
-      const invAccData: BrandEntry[]    = inventoryAccRes.success ? (inventoryAccRes.data as Account[]).map((a) => ({ id: a.id, name: a.name }))  : [];
+      setBrands(brandsData.map((b) => ({ id: b.id, name: b.name })));
+      setCategories(catsData.map((c) => ({ id: c.id, name: c.name, parentId: c.parent_id })));
+      setHsnCodes(hsnData.map((h) => ({ id: h.id, name: h.code })));
+      setGstValues(gstData.map((g) => ({ id: g.id, name: g.label })));
+      setSalesAccounts(salesAccData.map((a) => ({ id: a.id, name: a.name })));
+      setPurchaseAccounts(purchAccData.map((a) => ({ id: a.id, name: a.name })));
+      setInventoryAccounts(invAccData.map((a) => ({ id: a.id, name: a.name })));
 
-      setBrands(brandsData);
-      setCategories(catsData);
-      setHsnCodes(hsnData);
-      setGstValues(gstData);
-      setSalesAccounts(salesAccData);
-      setPurchaseAccounts(purchAccData);
-      setInventoryAccounts(invAccData);
-
-      // ── Edit mode: fetch composite item and pre-populate form ─────────────
+      // ── Edit mode: pre-populate form from concurrently-fetched item ────────
       if (isEditMode && editId) {
-        const itemRes = await fetchCompositeItem(editId);
-        if (itemRes.success) {
+        if (itemRes && itemRes.success) {
           const d    = itemRes.data as Record<string, any>;
           const refs = ((d.refs ?? {}) as ItemRefs) ?? {};
 
@@ -1250,6 +1303,7 @@ const CompositeItem = () => {
           setProductTag(d.product_tag ?? "None");
           setIsReturnable(d.is_returnable ?? true);
           setAdminOnly(d.admin_only ?? false);
+          setPoints(d.points != null ? String(d.points) : "");
 
           if (d.image) {
             setExistingImagePath(d.image as string);
@@ -1377,8 +1431,7 @@ const CompositeItem = () => {
             }
           }
         }
-        setEditLoading(false);
-      } else {
+        } else {
         // New item: apply custom field defaults
         const defaults: Record<string, string> = {};
         for (const f of activeFields) {
@@ -1386,10 +1439,63 @@ const CompositeItem = () => {
         }
         setCfValues(defaults);
       }
+      } catch { /* unexpected runtime error still clears the loader */ }
+      finally { if (isEditMode) dispatch(stopLoading("edit-composite")); }
     };
 
     load();
   }, []);
+
+  // ── Account lists (declared here to avoid TDZ in handleRefresh dep array) ───
+  const [salesAccounts, setSalesAccounts]         = useState<BrandEntry[]>([]);
+  const [purchaseAccounts, setPurchaseAccounts]   = useState<BrandEntry[]>([]);
+  const [inventoryAccounts, setInventoryAccounts] = useState<BrandEntry[]>([]);
+
+  // Silent refresh — busts caches and updates dropdowns in place without any spinner or toast
+  const handleRefresh = useCallback(async () => {
+    try {
+      bustBrands(); bustCategories(); bustHsnCodes(); bustGstRates();
+      bustAccounts("sales"); bustAccounts("purchase"); bustAccounts("inventory");
+      const [brandsData, catsData, hsnData, gstData, salesAccData, purchAccData, invAccData] = await Promise.all([
+        getBrands().catch(() => [] as Brand[]),
+        getCategories().catch(() => [] as Category[]),
+        getHsnCodes().catch(() => [] as HsnCode[]),
+        getGstRates().catch(() => [] as GstRate[]),
+        getAccounts("sales").catch(() => [] as Account[]),
+        getAccounts("purchase").catch(() => [] as Account[]),
+        getAccounts("inventory").catch(() => [] as Account[]),
+      ]);
+      setBrands(brandsData.map((b) => ({ id: b.id, name: b.name })));
+      setCategories(catsData.map((c) => ({ id: c.id, name: c.name, parentId: c.parent_id })));
+      setHsnCodes(hsnData.map((h) => ({ id: h.id, name: h.code })));
+      setGstValues(gstData.map((g) => ({ id: g.id, name: g.label })));
+      setSalesAccounts(salesAccData.map((a) => ({ id: a.id, name: a.name })));
+      setPurchaseAccounts(purchAccData.map((a) => ({ id: a.id, name: a.name })));
+      setInventoryAccounts(invAccData.map((a) => ({ id: a.id, name: a.name })));
+      // Clear selections whose record was deleted; update label if renamed
+      const bMatch = brandsData.find((b) => b.id === brandId);
+      if (brandId && !bMatch)                    { setBrand(""); setBrandId(null); }
+      else if (bMatch && bMatch.name !== brand)   { setBrand(bMatch.name); }
+      const cMatch = catsData.find((c) => c.id === categoryId);
+      if (categoryId && !cMatch)                 { setCategory(""); setCategoryId(null); }
+      else if (cMatch && cMatch.name !== category){ setCategory(cMatch.name); }
+      const hMatch = hsnData.find((h) => h.id === hsnCodeId);
+      if (hsnCodeId && !hMatch)                  { setHsnCode(""); setHsnCodeId(null); }
+      else if (hMatch && hMatch.name !== hsnCode) { setHsnCode(hMatch.name); }
+      const gMatch = gstData.find((g) => g.id === gstRateId);
+      if (gstRateId && !gMatch)                  { setGstValue(""); setGstRateId(null); }
+      else if (gMatch && gMatch.name !== gstValue){ setGstValue(gMatch.name); }
+      const saMatch = salesAccData.find((a) => a.id === salesAccountId);
+      if (salesAccountId && !saMatch)                      { setSalesAccount(""); setSalesAccountId(null); }
+      else if (saMatch && saMatch.name !== salesAccount)    { setSalesAccount(saMatch.name); }
+      const paMatch = purchAccData.find((a) => a.id === purchaseAccountId);
+      if (purchaseAccountId && !paMatch)                   { setPurchaseAccount(""); setPurchaseAccountId(null); }
+      else if (paMatch && paMatch.name !== purchaseAccount) { setPurchaseAccount(paMatch.name); }
+      const iaMatch = invAccData.find((a) => a.id === inventoryAccountId);
+      if (inventoryAccountId && !iaMatch)                  { setInventoryAccount(""); setInventoryAccountId(null); }
+      else if (iaMatch && iaMatch.name !== inventoryAccount){ setInventoryAccount(iaMatch.name); }
+    } catch { /* ignore — dropdowns stay as-is */ }
+  }, [brandId, brand, categoryId, category, hsnCodeId, hsnCode, gstRateId, gstValue, salesAccountId, salesAccount, purchaseAccountId, purchaseAccount, inventoryAccountId, inventoryAccount]);
 
   const setCfValue = (key: string, val: string) =>
     setCfValues((prev) => ({ ...prev, [key]: val }));
@@ -2081,10 +2187,7 @@ const CompositeItem = () => {
     }
   };
 
-  // ── Account lists ─────────────────────────────────────────────────────────
-  const [salesAccounts, setSalesAccounts]         = useState<BrandEntry[]>([]);
-  const [purchaseAccounts, setPurchaseAccounts]   = useState<BrandEntry[]>([]);
-  const [inventoryAccounts, setInventoryAccounts] = useState<BrandEntry[]>([]);
+  // ── Account modals ────────────────────────────────────────────────────────
   const [showSalesAccModal, setShowSalesAccModal]         = useState(false);
   const [showPurchaseAccModal, setShowPurchaseAccModal]   = useState(false);
   const [showInventoryAccModal, setShowInventoryAccModal] = useState(false);
@@ -2095,6 +2198,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Brand).id, name: (res.data as Brand).name };
     setBrands((p) => [...p, entry]);
+    bustBrands();
     return entry;
   };
   const editBrand = async (id: number, name: string): Promise<boolean> => {
@@ -2102,6 +2206,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setBrands((p) => p.map((b) => (b.id === id ? { ...b, name } : b)));
     if (brandId === id) setBrand(name);
+    bustBrands();
     return true;
   };
   const removeBrand = async (id: number): Promise<boolean> => {
@@ -2109,6 +2214,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setBrands((p) => p.filter((b) => b.id !== id));
     if (brandId === id) { setBrand(""); setBrandId(null); }
+    bustBrands();
     return true;
   };
 
@@ -2118,6 +2224,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: CategoryEntry = { id: (res.data as Category).id, name: (res.data as Category).name, parentId: (res.data as Category).parent_id };
     setCategories((p) => [...p, entry]);
+    bustCategories();
     return entry;
   };
   const editCategory = async (id: number, name: string, parentId: number | null): Promise<boolean> => {
@@ -2125,6 +2232,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setCategories((p) => p.map((c) => (c.id === id ? { ...c, name, parentId } : c)));
     if (categoryId === id) setCategory(name);
+    bustCategories();
     return true;
   };
   const removeCategory = async (id: number): Promise<boolean> => {
@@ -2132,6 +2240,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setCategories((p) => p.filter((c) => c.id !== id));
     if (categoryId === id) { setCategory(""); setCategoryId(null); }
+    bustCategories();
     return true;
   };
 
@@ -2141,6 +2250,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as HsnCode).id, name: (res.data as HsnCode).code };
     setHsnCodes((p) => [...p, entry]);
+    bustHsnCodes();
     return entry;
   };
   const editHsn = async (id: number, code: string): Promise<boolean> => {
@@ -2148,6 +2258,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setHsnCodes((p) => p.map((h) => (h.id === id ? { ...h, name: code } : h)));
     if (hsnCodeId === id) setHsnCode(code);
+    bustHsnCodes();
     return true;
   };
   const removeHsn = async (id: number): Promise<boolean> => {
@@ -2155,6 +2266,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setHsnCodes((p) => p.filter((h) => h.id !== id));
     if (hsnCodeId === id) { setHsnCode(""); setHsnCodeId(null); }
+    bustHsnCodes();
     return true;
   };
 
@@ -2166,6 +2278,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as GstRate).id, name: (res.data as GstRate).label };
     setGstValues((p) => [...p, entry]);
+    bustGstRates();
     return entry;
   };
   const editGst = async (id: number, label: string): Promise<boolean> => {
@@ -2175,6 +2288,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setGstValues((p) => p.map((g) => (g.id === id ? { ...g, name: label } : g)));
     if (gstRateId === id) setGstValue(label);
+    bustGstRates();
     return true;
   };
   const removeGst = async (id: number): Promise<boolean> => {
@@ -2182,6 +2296,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setGstValues((p) => p.filter((g) => g.id !== id));
     if (gstRateId === id) { setGstValue(""); setGstRateId(null); }
+    bustGstRates();
     return true;
   };
 
@@ -2191,6 +2306,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Account).id, name: (res.data as Account).name };
     setSalesAccounts((p) => [...p, entry]);
+    bustAccounts("sales");
     return entry;
   };
   const editSalesAcc = async (id: number, name: string): Promise<boolean> => {
@@ -2198,6 +2314,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setSalesAccounts((p) => p.map((a) => (a.id === id ? { ...a, name } : a)));
     if (salesAccountId === id) setSalesAccount(name);
+    bustAccounts("sales");
     return true;
   };
 
@@ -2206,6 +2323,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Account).id, name: (res.data as Account).name };
     setPurchaseAccounts((p) => [...p, entry]);
+    bustAccounts("purchase");
     return entry;
   };
   const editPurchaseAcc = async (id: number, name: string): Promise<boolean> => {
@@ -2213,6 +2331,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setPurchaseAccounts((p) => p.map((a) => (a.id === id ? { ...a, name } : a)));
     if (purchaseAccountId === id) setPurchaseAccount(name);
+    bustAccounts("purchase");
     return true;
   };
 
@@ -2221,6 +2340,7 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return null; }
     const entry: BrandEntry = { id: (res.data as Account).id, name: (res.data as Account).name };
     setInventoryAccounts((p) => [...p, entry]);
+    bustAccounts("inventory");
     return entry;
   };
   const editInventoryAcc = async (id: number, name: string): Promise<boolean> => {
@@ -2228,7 +2348,26 @@ const CompositeItem = () => {
     if (!res.success) { showToast("danger", res.message); return false; }
     setInventoryAccounts((p) => p.map((a) => (a.id === id ? { ...a, name } : a)));
     if (inventoryAccountId === id) setInventoryAccount(name);
+    bustAccounts("inventory");
     return true;
+  };
+
+  // ── Duplicate name check ─────────────────────────────────────────────────
+  const checkDuplicateName = async (nameValue: string): Promise<boolean> => {
+    if (allowDuplicateNames || !nameValue.trim()) return false;
+    const res = await fetchItems({ search: nameValue.trim(), per_page: 20 });
+    if (!res.success) return false;
+    const items: any[] = (res as any).data?.data ?? [];
+    return items.some((it) => {
+      if (isEditMode && editId && String(it.id) === String(editId)) return false;
+      return (it.name ?? "").toLowerCase() === nameValue.trim().toLowerCase();
+    });
+  };
+  const handleNameBlur = async () => {
+    if (!allowDuplicateNames && name.trim()) {
+      const isDupe = await checkDuplicateName(name);
+      if (isDupe) setErrors((e) => ({ ...e, name: "An item with this name already exists." }));
+    }
   };
 
   // ── Validation ────────────────────────────────────────────────────────────
@@ -2268,6 +2407,7 @@ const CompositeItem = () => {
     // ── Inventory ─────────────────────────────────────────────────────────────
     if (itemType === "goods" && compositeType !== "kit" && trackInventory && !inventoryAccountId) errs.inventoryAccount = "Inventory account is required.";
     if (itemType === "goods" && compositeType !== "kit" && trackInventory && !valuationMethod)    errs.valuationMethod  = "Valuation method is required.";
+    if (points.trim() === "" || isNaN(parseInt(points, 10)) || parseInt(points, 10) < 0) errs.points = "Points is required and must be a whole number (0 or greater).";
 
     setErrors(errs);
     const errCount = Object.keys(errs).length;
@@ -2280,6 +2420,14 @@ const CompositeItem = () => {
   };
 
   const handleSave = async () => {
+    if (!allowDuplicateNames && name.trim()) {
+      const isDupe = await checkDuplicateName(name);
+      if (isDupe) {
+        setErrors((e) => ({ ...e, name: "An item with this name already exists." }));
+        showToast("danger", "An item with this name already exists.");
+        return;
+      }
+    }
     const coreOk = validate();
     const cfOk   = validateAllCfFields();
     if (!coreOk || !cfOk) {
@@ -2288,12 +2436,12 @@ const CompositeItem = () => {
     }
     setSaving(true);
 
+    try {
     // ── Upload main image ─────────────────────────────────────────────────────
     let uploadedImagePath: string | null = null;
     if (imageFile) {
       const uploadRes = await uploadItemImage(imageFile);
       if (!uploadRes.success) {
-        setSaving(false);
         showToast("danger", uploadRes.message || "Failed to upload image.");
         return;
       }
@@ -2314,7 +2462,6 @@ const CompositeItem = () => {
       );
       for (const { key, res } of cfUploadResults) {
         if (!res.success) {
-          setSaving(false);
           showToast("danger", res.message || "Failed to upload file for custom field.");
           return;
         }
@@ -2376,6 +2523,7 @@ const CompositeItem = () => {
       reorder_point:        reorderPoint ? parseFloat(reorderPoint) : null,
       is_returnable:        isReturnable,
       admin_only:           adminOnly,
+      points:               points.trim() !== "" ? parseInt(points, 10) : 0,
       dimensions:           itemType === "goods" && (dimLength || dimWidth || dimHeight)
         ? { length: dimLength ? parseFloat(dimLength) : null, width: dimWidth ? parseFloat(dimWidth) : null, height: dimHeight ? parseFloat(dimHeight) : null, unit: dimUnit }
         : null,
@@ -2393,9 +2541,10 @@ const CompositeItem = () => {
     const res = isEditMode && editId
       ? await updateCompositeItem(editId, payload)
       : await storeCompositeItem(payload);
-    setSaving(false);
 
     if (res.success) {
+      if (isEditMode && editId) bustCompositeItem(editId); else bustAllCompositeItemCache();
+      emitMutation("composite-items:mutated");
       showToast("success", res.message || (isEditMode ? "Composite item updated successfully." : "Composite item saved successfully."));
       setTimeout(() => navigate(isEditMode ? `/composite-items/${editId}` : "/composite-items", { replace: true }), 1200);
     } else {
@@ -2403,8 +2552,6 @@ const CompositeItem = () => {
       if ("errors" in res && res.errors) {
         const apiErrs: Record<string, string> = {};
         Object.entries(res.errors).forEach(([k, msgs]) => {
-          // Map backend component errors to frontend row keys
-          // e.g. "components.0.component_item_id" → flag the first row
           const compMatch = k.match(/^components\.(\d+)\.(.+)$/);
           if (compMatch) {
             const idx   = parseInt(compMatch[1], 10);
@@ -2417,6 +2564,11 @@ const CompositeItem = () => {
         });
         setErrors((prev) => ({ ...prev, ...apiErrs }));
       }
+    }
+    } catch {
+      showToast("danger", "Network error. Please check your connection and try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -2434,18 +2586,11 @@ const CompositeItem = () => {
             showExport={false}
             showClose
             onClose={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
+            onRefresh={handleRefresh}
           />
 
-          {/* ── Edit loading state ──────────────────────────────────── */}
-          {editLoading ? (
-            <div className="d-flex justify-content-center align-items-center py-5">
-              <span className="spinner-border text-danger me-2" />
-              <span className="text-muted fs-14">Loading item…</span>
-            </div>
-          ) : null}
-
           {/* ── Main Card ───────────────────────────────────────────── */}
-          <div className="card mb-0" style={editLoading ? { visibility: "hidden", pointerEvents: "none" } : undefined}>
+          <div className="card mb-0">
             <div className="card-body p-4">
 
               {/* ══ Top: form fields (left) + image (right) ══ */}
@@ -2465,6 +2610,7 @@ const CompositeItem = () => {
                         className={`form-control ${errors.name ? "is-invalid" : ""}`}
                         value={name}
                         onChange={(e) => { setName(e.target.value); clr("name"); }}
+                        onBlur={handleNameBlur}
                       />
                       {errors.name && <div className="invalid-feedback">{errors.name}</div>}
                     </div>
@@ -3590,6 +3736,25 @@ const CompositeItem = () => {
                   </div>
                 </div>
 
+                {/* Points */}
+                <div className="row mb-3 align-items-center">
+                  <label className="col-sm-2 col-form-label fw-medium fs-14 text-danger">
+                    Points <span>*</span>
+                  </label>
+                  <div className="col-sm-4">
+                    <input
+                      type="number"
+                      className={`form-control${errors.points ? " is-invalid" : ""}`}
+                      placeholder="Enter points"
+                      value={points}
+                      min={0}
+                      step={1}
+                      onChange={(e) => { setPoints(e.target.value); if (errors.points) clr("points"); }}
+                    />
+                    {errors.points && <div className="invalid-feedback d-block">{errors.points}</div>}
+                  </div>
+                </div>
+
                 {/* Dynamic custom fields — auto-fetched from Settings → Custom Fields */}
                 {(() => {
                   const EXCLUDED_KEYS = new Set([
@@ -3748,6 +3913,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showBrandModal}
         onHide={() => setShowBrandModal(false)}
+        icon="ti ti-star"
         title="Manage Brands"
         singular="Brand"
         plural="Brands"
@@ -3773,6 +3939,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showAttributeModal}
         onHide={() => setShowAttributeModal(false)}
+        icon="ti ti-adjustments"
         title="Manage Attributes"
         singular="Attribute"
         plural="Attributes"
@@ -3787,6 +3954,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showSalesAccModal}
         onHide={() => setShowSalesAccModal(false)}
+        icon="ti ti-wallet"
         title="Manage Sales Accounts"
         singular="Account"
         plural="Accounts"
@@ -3800,6 +3968,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showPurchaseAccModal}
         onHide={() => setShowPurchaseAccModal(false)}
+        icon="ti ti-wallet"
         title="Manage Purchase Accounts"
         singular="Account"
         plural="Accounts"
@@ -3813,6 +3982,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showInventoryAccModal}
         onHide={() => setShowInventoryAccModal(false)}
+        icon="ti ti-package"
         title="Manage Inventory Accounts"
         singular="Account"
         plural="Accounts"
@@ -3826,6 +3996,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showHsnModal}
         onHide={() => setShowHsnModal(false)}
+        icon="ti ti-file-invoice"
         title="Manage HSN Codes"
         singular="HSN Code"
         plural="HSN Codes"
@@ -3840,6 +4011,7 @@ const CompositeItem = () => {
       <ManageItemsModal
         show={showGstModal}
         onHide={() => setShowGstModal(false)}
+        icon="ti ti-receipt-tax"
         title="Manage GST Values"
         singular="GST Value"
         plural="GST Values"

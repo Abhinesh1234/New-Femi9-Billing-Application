@@ -282,24 +282,24 @@ const Modal = () => {
             <div className="row">
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Name <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Name <span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Project ID<span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Project ID<span>*</span>
                   </label>
                   <input type="text" className="form-control" />
                 </div>
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Project Type <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Project Type <span>*</span>
                   </label>
                   <CommonSelect
                     options={Project_Type}
@@ -310,8 +310,8 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Client <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Client <span>*</span>
                   </label>
                   <CommonSelect
                     options={Client}
@@ -322,8 +322,8 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Category <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Category <span>*</span>
                   </label>
                   <CommonSelect
                     options={Category}
@@ -334,8 +334,8 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Project Timing <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Project Timing <span>*</span>
                   </label>
                   <CommonSelect
                     options={Project_Timing}
@@ -346,16 +346,16 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Price <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Price <span>*</span>
                   </label>
                   <input className="form-control" type="text" />
                 </div>
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Responsible Persons <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Responsible Persons <span>*</span>
                   </label>
                   <MultipleSelect
                     value={selectedItems}
@@ -367,8 +367,8 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Team Leader <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Team Leader <span>*</span>
                   </label>
                    <MultipleSelect
                     value={selectedItems2}
@@ -380,8 +380,8 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Start Date <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Start Date <span>*</span>
                   </label>
                   <div className="input-group w-auto input-group-flat">
                    <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -390,8 +390,8 @@ const Modal = () => {
               </div>
               <div className="col-md-6">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Due Date <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Due Date <span>*</span>
                   </label>
                   <div className="input-group w-auto input-group-flat">
                    <CommonDatePicker placeholder="dd/mm/yyyy" />
@@ -421,8 +421,8 @@ const Modal = () => {
               </div>
               <div className="col-md-12">
                 <div className="mb-3">
-                  <label className="form-label">
-                    Description <span className="text-danger">*</span>
+                  <label className="form-label text-danger">
+                    Description <span>*</span>
                   </label>
                   <textarea
                     className="form-control"

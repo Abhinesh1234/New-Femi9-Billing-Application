@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ThHTMLAttributes } from "react";
 import { Link, useNavigate } from "react-router";
-import { Modal, Toast } from "react-bootstrap";
+import { Toast } from "react-bootstrap";
 import {
   DndContext,
   closestCenter,
@@ -31,7 +31,10 @@ import {
   hydrateLocationList,
 } from "../../../../core/cache/locationCache";
 import { onMutation } from "../../../../core/cache/mutationEvents";
+import { useWindowFocusRefresh } from "../../../../core/hooks/useWindowFocusRefresh";
 import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
+import ConfirmDialog, { type ConfirmConfig } from "../../../../components/confirm-dialog/ConfirmDialog";
+import { usePermission } from "../../../../core/hooks/usePermission";
 
 const route = all_routes;
 
@@ -244,62 +247,10 @@ function StarButton({ isPrimary, loading, onClick }: {
   );
 }
 
-// ── Confirmation dialog ───────────────────────────────────────────────────────
-interface ConfirmConfig {
-  icon:         string;
-  iconColor:    string;
-  iconBg:       string;
-  title:        string;
-  message:      string;
-  confirmLabel: string;
-  confirmColor: string;
-  onConfirm:    () => Promise<void>;
-}
-
-function ConfirmDialog({ config, onClose }: { config: ConfirmConfig | null; onClose: () => void }) {
-  const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { setBusy(false); }, [config]);
-  if (!config) return null;
-
-  const handleConfirm = async () => {
-    setBusy(true);
-    try { await config.onConfirm(); } finally { setBusy(false); }
-    onClose();
-  };
-
-  return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
-      onClick={e => { if (e.target === e.currentTarget && !busy) onClose(); }}
-    >
-      <div style={{ background: "#fff", borderRadius: 14, padding: "32px 28px 24px", width: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-        <div style={{ width: 56, height: 56, borderRadius: "50%", background: config.iconBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-          <i className={`ti ${config.icon}`} style={{ fontSize: 24, color: config.iconColor }} />
-        </div>
-        <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 16, color: "#0f172a", textAlign: "center" }}>{config.title}</p>
-        <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", textAlign: "center", lineHeight: 1.55 }}>{config.message}</p>
-        <div style={{ display: "flex", gap: 10, width: "100%" }}>
-          <button className="btn btn-light flex-grow-1" style={{ fontWeight: 500, fontSize: 14, height: 44 }} onClick={onClose} disabled={busy}>Cancel</button>
-          <button
-            className="btn flex-grow-1"
-            style={{ background: config.confirmColor, color: "#fff", fontWeight: 500, fontSize: 14, border: "none", height: 44 }}
-            onClick={handleConfirm}
-            disabled={busy}
-          >
-            {busy
-              ? <><span className="spinner-border spinner-border-sm me-2" style={{ width: 14, height: 14, borderWidth: 2 }} />{config.confirmLabel}…</>
-              : config.confirmLabel
-            }
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 const LocationList = () => {
   const navigate = useNavigate();
+  const canCreate = usePermission("locations", "create");
 
   const [view, setView] = useState<"list" | "grid">(() => {
     try { return localStorage.getItem(VIEW_LS_KEY) === "grid" ? "grid" : "list"; }
@@ -316,11 +267,11 @@ const LocationList = () => {
   const [listFilter,        setListFilter]        = useState<"active" | "deleted">("active");
   const [settingPrimary,   setSettingPrimary]   = useState<number | null>(null);
   const [confirmConfig,    setConfirmConfig]    = useState<ConfirmConfig | null>(null);
-  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "danger" }>({
     show: false, message: "", type: "success",
   });
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = (message: string, type: "success" | "danger" = "success") => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ show: true, message, type });
     toastTimerRef.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 4000);
@@ -425,6 +376,16 @@ const LocationList = () => {
     setLoading(false);
   }, []);
 
+  // Silent refresh — updates data in place without wiping the table
+  const silentRefresh = useCallback(async () => {
+    bustLocationLists();
+    try {
+      const data = await getLocationList();
+      setLocations(data);
+      setTotal(data.length);
+    } catch { /* ignore — data stays as is */ }
+  }, []);
+
   const handleSetPrimary = useCallback(async (targetId: number) => {
     setSettingPrimary(targetId);
     let snapshot: LocationListItem[] = [];
@@ -442,11 +403,11 @@ const LocationList = () => {
       try {
         const freshData = await getLocationList();
         setLocations(freshData);
-        showToast("Failed to update primary location. Please try again.", "error");
+        showToast("Failed to update primary location. Please try again.", "danger");
       } catch {
         setLocations(snapshot);
         hydrateLocationList(snapshot);
-        showToast("Could not verify update. State restored — please refresh.", "error");
+        showToast("Could not verify update. State restored — please refresh.", "danger");
       }
     }
     setSettingPrimary(null);
@@ -471,8 +432,9 @@ const LocationList = () => {
       .catch(() => setDeletedLoading(false));
   }, [listFilter]);
 
-  // Reload when any page mutates location data (e.g. save/delete from edit or overview)
-  useEffect(() => onMutation("locations:mutated", loadFresh), [loadFresh]);
+  // Reload when any page mutates location data — silent so table stays visible
+  useEffect(() => onMutation("locations:mutated", silentRefresh), [silentRefresh]);
+  useWindowFocusRefresh(silentRefresh);
 
   // Reload on window focus: cache-first so no network hit if data is still fresh
   useEffect(() => {
@@ -779,7 +741,7 @@ const LocationList = () => {
 
   const handleExportPdf = () => {
     try { exportToPdfPrint(exportTitle, exportHeaders, buildExportRows()); }
-    catch (e: any) { showToast(e.message ?? "PDF export failed.", "error"); }
+    catch (e: any) { showToast(e.message ?? "PDF export failed.", "danger"); }
   };
 
   const handleExportExcel = () => {
@@ -801,7 +763,7 @@ const LocationList = () => {
       { header: "Default Series",  key: "default_series", width: 24 },
       { header: "Status",          key: "status",         width: 12 },
       { header: "Created On",      key: "created_at",     width: 18 },
-    ], rows).catch(() => showToast("Excel export failed.", "error"));
+    ], rows).catch(() => showToast("Excel export failed.", "danger"));
   };
 
   return (
@@ -813,7 +775,7 @@ const LocationList = () => {
       `}</style>
       <div className="page-wrapper">
         <div className="content">
-          <PageHeader title="Locations" badgeCount={total} showModuleTile={false} showExport={true} onRefresh={loadFresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
+          <PageHeader title="Locations" badgeCount={total} showModuleTile={false} showExport={true} onRefresh={silentRefresh} onExportPdf={handleExportPdf} onExportExcel={handleExportExcel} />
 
           <div className="card border-0 rounded-0">
             <div className="card-header d-flex align-items-center justify-content-between gap-2">
@@ -827,10 +789,12 @@ const LocationList = () => {
                 <Link to={route.transactionSeriesList} className="fs-14 text-primary">
                   Transaction Series Preferences
                 </Link>
-                <Link to={route.addLocation} className="btn btn-primary">
-                  <i className="ti ti-square-rounded-plus-filled me-1" />
-                  New Location
-                </Link>
+                {canCreate && (
+                  <Link to={route.addLocation} className="btn btn-primary">
+                    <i className="ti ti-square-rounded-plus-filled me-1" />
+                    New Location
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -888,12 +852,7 @@ const LocationList = () => {
                   <button type="button" className="btn btn-sm btn-outline-danger ms-auto" onClick={loadFresh}>Retry</button>
                 </div>
               )}
-              {(loading || (listFilter === "deleted" && deletedLoading)) ? (
-                <div className="text-center py-5 text-muted">
-                  <span className="spinner-border spinner-border-sm me-2" />
-                  {listFilter === "deleted" ? "Loading deleted locations…" : "Loading locations…"}
-                </div>
-              ) : view === "list" ? (
+              {(loading || (listFilter === "deleted" && deletedLoading)) ? null : view === "list" ? (
                 <div ref={tableWrapRef} className="custom-table table-nowrap">
                   <Datatable
                     columns={columns}
@@ -914,9 +873,16 @@ const LocationList = () => {
                 /* ── Grid view ───────────────────────────────────────────── */
                 <>
                   {gridRows.length === 0 ? (
-                    <div className="text-center py-5 text-muted">
-                      <i className="ti ti-building-off fs-32 d-block mb-2" />
-                      No locations found
+                    <div className="text-center py-5">
+                      <i className="ti ti-building-community fs-40 d-block mb-4 text-muted opacity-50" />
+                      <h6 className="fw-semibold mb-2">No Locations</h6>
+                      <p className="text-muted mb-4 fs-14">Get started by adding your first location.</p>
+                      {canCreate && (
+                        <Link to={route.addLocation} className="btn btn-primary px-4">
+                          <i className="ti ti-square-rounded-plus-filled me-1" />
+                          Add New Location
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     <div className="row">
@@ -1003,78 +969,89 @@ const LocationList = () => {
       </div>
 
       {/* ── Customize Columns Modal ───────────────────────────────────────────── */}
-      <Modal show={showColsModal} onHide={closeColsModal} centered size="lg">
-        <Modal.Header className="px-4 py-3 border-bottom">
-          <div className="d-flex align-items-center justify-content-between w-100">
-            <div className="d-flex align-items-center gap-2">
-              <i className="ti ti-adjustments-horizontal fs-20 text-muted" />
-              <Modal.Title className="fs-17 fw-semibold mb-0">Customize Columns</Modal.Title>
+      {showColsModal && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 1060, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)" }}
+          onClick={e => { if (e.target === e.currentTarget) closeColsModal(); }}
+        >
+          <div style={{ background: "#fff", borderRadius: 14, width: 580, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "85vh" }}>
+            {/* Header */}
+            <div style={{ padding: "20px 24px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 12, flexShrink: 0 }}>
+              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <i className="ti ti-adjustments-horizontal fs-18" style={{ color: "#ef4444" }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 2px", fontWeight: 600, fontSize: 16, color: "#0f172a" }}>Customize Columns</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>{draftVisible.size + 2} of {INITIAL_COLS.length + 2} columns visible</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeColsModal}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #fecaca", background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}
+              >
+                <i className="ti ti-x" style={{ fontSize: 14, color: "#ef4444", lineHeight: 1 }} />
+              </button>
             </div>
-            <div className="d-flex align-items-center gap-3">
-              <span className="text-muted fs-14">
-                {draftVisible.size + 2} of {INITIAL_COLS.length + 2} Selected
-              </span>
-              <button type="button" className="btn-close" onClick={closeColsModal} aria-label="Close" />
+
+            {/* Search */}
+            <div style={{ padding: "14px 24px 10px", flexShrink: 0 }}>
+              <div className="input-icon input-icon-start position-relative">
+                <span className="input-icon-addon text-muted" style={{ left: 12 }}>
+                  <i className="ti ti-search fs-15" />
+                </span>
+                <input
+                  type="text"
+                  className="form-control ps-5"
+                  placeholder="Search columns…"
+                  value={colSearch}
+                  onChange={e => setColSearch(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Fixed: Name */}
+            <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light" style={{ flexShrink: 0 }}>
+              <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
+              <i className="ti ti-lock text-muted fs-15" />
+              <span className="fs-14 text-muted">Name</span>
+              <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
+            </div>
+
+            {/* Sortable columns */}
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={filteredDraft.map(c => c.key)} strategy={verticalListSortingStrategy}>
+                  {filteredDraft.map(col => (
+                    <SortableColRow key={col.key} col={col} checked={draftVisible.has(col.key)} onToggle={() => toggleDraft(col.key)} />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+
+            {/* Fixed: Action */}
+            <div className="d-flex align-items-center gap-3 px-4 py-3 border-top bg-light" style={{ flexShrink: 0 }}>
+              <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
+              <i className="ti ti-lock text-muted fs-15" />
+              <span className="fs-14 text-muted">Action</span>
+              <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "16px 24px 22px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button className="btn btn-danger me-2" onClick={saveColsModal}>Save</button>
+              <button className="btn btn-outline-light" onClick={closeColsModal}>Cancel</button>
             </div>
           </div>
-        </Modal.Header>
-
-        <Modal.Body className="p-0">
-          {/* Search */}
-          <div className="px-4 pt-3 pb-2">
-            <div className="input-icon input-icon-start position-relative">
-              <span className="input-icon-addon text-muted" style={{ left: 12 }}>
-                <i className="ti ti-search fs-15" />
-              </span>
-              <input
-                type="text"
-                className="form-control ps-5"
-                placeholder="Search columns…"
-                value={colSearch}
-                onChange={e => setColSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Fixed: Name */}
-          <div className="d-flex align-items-center gap-3 px-4 py-3 border-bottom bg-light">
-            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
-            <i className="ti ti-lock text-muted fs-15" />
-            <span className="fs-14 text-muted">Name</span>
-            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
-          </div>
-
-          {/* Sortable columns */}
-          <div style={{ maxHeight: 380, overflowY: "auto" }}>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={filteredDraft.map(c => c.key)} strategy={verticalListSortingStrategy}>
-                {filteredDraft.map(col => (
-                  <SortableColRow key={col.key} col={col} checked={draftVisible.has(col.key)} onToggle={() => toggleDraft(col.key)} />
-                ))}
-              </SortableContext>
-            </DndContext>
-          </div>
-
-          {/* Fixed: Action */}
-          <div className="d-flex align-items-center gap-3 px-4 py-3 border-top bg-light">
-            <i className="ti ti-grip-vertical text-muted fs-16" style={{ opacity: 0.3 }} />
-            <i className="ti ti-lock text-muted fs-15" />
-            <span className="fs-14 text-muted">Action</span>
-            <span className="ms-auto badge badge-soft-secondary fs-11">Fixed</span>
-          </div>
-        </Modal.Body>
-
-        <Modal.Footer className="px-4 py-3 border-top justify-content-start gap-2">
-          <button type="button" className="btn btn-sm btn-primary" onClick={saveColsModal}>Save</button>
-          <button type="button" className="btn btn-cancel btn-sm" onClick={closeColsModal}>Cancel</button>
-        </Modal.Footer>
-      </Modal>
+        </div>
+      )}
 
       {/* ── Confirmation dialog ──────────────────────────────────────────────── */}
       <ConfirmDialog config={confirmConfig} onClose={() => setConfirmConfig(null)} />
 
       {/* ── Toast notification ───────────────────────────────────────────────── */}
       <div
+        role="region"
+        aria-live="polite"
         className="position-fixed top-0 start-50 translate-middle-x pt-4"
         style={{ zIndex: 9999, pointerEvents: "none" }}
       >

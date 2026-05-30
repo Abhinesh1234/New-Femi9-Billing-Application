@@ -35,14 +35,14 @@ const ModalCampaign = () => {
           <div className="row">
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Name <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Name <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
               <div className="mb-3">
-                <label className="form-label">
-                  Campaign Type <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Campaign Type <span>*</span>
                 </label>
                  <CommonSelect
                             options={Campaign_Type}
@@ -53,16 +53,16 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Deal Value <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Deal Value <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Currency <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Currency <span>*</span>
                 </label>
                 <CommonSelect
                             options={Currency}
@@ -73,8 +73,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Period <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Period <span>*</span>
                 </label>
                   <CommonSelect
                             options={Period}
@@ -85,16 +85,16 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Period Value <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Period Value <span>*</span>
                 </label>
                 <input type="text" className="form-control" />
               </div>
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Target Audience <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Target Audience <span>*</span>
                 </label>
                <CommonTagInputs
                             initialTags={tags}
@@ -104,8 +104,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <textarea
                   rows={3}
@@ -117,8 +117,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Attachment <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Attachment <span>*</span>
                 </label>
                 <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                   <span className="upload-img d-block mb-1">
@@ -225,8 +225,8 @@ const ModalCampaign = () => {
           <div className="row">
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Name <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Name <span>*</span>
                 </label>
                 <input
                   type="text"
@@ -235,8 +235,8 @@ const ModalCampaign = () => {
                 />
               </div>
               <div className="mb-3">
-                <label className="form-label">
-                  Campaign Type <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Campaign Type <span>*</span>
                 </label>
                 <CommonSelect
                             options={Campaign_Type}
@@ -247,8 +247,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Deal Value <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Deal Value <span>*</span>
                 </label>
                 <input
                   type="text"
@@ -259,8 +259,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Currency <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Currency <span>*</span>
                 </label>
                <CommonSelect
                             options={Currency}
@@ -271,8 +271,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Period <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Period <span>*</span>
                 </label>
                 <CommonSelect
                             options={Period}
@@ -283,8 +283,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-6">
               <div className="mb-3">
-                <label className="form-label">
-                  Period Value <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Period Value <span>*</span>
                 </label>
                 <input
                   type="text"
@@ -295,8 +295,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Target Audience <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Target Audience <span>*</span>
                 </label>
                <CommonTagInputs
                             initialTags={tags}
@@ -306,8 +306,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Description <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Description <span>*</span>
                 </label>
                 <textarea
                   rows={3}
@@ -319,8 +319,8 @@ const ModalCampaign = () => {
             </div>
             <div className="col-md-12">
               <div className="mb-3">
-                <label className="form-label">
-                  Attachment <span className="text-danger">*</span>
+                <label className="form-label text-danger">
+                  Attachment <span>*</span>
                 </label>
                 <div className="file-upload drag-file w-100 d-flex bg-light border shadow align-items-center justify-content-center flex-column">
                   <span className="upload-img d-block mb-1">

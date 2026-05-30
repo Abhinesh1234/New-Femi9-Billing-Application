@@ -1,0 +1,1 @@
+var a={},i=function(e){};function r(n,e){}function f(n,e){}function s(){a={}}function c(n,e,t){!e&&!a[t]&&(n(!1,t),a[t]=!0)}function o(n,e){c(r,n,e)}function u(n,e){c(f,n,e)}o.preMessage=i;o.resetWarned=s;o.noteOnce=u;function d(){return!!(typeof window<"u"&&window.document&&window.document.createElement)}export{r as a,d as c,o as w};

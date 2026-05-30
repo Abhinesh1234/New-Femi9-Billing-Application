@@ -3,19 +3,31 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class SaveOpeningStockRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        $user = $this->user();
+        if (!$user) return false;
+        if ($user instanceof \App\Models\PartyUser) return true;
+        return $user->hasPermission('edit', 'items');
+    }
 
     public function rules(): array
     {
         return [
-            'entries'                           => 'required|array|min:1',
-            'entries.*.location_id'             => 'required|integer|exists:locations,id',
-            'entries.*.opening_stock'           => 'required|numeric|min:0|max:9999999.9999',
-            'entries.*.opening_stock_value'     => 'required|numeric|min:0|max:9999999.9999',
+            'entries'                       => 'required|array|min:1|max:50',
+            'entries.*.location_id'         => [
+                'required',
+                'integer',
+                // Only allow locations that exist AND are active
+                Rule::exists('locations', 'id')->where('is_active', true),
+            ],
+            'entries.*.opening_stock'       => 'required|numeric|min:0|max:9999999.9999',
+            'entries.*.opening_stock_value' => 'required|numeric|min:0|max:9999999.9999',
         ];
     }
 
@@ -24,9 +36,10 @@ class SaveOpeningStockRequest extends FormRequest
         return [
             'entries.required'                          => 'At least one stock entry is required.',
             'entries.min'                               => 'At least one stock entry is required.',
+            'entries.max'                               => 'A maximum of 50 stock entries can be submitted at once.',
             'entries.*.location_id.required'            => 'A location must be selected for each row.',
             'entries.*.location_id.integer'             => 'Invalid location ID.',
-            'entries.*.location_id.exists'              => 'One or more selected locations do not exist.',
+            'entries.*.location_id.exists'              => 'One or more selected locations do not exist or are inactive.',
             'entries.*.opening_stock.required'          => 'Opening stock quantity is required for each row.',
             'entries.*.opening_stock.numeric'           => 'Opening stock must be a valid number.',
             'entries.*.opening_stock.min'               => 'Opening stock cannot be negative.',
@@ -38,6 +51,7 @@ class SaveOpeningStockRequest extends FormRequest
         ];
     }
 
+    /** Cross-field: ensure no location_id appears more than once in a single request. */
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {

@@ -25,8 +25,8 @@ const ModalPipeline = () => {
       <form >
         <div>
           <div className="mb-3">
-            <label className="form-label">
-              Pipeline Name <span className="text-danger">*</span>
+            <label className="form-label text-danger">
+              Pipeline Name <span>*</span>
             </label>
             <input className="form-control" type="text" />
           </div>
@@ -231,8 +231,8 @@ const ModalPipeline = () => {
       <form >
         <div>
           <div className="mb-3">
-            <label className="form-label">
-              Pipeline Name <span className="text-danger">*</span>
+            <label className="form-label text-danger">
+              Pipeline Name <span>*</span>
             </label>
             <input
               className="form-control"
