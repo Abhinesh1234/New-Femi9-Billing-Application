@@ -1,0 +1,1 @@
+import{r as t}from"./main-vJA-DQkP.js";function s(e){t.useEffect(()=>{const i=()=>{document.visibilityState==="visible"&&e()};return document.addEventListener("visibilitychange",i),()=>document.removeEventListener("visibilitychange",i)},[e])}export{s as u};

@@ -27,7 +27,7 @@ import SearchInput from "../../../../components/dataTable/dataTableSearch";
 import { all_routes } from "../../../../routes/all_routes";
 import { usePermission } from "../../../../core/hooks/usePermission";
 import { type PartyListItem } from "../../../../core/services/partyApi";
-import { getPartyPage, bustAllPartyCache } from "../../../../core/cache/partyCache";
+import { getPartyPage, bustAllPartyCache, bustPartyList } from "../../../../core/cache/partyCache";
 import { onMutation } from "../../../../core/cache/mutationEvents";
 import { useWindowFocusRefresh } from "../../../../core/hooks/useWindowFocusRefresh";
 import { exportToExcelFile, exportToPdfPrint } from "../../../../core/utils/exportUtils";
@@ -78,6 +78,7 @@ const COL_WIDTHS_LS_KEY  = "femi9_parties_col_widths";
 const COL_ORDER_LS_KEY   = "femi9_parties_col_order";
 const COL_VISIBLE_LS_KEY = "femi9_parties_col_visible";
 const VIEW_LS_KEY        = "femi9_parties_view";
+const FILTER_LS_KEY      = "femi9_parties_filter";
 
 interface ResizableTitleProps extends ThHTMLAttributes<HTMLTableCellElement> {
   onResize?: (key: string, width: number) => void;
@@ -210,14 +211,16 @@ function SortableColRow({ col, checked, onToggle }: { col: ColDef; checked: bool
   );
 }
 
-type CreatorFilter = "all" | "company" | "party";
+type CreatorFilter   = "all" | "company" | "party";
+type ApprovalFilter  = "all" | "pending" | "approved" | "rejected";
 
 // ─── Main component ───────────────────────────────────────────────────────────
 const DistributorsList = () => {
-  const canCreate = usePermission("parties", "create");
-  const navigate  = useNavigate();
-  const authUser  = useSelector((state: RootState) => state.auth.user);
-  const isParty   = authUser?.user_type === "party";
+  const canCreate      = usePermission("parties", "create");
+  const navigate       = useNavigate();
+  const authUser       = useSelector((state: RootState) => state.auth.user);
+  const partyAuthUser  = useSelector((state: RootState) => state.partyAuth.user);
+  const isParty        = authUser?.user_type === "party" || !!partyAuthUser;
 
   const [view, setView] = useState<"list" | "grid">(() => {
     try { return localStorage.getItem(VIEW_LS_KEY) === "grid" ? "grid" : "list"; }
@@ -231,10 +234,19 @@ const DistributorsList = () => {
   const gridLoadedRef    = useRef(0); // total items loaded so far (for next-page calc)
   const [searchText, setSearchText]         = useState("");
   const [loading, setLoading]               = useState(true);
-  const [partyTypeFilter, setPartyTypeFilter] = useState<"all" | "business" | "individual" | "deleted">("all");
-  const [creatorFilter, setCreatorFilter]   = useState<CreatorFilter>("company");
+  const [partyTypeFilter, setPartyTypeFilter] = useState<"all" | "business" | "individual" | "deleted">(() => {
+    try { const s = JSON.parse(localStorage.getItem(FILTER_LS_KEY) ?? "{}"); return s.partyTypeFilter ?? "all"; } catch { return "all"; }
+  });
+  const [creatorFilter, setCreatorFilter]   = useState<CreatorFilter>(() => {
+    try { const s = JSON.parse(localStorage.getItem(FILTER_LS_KEY) ?? "{}"); return s.creatorFilter ?? "company"; } catch { return "company"; }
+  });
+  const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>(() => {
+    try { const s = JSON.parse(localStorage.getItem(FILTER_LS_KEY) ?? "{}"); return s.approvalFilter ?? "all"; } catch { return "all"; }
+  });
   const [categoryOpts, setCategoryOpts]     = useState<{ value: string; label: string }[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(() => {
+    try { const s = JSON.parse(localStorage.getItem(FILTER_LS_KEY) ?? "{}"); return s.categoryFilter ?? null; } catch { return null; }
+  });
 
   // Server-side pagination state
   const [parties, setParties]               = useState<PartyListItem[]>([]);
@@ -262,14 +274,37 @@ const DistributorsList = () => {
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
+  // ── Approval action state ──
+
   // ── Load distribution category options (filtered for party users) ──
   useEffect(() => {
     fetchDistributionCategories().then(r => {
       if (!r.success) return;
-      const ids = authUser?.permissions?.invoices?.others_data?.party_category_ids;
-      const allowed: number[] | null = Array.isArray(ids) && ids.length > 0 ? ids : null;
       let opts = r.data.map(c => ({ value: String(c.id), label: c.name }));
-      if (isParty && allowed) opts = opts.filter(o => allowed.includes(Number(o.value)));
+
+      if (partyAuthUser) {
+        // Party portal user — restrict to categories from their role permissions,
+        // falling back to their own category + all switchable party categories
+        // (covers individual type users where category_id may be null).
+        const permIds = partyAuthUser.permissions?.parties?.others_data?.party_category_ids;
+        let allowed: number[] | null;
+        if (Array.isArray(permIds) && permIds.length > 0) {
+          allowed = permIds;
+        } else {
+          const catIds = [
+            partyAuthUser.category_id,
+            ...partyAuthUser.categories.map(c => c.category_id),
+          ].filter((id): id is number => id !== null && id !== undefined);
+          allowed = catIds.length > 0 ? [...new Set(catIds)] : null;
+        }
+        if (allowed) opts = opts.filter(o => allowed!.includes(Number(o.value)));
+      } else if (isParty) {
+        // Party user logged in via admin portal — use their parties permission category list.
+        const ids = authUser?.permissions?.parties?.others_data?.party_category_ids;
+        const allowed: number[] | null = Array.isArray(ids) && ids.length > 0 ? ids : null;
+        if (allowed) opts = opts.filter(o => allowed.includes(Number(o.value)));
+      }
+
       setCategoryOpts(opts);
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -313,9 +348,6 @@ const DistributorsList = () => {
       return { ...DEFAULT_COL_WIDTHS };
     }
   });
-
-  const colWidthsRef = useRef(colWidths);
-  useEffect(() => { colWidthsRef.current = colWidths; }, [colWidths]);
 
   const handleResize = useCallback((key: string, width: number) => {
     setColWidths((prev) => {
@@ -390,7 +422,8 @@ const DistributorsList = () => {
 
   const loadPage = useCallback(async (
     trashed: boolean, page: number, perPage: number,
-    search: string, creator: CreatorFilter, categoryId: string | null, silent = false,
+    search: string, creator: CreatorFilter, categoryId: string | null,
+    approval: ApprovalFilter, silent = false,
   ) => {
     const id = ++requestIdRef.current;
     if (!silent) {
@@ -407,6 +440,7 @@ const DistributorsList = () => {
         "display_name", "asc",
         categoryId ? Number(categoryId) : undefined,
         creator !== "all" ? creator : undefined,
+        approval !== "all" ? approval : undefined,
       );
       if (id !== requestIdRef.current) return; // stale response — a newer request is in flight
       if (trashed) {
@@ -447,6 +481,7 @@ const DistributorsList = () => {
         "display_name", "asc",
         categoryFilter ? Number(categoryFilter) : undefined,
         creatorFilter !== "all" ? creatorFilter : undefined,
+        approvalFilter !== "all" ? approvalFilter : undefined,
       );
       if (reqId !== gridReqRef.current) return;
       if (reset) {
@@ -464,16 +499,16 @@ const DistributorsList = () => {
     if (reqId !== gridReqRef.current) return;
     if (reset) setLoading(false);
     else setGridMoreLoading(false);
-  }, [partyTypeFilter, debouncedSearch, categoryFilter, creatorFilter]);
+  }, [partyTypeFilter, debouncedSearch, categoryFilter, creatorFilter, approvalFilter]);
 
   // ── Main data load effect (list view) ──
   useEffect(() => {
     if (view === "grid") return;
     const trashed = partyTypeFilter === "deleted";
     const page = trashed ? deletedPage : serverPage;
-    loadPage(trashed, page, serverPageSize, debouncedSearch, creatorFilter, categoryFilter);
+    loadPage(trashed, page, serverPageSize, debouncedSearch, creatorFilter, categoryFilter, approvalFilter);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, partyTypeFilter, serverPage, deletedPage, serverPageSize, debouncedSearch, creatorFilter, categoryFilter]);
+  }, [view, partyTypeFilter, serverPage, deletedPage, serverPageSize, debouncedSearch, creatorFilter, categoryFilter, approvalFilter]);
 
   // ── Grid load effect (grid view) ──
   useEffect(() => {
@@ -481,21 +516,11 @@ const DistributorsList = () => {
     loadGrid(true);
   }, [view, loadGrid]);
 
-  // ── Reset list pages when filter changes ──
+  // ── Persist filter selections ──
   useEffect(() => {
-    setServerPage(1);
-    setDeletedPage(1);
-  }, [partyTypeFilter]);
-
-  useEffect(() => {
-    setServerPage(1);
-    setDeletedPage(1);
-  }, [categoryFilter]);
-
-  useEffect(() => {
-    setServerPage(1);
-    setDeletedPage(1);
-  }, [creatorFilter]);
+    try { localStorage.setItem(FILTER_LS_KEY, JSON.stringify({ partyTypeFilter, creatorFilter, approvalFilter, categoryFilter })); }
+    catch { /* ignore */ }
+  }, [partyTypeFilter, creatorFilter, approvalFilter, categoryFilter]);
 
   useEffect(() => { localStorage.setItem(VIEW_LS_KEY, view); }, [view]);
 
@@ -507,21 +532,20 @@ const DistributorsList = () => {
     } else {
       const trashed = partyTypeFilter === "deleted";
       const page = trashed ? deletedPage : serverPage;
-      loadPage(trashed, page, serverPageSize, debouncedSearch, creatorFilter, categoryFilter, true);
+      loadPage(trashed, page, serverPageSize, debouncedSearch, creatorFilter, categoryFilter, approvalFilter, true);
     }
-  }, [view, partyTypeFilter, serverPage, deletedPage, serverPageSize, debouncedSearch, creatorFilter, categoryFilter, loadPage, loadGrid]);
+  }, [view, partyTypeFilter, serverPage, deletedPage, serverPageSize, debouncedSearch, creatorFilter, categoryFilter, approvalFilter, loadPage, loadGrid]);
 
   useEffect(() => onMutation("parties:mutated", handleRefresh), [handleRefresh]);
   useWindowFocusRefresh(handleRefresh);
 
+  // ── Approval actions ──
   // ── Build table columns ──
-  // colWidthsRef keeps current widths without being a useMemo dependency,
-  // preventing the entire column array from being rebuilt on every resize pixel.
   const columns = useMemo(() => {
     const resizeCell = (key: string) => () => ({
       colKey:       key,
       onResize:     handleResize,
-      currentWidth: colWidthsRef.current[key] ?? DEFAULT_COL_WIDTHS[key] ?? 160,
+      currentWidth: colWidths[key] ?? DEFAULT_COL_WIDTHS[key] ?? 160,
     });
 
     const cols: object[] = [
@@ -705,7 +729,7 @@ const DistributorsList = () => {
       lastCol.onHeaderCell = () => ({
         colKey:       adjacentKey,
         onResize:     handleResize,
-        currentWidth: colWidthsRef.current[adjacentKey] ?? DEFAULT_COL_WIDTHS[adjacentKey] ?? 160,
+        currentWidth: colWidths[adjacentKey] ?? DEFAULT_COL_WIDTHS[adjacentKey] ?? 160,
         handleSide:   "left",
       });
       delete lastCol.width;
@@ -714,7 +738,7 @@ const DistributorsList = () => {
     }
 
     return cols;
-  }, [visibleCols, colOrder, handleResize]);
+  }, [visibleCols, colOrder, colWidths, handleResize, isParty, approvalFilter]);
 
   // ── Grid search (local filter over accumulated grid items for instant feedback) ──
   const gridParties = useMemo(() => {
@@ -834,16 +858,18 @@ const DistributorsList = () => {
                     <Link to="#" className="dropdown-toggle btn btn-outline-light px-2 fs-16 fw-bold border-0" data-bs-toggle="dropdown">
                       {partyTypeFilter === "deleted"
                         ? "Deleted"
-                        : categoryFilter
-                          ? (categoryOpts.find(o => o.value === categoryFilter)?.label ?? "All Parties")
-                          : "All Parties"}
+                        : !isParty && authUser?.is_party_approver && approvalFilter !== "all"
+                          ? approvalFilter === "pending" ? "Pending Approval" : "Rejected"
+                          : categoryFilter
+                            ? (categoryOpts.find(o => o.value === categoryFilter)?.label ?? "All Parties")
+                            : "All Parties"}
                     </Link>
                     <div className="dropdown-menu dropmenu-hover-primary">
                       <ul>
                         <li>
                           <button
-                            className={`dropdown-item d-flex align-items-center gap-2${partyTypeFilter !== "deleted" && !categoryFilter ? " active" : ""}`}
-                            onClick={() => { setPartyTypeFilter("all"); setCategoryFilter(null); }}
+                            className={`dropdown-item d-flex align-items-center gap-2${partyTypeFilter !== "deleted" && !categoryFilter && approvalFilter === "all" ? " active" : ""}`}
+                            onClick={() => { setPartyTypeFilter("all"); setCategoryFilter(null); setApprovalFilter("all"); setServerPage(1); setDeletedPage(1); }}
                           >
                             <i className="ti ti-layout-list fs-15" />All Parties
                           </button>
@@ -852,17 +878,38 @@ const DistributorsList = () => {
                           <li key={opt.value}>
                             <button
                               className={`dropdown-item d-flex align-items-center gap-2${categoryFilter === opt.value ? " active" : ""}`}
-                              onClick={() => { setCategoryFilter(opt.value); setPartyTypeFilter("all"); }}
+                              onClick={() => { setCategoryFilter(opt.value); setPartyTypeFilter("all"); setApprovalFilter("all"); setServerPage(1); setDeletedPage(1); }}
                             >
                               <i className="ti ti-tag fs-15" />{opt.label}
                             </button>
                           </li>
                         ))}
+                        {!isParty && authUser?.is_party_approver && (
+                          <>
+                            <li><hr className="dropdown-divider" /></li>
+                            <li>
+                              <button
+                                className={`dropdown-item d-flex align-items-center gap-2${approvalFilter === "pending" ? " active" : ""}`}
+                                onClick={() => { setApprovalFilter("pending"); setPartyTypeFilter("all"); setCategoryFilter(null); setCreatorFilter("all"); setServerPage(1); setDeletedPage(1); bustPartyList(); }}
+                              >
+                                <i className="ti ti-clock fs-15" />Pending Approval
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                className={`dropdown-item d-flex align-items-center gap-2${approvalFilter === "rejected" ? " active" : ""}`}
+                                onClick={() => { setApprovalFilter("rejected"); setPartyTypeFilter("all"); setCategoryFilter(null); setCreatorFilter("all"); setServerPage(1); setDeletedPage(1); bustPartyList(); }}
+                              >
+                                <i className="ti ti-circle-x fs-15" />Rejected
+                              </button>
+                            </li>
+                          </>
+                        )}
                         <li><hr className="dropdown-divider" /></li>
                         <li>
                           <button
                             className={`dropdown-item d-flex align-items-center gap-2${partyTypeFilter === "deleted" ? " active" : ""}`}
-                            onClick={() => { setPartyTypeFilter("deleted"); setCategoryFilter(null); }}
+                            onClick={() => { setPartyTypeFilter("deleted"); setCategoryFilter(null); setApprovalFilter("all"); setServerPage(1); setDeletedPage(1); }}
                           >
                             <i className="ti ti-trash fs-15" />Deleted
                           </button>
@@ -874,7 +921,7 @@ const DistributorsList = () => {
 
                 {/* Right — sort / columns / view toggle */}
                 <div className="d-flex align-items-center gap-2 flex-wrap">
-                  {!isParty && (
+                  {!isParty && approvalFilter === "all" && (
                     <div className="dropdown">
                       <button type="button" className="dropdown-toggle btn btn-outline-light px-2 shadow" data-bs-toggle="dropdown">
                         <i className="ti ti-filter me-2" />
@@ -885,7 +932,7 @@ const DistributorsList = () => {
                           <li>
                             <button
                               className={`dropdown-item d-flex align-items-center gap-2${creatorFilter === "all" ? " active" : ""}`}
-                              onClick={() => setCreatorFilter("all")}
+                              onClick={() => { setCreatorFilter("all"); setServerPage(1); setDeletedPage(1); }}
                             >
                               <i className="ti ti-layout-list fs-15" />All
                             </button>
@@ -893,7 +940,7 @@ const DistributorsList = () => {
                           <li>
                             <button
                               className={`dropdown-item d-flex align-items-center gap-2${creatorFilter === "company" ? " active" : ""}`}
-                              onClick={() => setCreatorFilter("company")}
+                              onClick={() => { setCreatorFilter("company"); setServerPage(1); setDeletedPage(1); }}
                             >
                               <i className="ti ti-building fs-15" />Company
                             </button>
@@ -901,7 +948,7 @@ const DistributorsList = () => {
                           <li>
                             <button
                               className={`dropdown-item d-flex align-items-center gap-2${creatorFilter === "party" ? " active" : ""}`}
-                              onClick={() => setCreatorFilter("party")}
+                              onClick={() => { setCreatorFilter("party"); setServerPage(1); setDeletedPage(1); }}
                             >
                               <i className="ti ti-users fs-15" />Party
                             </button>
@@ -949,18 +996,28 @@ const DistributorsList = () => {
               {(loading || (partyTypeFilter === "deleted" && deletedLoading)) ? null : view === "list" ? (
                 (partyTypeFilter === "deleted" ? deletedParties : parties).length === 0 && !loadError ? (
                   <div className="text-center py-5">
-                    <i className="ti ti-users fs-40 d-block mb-4 text-muted opacity-50" />
+                    <i className={`ti ${approvalFilter === "pending" ? "ti-clock" : approvalFilter === "rejected" ? "ti-circle-x" : "ti-users"} fs-40 d-block mb-4 text-muted opacity-50`} />
                     <h6 className="fw-semibold mb-2">
-                      {partyTypeFilter === "deleted" ? "No Deleted Parties" : "No Parties Found"}
+                      {approvalFilter === "pending"
+                        ? "No Pending Approvals"
+                        : approvalFilter === "rejected"
+                          ? "No Rejected Parties"
+                          : partyTypeFilter === "deleted"
+                            ? "No Deleted Parties"
+                            : "No Parties Found"}
                     </h6>
                     <p className="text-muted mb-4 fs-14">
-                      {partyTypeFilter === "deleted"
-                        ? "No deleted parties match your search."
-                        : debouncedSearch
-                          ? "No parties match your search. Try a different keyword."
-                          : "Get started by adding your first party."}
+                      {approvalFilter === "pending"
+                        ? "All caught up — there are no parties waiting for approval."
+                        : approvalFilter === "rejected"
+                          ? "No parties have been rejected."
+                          : partyTypeFilter === "deleted"
+                            ? "No deleted parties match your search."
+                            : debouncedSearch
+                              ? "No parties match your search. Try a different keyword."
+                              : "Get started by adding your first party."}
                     </p>
-                    {!debouncedSearch && partyTypeFilter !== "deleted" && creatorFilter !== "party" && (
+                    {!debouncedSearch && approvalFilter === "all" && partyTypeFilter !== "deleted" && creatorFilter !== "party" && (
                       <Link to={route.addNewDistributors} className="btn btn-primary px-4">
                         <i className="ti ti-square-rounded-plus-filled me-1" />
                         Add New Party
@@ -999,18 +1056,28 @@ const DistributorsList = () => {
                 <>
                   {gridParties.length === 0 ? (
                     <div className="text-center py-5">
-                      <i className="ti ti-users fs-40 d-block mb-4 text-muted opacity-50" />
+                      <i className={`ti ${approvalFilter === "pending" ? "ti-clock" : approvalFilter === "rejected" ? "ti-circle-x" : "ti-users"} fs-40 d-block mb-4 text-muted opacity-50`} />
                       <h6 className="fw-semibold mb-2">
-                        {partyTypeFilter === "deleted" ? "No Deleted Parties" : "No Parties Found"}
+                        {approvalFilter === "pending"
+                          ? "No Pending Approvals"
+                          : approvalFilter === "rejected"
+                            ? "No Rejected Parties"
+                            : partyTypeFilter === "deleted"
+                              ? "No Deleted Parties"
+                              : "No Parties Found"}
                       </h6>
                       <p className="text-muted mb-4 fs-14">
-                        {partyTypeFilter === "deleted"
-                          ? "No deleted parties match your search."
-                          : searchText.trim()
-                            ? "No parties match your search. Try a different keyword."
-                            : "Get started by adding your first party."}
+                        {approvalFilter === "pending"
+                          ? "All caught up — there are no parties waiting for approval."
+                          : approvalFilter === "rejected"
+                            ? "No parties have been rejected."
+                            : partyTypeFilter === "deleted"
+                              ? "No deleted parties match your search."
+                              : searchText.trim()
+                                ? "No parties match your search. Try a different keyword."
+                                : "Get started by adding your first party."}
                       </p>
-                      {!searchText.trim() && partyTypeFilter !== "deleted" && creatorFilter !== "party" && (
+                      {!searchText.trim() && approvalFilter === "all" && partyTypeFilter !== "deleted" && creatorFilter !== "party" && (
                         <Link to={route.addNewDistributors} className="btn btn-primary px-4">
                           <i className="ti ti-square-rounded-plus-filled me-1" />
                           Add New Party
@@ -1200,6 +1267,7 @@ const DistributorsList = () => {
           </Toast.Body>
         </Toast>
       </div>
+
     </>
   );
 };

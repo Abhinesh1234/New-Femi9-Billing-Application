@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -76,13 +77,38 @@ class User extends Authenticatable
      * Returns null (= full access) only for super_admin with no individual overrides.
      * When individual permission rows exist they ALWAYS take priority, even for super_admin.
      */
+    public function permissionCacheKey(): string
+    {
+        return "user_perms:{$this->id}";
+    }
+
+    public function flushPermissionCache(): void
+    {
+        Cache::forget($this->permissionCacheKey());
+    }
+
     public function computeEffectivePermissions(): ?array
     {
-        $this->loadMissing(['userPermissions', 'role.permissions']);
+        return Cache::remember($this->permissionCacheKey(), now()->addMinutes(10), function () {
+            $this->loadMissing(['userPermissions', 'role.permissions']);
 
-        // Individual rows always win — even over super_admin bypass
-        if ($this->userPermissions->isNotEmpty()) {
-            return $this->userPermissions->mapWithKeys(fn ($p) => [
+            if ($this->userPermissions->isNotEmpty()) {
+                return $this->userPermissions->mapWithKeys(fn ($p) => [
+                    $p->module => [
+                        'view'        => (bool) $p->can_view,
+                        'create'      => (bool) $p->can_create,
+                        'edit'        => (bool) $p->can_edit,
+                        'delete'      => (bool) $p->can_delete,
+                        'others'      => (bool) $p->can_others,
+                        'others_data' => $p->others_data,
+                    ],
+                ])->toArray();
+            }
+
+            if ($this->isSuperAdmin()) return null;
+
+            $source = $this->role?->permissions ?? collect();
+            return $source->mapWithKeys(fn ($p) => [
                 $p->module => [
                     'view'        => (bool) $p->can_view,
                     'create'      => (bool) $p->can_create,
@@ -92,39 +118,20 @@ class User extends Authenticatable
                     'others_data' => $p->others_data,
                 ],
             ])->toArray();
-        }
-
-        // No individual overrides: super_admin gets null (= full access)
-        if ($this->isSuperAdmin()) return null;
-
-        // Regular user falls back to role permissions
-        $source = $this->role?->permissions ?? collect();
-        return $source->mapWithKeys(fn ($p) => [
-            $p->module => [
-                'view'        => (bool) $p->can_view,
-                'create'      => (bool) $p->can_create,
-                'edit'        => (bool) $p->can_edit,
-                'delete'      => (bool) $p->can_delete,
-                'others'      => (bool) $p->can_others,
-                'others_data' => $p->others_data,
-            ],
-        ])->toArray();
+        });
     }
 
     public function hasPermission(string $action, string $module): bool
     {
-        $this->loadMissing('userPermissions');
-
-        // Individual rows always win — even over super_admin bypass
-        if ($this->userPermissions->isNotEmpty()) {
-            $perms = $this->computeEffectivePermissions();
-            return (bool) ($perms[$module][$action] ?? false);
+        // Super admin with no overrides — skip DB entirely
+        if ($this->isSuperAdmin() && !Cache::has($this->permissionCacheKey())) {
+            $this->loadMissing('userPermissions');
+            if ($this->userPermissions->isEmpty()) return true;
         }
 
-        // No individual overrides: super_admin has full access
-        if ($this->isSuperAdmin()) return true;
-
         $perms = $this->computeEffectivePermissions();
+        if ($perms === null) return true; // super_admin full access
+
         return (bool) ($perms[$module][$action] ?? false);
     }
 

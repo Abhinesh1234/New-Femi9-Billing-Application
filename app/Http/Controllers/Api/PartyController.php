@@ -6,8 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePartyRequest;
 use App\Http\Requests\UpdatePartyRequest;
 use App\Http\Traits\EnforcesPartyScope;
+use App\Models\AppNotification;
 use App\Models\AuditLog;
 use App\Models\Country;
+use App\Models\CustomerApprovalApprover;
+use App\Models\CustomerApprovalHierarchyLevel;
+use App\Models\CustomerApprovalSetting;
 use App\Models\DistributionCategory;
 use App\Models\Invoice;
 use App\Models\Location;
@@ -68,7 +72,7 @@ class PartyController extends Controller
                     'first_name', 'last_name', 'email', 'mobile_code', 'mobile',
                     'distribution_category_id', 'distribution_sub_category_id',
                     'parent_party_id',
-                    'enable_portal', 'is_active', 'party_image', 'currency', 'payment_terms',
+                    'enable_portal', 'is_active', 'approval_status', 'party_image', 'currency', 'payment_terms',
                     'created_by', 'created_at',
                 ])
                 ->with([
@@ -82,21 +86,33 @@ class PartyController extends Controller
                 ->when($this->isPartyUser(), fn ($q) => $q->where('parent_party_id', $this->partyScopeId()))
                 ->when($request->query('party_type'), fn ($q, $t) => $q->where('party_type', $t))
                 ->when($request->query('distribution_category_id'), fn ($q, $id) => $q->where('distribution_category_id', (int) $id))
-                ->when($request->query('creator_type') === 'company', fn ($q) =>
+                ->when(!$this->isPartyUser() && $request->query('creator_type') === 'company', fn ($q) =>
                     $q->where(fn ($sub) =>
                         $sub->whereHas('createdBy', fn ($u) => $u->where('user_type', '!=', 'party'))
-                            ->orWhereNull('created_by')
+                            // null created_by with no parent = system/migration created, treat as company
+                            ->orWhere(fn ($inner) => $inner->whereNull('created_by')->whereNull('parent_party_id'))
                     )
                 )
-                ->when($request->query('creator_type') === 'party', fn ($q) =>
-                    $q->whereHas('createdBy', fn ($u) => $u->where('user_type', 'party'))
+                ->when(!$this->isPartyUser() && $request->query('creator_type') === 'party', fn ($q) =>
+                    $q->where(fn ($sub) =>
+                        $sub->whereHas('createdBy', fn ($u) => $u->where('user_type', 'party'))
+                            // null created_by with a parent = created via party portal
+                            ->orWhere(fn ($inner) => $inner->whereNull('created_by')->whereNotNull('parent_party_id'))
+                    )
+                )
+                ->when(
+                    in_array($request->query('approval_status'), ['pending', 'approved', 'rejected'], true),
+                    fn ($q) => $q->where('approval_status', $request->query('approval_status'))
                 )
                 ->when($request->query('search'), fn ($q, $s) =>
                     $q->where(fn ($sub) =>
                         $sub->where('display_name', 'like', "%{$s}%")
                             ->orWhere('company_name', 'like', "%{$s}%")
-                            ->orWhere('email', 'like', "%{$s}%")
-                            ->orWhere('party_id', 'like', "%{$s}%")
+                            ->orWhere('first_name',   'like', "%{$s}%")
+                            ->orWhere('last_name',    'like', "%{$s}%")
+                            ->orWhere('mobile',       'like', "%{$s}%")
+                            ->orWhere('email',        'like', "%{$s}%")
+                            ->orWhere('party_id',     'like', "%{$s}%")
                             ->orWhereHas('parent', fn ($p) =>
                                 $p->where('display_name', 'like', "%{$s}%")
                                   ->orWhere('mobile', 'like', "%{$s}%")
@@ -136,11 +152,15 @@ class PartyController extends Controller
     // ── POST /api/parties ─────────────────────────────────────────────────────
     public function store(StorePartyRequest $request): JsonResponse
     {
-        $this->assertCompanyUser('Party users cannot create new parties.');
         $ctx = $this->buildCtx($request, 'PartyController::store');
 
         try {
             $data = $request->validated();
+
+            // Party users can only create sub-parties under themselves
+            if ($this->isPartyUser()) {
+                $data['parent_party_id'] = $this->partyScopeId();
+            }
 
             // Resolve category code for party ID generation
             $categoryCode = 'GEN';
@@ -161,8 +181,9 @@ class PartyController extends Controller
                 $historyKey = strtoupper($categoryCode) . $suffix;
                 $data['party_id_history'] = [$historyKey => $data['party_id']];
 
-                $data['created_by'] = $request->user()->id;
-                $data['updated_by'] = $request->user()->id;
+                // created_by / updated_by reference the users table; party users have no row there
+                $data['created_by'] = $this->isPartyUser() ? null : $request->user()->id;
+                $data['updated_by'] = $this->isPartyUser() ? null : $request->user()->id;
 
                 // Pull out relation data before Party::create
                 $billingAddress  = $data['billing_address']   ?? null;
@@ -199,11 +220,39 @@ class PartyController extends Controller
 
                 // Auto-create stock locations and portal user
                 $setup = app(PartySetupService::class);
-                $setup->createStockLocations($party, $locationNodeIds, $data['created_by']);
+                $setup->createStockLocations($party, $locationNodeIds, $data['created_by'], $billingAddress, $shippingAddress);
                 $setup->createPortalUser($party, $data['created_by']);
 
                 return $party;
             });
+
+            // Auto-pending for business parties created by another party
+            if ($this->isPartyUser() && $party->party_type === 'business') {
+                $approvalSetting = CustomerApprovalSetting::first();
+                $approvalType    = $approvalSetting?->approval_type ?? 'no_approval';
+
+                if ($approvalType !== 'no_approval') {
+                    $party->update(['approval_status' => 'pending', 'is_active' => false]);
+
+                    // Determine who to notify
+                    $notifyUserIds = match ($approvalType) {
+                        'simple_approval' => CustomerApprovalApprover::pluck('user_id')->toArray(),
+                        'multi_level'     => CustomerApprovalHierarchyLevel::orderBy('level_order')->pluck('user_id')->filter()->take(1)->toArray(),
+                        default           => [],
+                    };
+
+                    foreach ($notifyUserIds as $userId) {
+                        AppNotification::create([
+                            'notifiable_type' => 'user',
+                            'notifiable_id'   => $userId,
+                            'type'            => 'party_approval',
+                            'title'           => 'New Party Pending Approval',
+                            'body'            => "{$party->display_name} has registered and is pending approval.",
+                            'data'            => ['party_id' => $party->id, 'party_name' => $party->display_name],
+                        ]);
+                    }
+                }
+            }
 
             Log::info('[PartyController] Created', array_merge($ctx, ['party_id' => $party->party_id]));
 
@@ -228,11 +277,117 @@ class PartyController extends Controller
         }
     }
 
+    // ── POST /api/parties/{id}/approve ───────────────────────────────────────
+    public function approve(Request $request, int $id): JsonResponse
+    {
+        try {
+            $party = Party::findOrFail($id);
+
+            if ($party->approval_status !== 'pending') {
+                return $this->errorResponse('Party is not pending approval.', 422);
+            }
+
+            if (!$this->isAuthorizedApprover($request->user()->id)) {
+                return $this->errorResponse('You are not authorized to approve parties.', 403);
+            }
+
+            $party->update([
+                'approval_status' => 'approved',
+                'is_active'       => true,
+                'approved_by'     => $request->user()->id,
+                'approved_at'     => now(),
+            ]);
+
+            // Mark related pending-approval notifications as read
+            AppNotification::where('type', 'party_approval')
+                ->whereNull('read_at')
+                ->where('data->party_id', $id)
+                ->update(['read_at' => now()]);
+
+            try {
+                $this->audit($request, 'approved', $party->id, null, $party->toArray());
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
+
+            return $this->successResponse([
+                'message' => 'Party approved successfully.',
+                'data'    => $party->fresh(['distributionCategory:id,name,code', 'distributionSubCategory:id,name', 'parent:id,display_name,party_type', 'createdBy:id,name']),
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return $this->errorResponse('Party not found.', 404);
+        } catch (Throwable $e) {
+            Log::error('[PartyController::approve] ' . $e->getMessage());
+            return $this->errorResponse('Failed to approve party.', 500);
+        }
+    }
+
+    // ── POST /api/parties/{id}/reject ────────────────────────────────────────
+    public function reject(Request $request, int $id): JsonResponse
+    {
+        try {
+            $party = Party::findOrFail($id);
+
+            if ($party->approval_status !== 'pending') {
+                return $this->errorResponse('Party is not pending approval.', 422);
+            }
+
+            if (!$this->isAuthorizedApprover($request->user()->id)) {
+                return $this->errorResponse('You are not authorized to reject parties.', 403);
+            }
+
+            $party->update([
+                'approval_status'  => 'rejected',
+                'is_active'        => false,
+                'approved_by'      => $request->user()->id,
+                'approved_at'      => now(),
+                'rejection_reason' => $request->input('reason') ?? null,
+            ]);
+
+            // Free location assignments
+            PartyLocation::where('party_id', $party->id)->delete();
+
+            // Mark related pending-approval notifications as read
+            AppNotification::where('type', 'party_approval')
+                ->whereNull('read_at')
+                ->where('data->party_id', $id)
+                ->update(['read_at' => now()]);
+
+            try {
+                $this->audit($request, 'rejected', $party->id, null, $party->toArray());
+            } catch (Throwable $auditErr) { Log::error("[Audit] Failed to write audit log", ["error" => $auditErr->getMessage()]); }
+
+            return $this->successResponse([
+                'message' => 'Party rejected.',
+                'data'    => $party->fresh(['distributionCategory:id,name,code', 'distributionSubCategory:id,name', 'parent:id,display_name,party_type', 'createdBy:id,name']),
+            ]);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return $this->errorResponse('Party not found.', 404);
+        } catch (Throwable $e) {
+            Log::error('[PartyController::reject] ' . $e->getMessage());
+            return $this->errorResponse('Failed to reject party.', 500);
+        }
+    }
+
+    // ── Approval authorization helper ─────────────────────────────────────────
+    private function isAuthorizedApprover(int $userId): bool
+    {
+        $setting = CustomerApprovalSetting::first();
+        if (!$setting || $setting->approval_type === 'no_approval') return false;
+
+        if ($setting->approval_type === 'simple_approval') {
+            return CustomerApprovalApprover::where('user_id', $userId)->exists();
+        }
+
+        // multi_level — any configured approver in the hierarchy can act
+        return CustomerApprovalHierarchyLevel::where('user_id', $userId)->exists();
+    }
+
     // ── GET /api/parties/{id} ─────────────────────────────────────────────────
     public function show(Request $request, int $id): JsonResponse
     {
-        // Party users can only view their own party profile
-        if ($this->isPartyUser() && $id !== $this->partyScopeId()) {
+        // Party users can only view parties within their own hierarchy (self + sub-parties)
+        if ($this->isPartyUser() && !in_array($id, $this->partyScopeIds(), true)) {
             return $this->errorResponse('Access denied.', 403);
         }
         $ctx = $this->buildCtx($request, 'PartyController::show');
@@ -251,7 +406,24 @@ class PartyController extends Controller
                 ])
                 ->findOrFail($id);
 
-            return $this->successResponse(['data' => $party]);
+            // When created_by is null the creator was a party user — resolve via audit log
+            $createdByPartyUser = null;
+            if ($party->created_by === null) {
+                $log = AuditLog::where('auditable_type', $party->getTable())
+                    ->where('auditable_id', $id)
+                    ->where('event', 'created')
+                    ->whereNotNull('party_user_id')
+                    ->with('partyUser:id,name')
+                    ->first();
+                if ($log?->partyUser) {
+                    $createdByPartyUser = ['id' => $log->partyUser->id, 'name' => $log->partyUser->name];
+                }
+            }
+
+            $data = $party->toArray();
+            $data['created_by_party_user'] = $createdByPartyUser;
+
+            return $this->successResponse(['data' => $data]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             return $this->errorResponse('Party not found.', 404);
@@ -382,17 +554,13 @@ class PartyController extends Controller
             DB::transaction(function () use ($party, $data) {
                 $billingAddress  = $data['billing_address']   ?? null;
                 $shippingAddress = $data['shipping_address']  ?? null;
-                $locationNodeIds = $data['location_node_ids'] ?? null;
+                $locationNodeIds      = $data['location_node_ids'] ?? null;
+                $locationTypeChanged = array_key_exists('location_type', $data);
 
                 unset($data['billing_address'], $data['shipping_address'], $data['location_node_ids']);
 
                 $party->update($data);
-
-                // Sync stock locations and portal user
                 $party->refresh();
-                $setup = app(PartySetupService::class);
-                $setup->syncStockLocations($party, $locationNodeIds, $data['updated_by']);
-                $setup->syncPortalUser($party);
 
                 // Upsert billing address
                 if ($billingAddress !== null) {
@@ -418,7 +586,7 @@ class PartyController extends Controller
                     }
                 }
 
-                // Sync locations
+                // Sync distribution location node assignments first
                 if ($locationNodeIds !== null) {
                     $party->locations()->delete();
                     foreach (array_unique((array) $locationNodeIds) as $nodeId) {
@@ -429,6 +597,22 @@ class PartyController extends Controller
                         ]);
                     }
                 }
+
+                // Determine effective node IDs for stock location sync.
+                // If location_type changed but nodes weren't re-sent, fetch current
+                // assignments so the rebuild uses the right nodes.
+                $effectiveNodeIds = $locationNodeIds;
+                if ($effectiveNodeIds === null && $locationTypeChanged) {
+                    $effectiveNodeIds = PartyLocation::where('party_id', $party->id)
+                        ->pluck('location_node_id')
+                        ->map(fn ($id) => (int) $id)
+                        ->toArray();
+                }
+
+                // Sync stock warehouse locations and portal user
+                $setup = app(PartySetupService::class);
+                $setup->syncStockLocations($party, $effectiveNodeIds, $data['updated_by']);
+                $setup->syncPortalUser($party);
             });
 
             Log::info('[PartyController] Updated', array_merge($ctx, ['party_id' => $party->party_id]));
@@ -463,6 +647,16 @@ class PartyController extends Controller
 
         try {
             $party = Party::findOrFail($id);
+
+            // Party users may only toggle status of parties within their own subtree,
+            // but not their own root party.
+            if ($this->isPartyUser()) {
+                $scopeIds = $this->partyScopeIds();
+                if (!in_array($id, $scopeIds, true) || $id === $this->partyScopeId()) {
+                    return $this->errorResponse('You do not have permission to update this party.', 403);
+                }
+            }
+
             $old = $party->toArray();
             $party->is_active = !$party->is_active;
             $party->save();
@@ -489,11 +683,19 @@ class PartyController extends Controller
     // ── DELETE /api/parties/{id} ──────────────────────────────────────────────
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $this->assertCompanyUser('Party users cannot delete party accounts.');
         $ctx = $this->buildCtx($request, 'PartyController::destroy');
 
         try {
             $party = Party::findOrFail($id);
+
+            // Party users may only delete parties within their own subtree,
+            // but not their own root party.
+            if ($this->isPartyUser()) {
+                $scopeIds = $this->partyScopeIds();
+                if (!in_array($id, $scopeIds, true) || $id === $this->partyScopeId()) {
+                    return $this->errorResponse('You do not have permission to delete this party.', 403);
+                }
+            }
 
             // Block deletion if customer has an unused advance payment balance
             $advanceBalance = \App\Models\Payment::where('customer_id', $id)
@@ -804,11 +1006,15 @@ class PartyController extends Controller
         ?array  $oldValues,
         ?array  $newValues
     ): void {
+        $authUser    = $request->user();
+        $isPartyUser = $authUser instanceof \App\Models\PartyUser;
+
         AuditLog::create([
             'auditable_type' => 'party',
             'auditable_id'   => $partyId,
             'event'          => $event,
-            'user_id'        => $request->user()->id,
+            'user_id'        => $isPartyUser ? null : $authUser->id,
+            'party_user_id'  => $isPartyUser ? $authUser->id : null,
             'ip_address'     => $request->ip(),
             'user_agent'     => $request->userAgent(),
             'old_values'     => $oldValues,

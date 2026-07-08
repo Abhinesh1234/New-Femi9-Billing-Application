@@ -25,8 +25,9 @@ function pageKey(
   trashed: boolean, page: number, perPage: number,
   search: string, orderBy: string, orderDir: string,
   categoryId?: number, creatorType?: "company" | "party",
+  approvalStatus?: "pending" | "approved" | "rejected",
 ): string {
-  return `${trashed ? 1 : 0}:${page}:${perPage}:${search}:${orderBy}:${orderDir}:${categoryId ?? ''}:${creatorType ?? ''}`;
+  return `${trashed ? 1 : 0}:${page}:${perPage}:${search}:${orderBy}:${orderDir}:${categoryId ?? ''}:${creatorType ?? ''}:${approvalStatus ?? ''}`;
 }
 
 // ── Synchronous reads (cache-only) ────────────────────────────────────────────
@@ -35,8 +36,9 @@ export function readPartyPage(
   trashed: boolean, page: number, perPage: number,
   search: string, orderBy: string, orderDir: string,
   categoryId?: number, creatorType?: "company" | "party",
+  approvalStatus?: "pending" | "approved" | "rejected",
 ): PartyPage | undefined {
-  return pageCache.read(pageKey(trashed, page, perPage, search, orderBy, orderDir, categoryId, creatorType));
+  return pageCache.read(pageKey(trashed, page, perPage, search, orderBy, orderDir, categoryId, creatorType, approvalStatus));
 }
 
 export function readPartyDetail(id: number): PartyListItem | undefined {
@@ -53,8 +55,9 @@ export function getPartyPage(
   trashed: boolean, page: number, perPage: number,
   search: string, orderBy: string, orderDir: string,
   categoryId?: number, creatorType?: "company" | "party",
+  approvalStatus?: "pending" | "approved" | "rejected",
 ): Promise<PartyPage> {
-  const key = pageKey(trashed, page, perPage, search, orderBy, orderDir, categoryId, creatorType);
+  const key = pageKey(trashed, page, perPage, search, orderBy, orderDir, categoryId, creatorType, approvalStatus);
   return pageCache.resolve(key, TTL_PAGE, async () => {
     const res = await fetchParties({
       trashed:   trashed || undefined,
@@ -65,6 +68,7 @@ export function getPartyPage(
       order_dir: orderDir,
       distribution_category_id: categoryId,
       creator_type: creatorType,
+      approval_status: approvalStatus,
     });
     if (!res.success) throw new Error((res as any).message ?? "Failed to fetch parties.");
     return { data: res.data, meta: (res as any).meta as PartyListMeta };

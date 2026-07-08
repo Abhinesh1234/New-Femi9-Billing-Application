@@ -29,6 +29,7 @@ export interface AuthUser {
     others_data?: { party_category_ids?: number[] | null } | null;
   }> | null;
   settings?: { enable_composite_items: boolean; enable_price_lists: boolean };
+  is_party_approver?: boolean;
   // Party-specific fields (only present when user_type === 'party')
   mobile?:        string | null;
   party_id?:      number;
@@ -40,8 +41,9 @@ export interface AuthUser {
   account_number?:  string | null;
   ifsc_code?:       string | null;
   upi_number?:      string | null;
+  location_type?:   "unified" | "separate" | null;
   locations?:       {
-    id: number; name: string; type: string | null; is_primary: boolean;
+    id: number; name: string; org_name: string | null; type: string | null; is_primary: boolean;
     logo_type: string | null; logo_path: string | null; logo_url: string | null;
     address: Record<string, string | null> | null;
     shipping_address: Record<string, string | null> | null;

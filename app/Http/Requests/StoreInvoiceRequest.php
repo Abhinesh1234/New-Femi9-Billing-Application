@@ -123,11 +123,13 @@ class StoreInvoiceRequest extends FormRequest
                 $v->errors()->add('payments', 'Total payment amount cannot exceed the invoice grand total.');
             }
 
-            // Stock check: block if any tracked-inventory item has insufficient stock
+            // Stock check: block if any tracked-inventory item has insufficient stock.
+            // Draft invoices do not consume stock so no check is needed.
             $locationId = (int) $this->input('location_id', 0);
             $itemsInput = $this->input('items', []);
+            $isDraft    = $this->input('status') === 'draft';
 
-            if ($locationId > 0 && !empty($itemsInput)) {
+            if (!$isDraft && $locationId > 0 && !empty($itemsInput)) {
                 $itemIds = collect($itemsInput)
                     ->filter(fn ($i) => !empty($i['item_id']))
                     ->pluck('item_id')

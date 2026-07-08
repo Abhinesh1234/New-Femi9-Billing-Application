@@ -27,15 +27,20 @@ class InvoiceController extends Controller
     use EnforcesPartyScope;
 
     private const LIST_WITH  = ['customer:id,display_name,distribution_category_id', 'customer.distributionCategory:id,name', 'location:id,name'];
+    private const ITEM_WITH  = ['item:id,name,unit'];
+
     private static function detailWith(): array
     {
         return [
             'customer:id,display_name,mobile,gst,distribution_category_id',
+            'customer.distributionCategory:id,name',
             'location:id,name,address,logo_path,website_url',
             'reference:id,name,phone',
             'tax:id,name,rate',
-            'items',
-            'attachments',
+            // Explicit column selection on items and attachments — avoids fetching unused columns
+            'items:id,invoice_id,item_id,item_name,pricelist_id,quantity,unit_price,base_rate,gst_rate,gst_amount,amount,sort_order',
+            'items.item:id,name,unit',
+            'attachments:id,invoice_id,original_name,storage_path,file_size,mime_type,created_at',
             'payments' => fn ($q) => $q->select('payments.id', 'payments.payment_number', 'payments.payment_date', 'payments.amount', 'payments.payment_mode', 'payments.source')
                                        ->withPivot('applied_amount', 'applied_at'),
         ];
@@ -43,33 +48,77 @@ class InvoiceController extends Controller
 
     // ── List ──────────────────────────────────────────────────────────────────
 
+    // TTL in seconds: page 1 (most viewed) cached longer; deep pages cached shorter.
+    private const CACHE_TTL_PAGE1 = 30;
+    private const CACHE_TTL_OTHER = 15;
+
     /**
      * GET /api/invoices
+     *
+     * Results are cached per user × filter combination.
+     * Cache is tagged by user ID so a write (create/update/delete) can flush
+     * only that user's pages rather than the entire invoice cache.
      */
     public function index(Request $request): JsonResponse
     {
         $ctx = $this->buildCtx($request, 'InvoiceController::index');
         try {
-            $base  = $request->boolean('trashed') ? Invoice::onlyTrashed() : Invoice::query();
-            $query = $base->with(self::LIST_WITH)
-                ->search($request->query('search'))
-                ->ofStatus($request->query('status'))
-                ->when($this->isPartyUser(), fn ($q) => $q->whereIn(
-                    'customer_id',
-                    \App\Models\Party::where('parent_party_id', $this->partyScopeId())->pluck('id')
-                ))
-                ->when(!$this->isPartyUser() && $request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->query('customer_id')))
-                ->when($request->filled('distribution_category_id'), fn ($q) => $q->whereHas('customer', fn ($cq) => $cq->where('distribution_category_id', $request->query('distribution_category_id'))))
-                ->when($request->filled('from_date'), fn ($q) => $q->whereDate('invoice_date', '>=', $request->query('from_date')))
-                ->when($request->filled('to_date'),   fn ($q) => $q->whereDate('invoice_date', '<=', $request->query('to_date')))
-                ->latest('invoice_date')
-                ->latest('id');
-
+            $userId  = $request->user()?->id;
             $perPage = max(1, min((int) $request->query('per_page', 20), 500));
-            return $this->successResponse(['data' => $query->paginate($perPage)]);
+            $page    = max(1, (int) $request->query('page', 1));
+
+            // Build a stable cache key from every query parameter that affects results
+            $cacheKey = 'inv_list:' . md5(serialize([
+                'uid'     => $userId,
+                'party'   => $this->isPartyUser() ? $this->partyScopeId() : null,
+                'search'  => $request->query('search'),
+                'status'  => $request->query('status'),
+                'cust'    => $request->query('customer_id'),
+                'dist'    => $request->query('distribution_category_id'),
+                'from'    => $request->query('from_date'),
+                'to'      => $request->query('to_date'),
+                'trashed' => $request->boolean('trashed'),
+                'per'     => $perPage,
+                'page'    => $page,
+            ]));
+
+            $ttl = $page === 1 ? self::CACHE_TTL_PAGE1 : self::CACHE_TTL_OTHER;
+
+            // Tags: ['invoices', 'inv_user_<id>'] — flush by user ID on write
+            $result = Cache::tags(['invoices', "inv_user_{$userId}"])
+                ->remember($cacheKey, $ttl, function () use ($request, $perPage) {
+                    $base  = $request->boolean('trashed') ? Invoice::onlyTrashed() : Invoice::query();
+                    return $base->with(self::LIST_WITH)
+                        ->search($request->query('search'))
+                        ->ofStatus($request->query('status'))
+                        ->when($this->isPartyUser(), fn ($q) => $q->whereIn(
+                            'customer_id',
+                            \App\Models\Party::where('parent_party_id', $this->partyScopeId())->pluck('id')
+                        ))
+                        ->when(!$this->isPartyUser() && $request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->query('customer_id')))
+                        ->when($request->filled('distribution_category_id'), fn ($q) => $q->whereHas('customer', fn ($cq) => $cq->where('distribution_category_id', $request->query('distribution_category_id'))))
+                        ->when($request->filled('from_date'), fn ($q) => $q->whereDate('invoice_date', '>=', $request->query('from_date')))
+                        ->when($request->filled('to_date'),   fn ($q) => $q->whereDate('invoice_date', '<=', $request->query('to_date')))
+                        ->latest('invoice_date')
+                        ->latest('id')
+                        ->paginate($perPage);
+                });
+
+            return $this->successResponse(['data' => $result]);
         } catch (Throwable $e) {
             $this->logException('InvoiceController::index', $e, $ctx);
             return $this->errorResponse('Failed to fetch invoices.', 500);
+        }
+    }
+
+    // Flush the invoice list cache for a specific user (called on write operations)
+    private function flushInvoiceListCache(?int $userId): void
+    {
+        if (! $userId) return;
+        try {
+            Cache::tags(["inv_user_{$userId}"])->flush();
+        } catch (Throwable) {
+            // Cache flush failure must never break a write operation.
         }
     }
 
@@ -99,7 +148,23 @@ class InvoiceController extends Controller
 
             DB::beginTransaction();
 
-            // 1. Create invoice
+            // 1a. If a series is set, generate the invoice number server-side inside the
+            //     transaction with a row-level lock so concurrent requests never collide.
+            if (!empty($data['series_id'])) {
+                $seriesModule = \App\Models\TransactionSeriesModule::where('series_id', $data['series_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($seriesModule) {
+                    $mod    = $seriesModule->getModule('Invoice');
+                    $prefix = (string) ($mod['prefix'] ?? '');
+                    $next   = (int) ($mod['current_number'] ?? 1);
+                    $data['invoice_number'] = $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+                    $seriesModule->updateModule('Invoice', ['current_number' => $next + 1]);
+                }
+            }
+
+            // 1b. Create invoice
             $invoice = Invoice::create($data);
 
             // 2. Create line items
@@ -188,26 +253,7 @@ class InvoiceController extends Controller
                 $invoice->refresh();
             }
 
-            // 5. Increment the series current_number so the next invoice gets the next number
-            if ($invoice->series_id) {
-                $seriesModule = \App\Models\TransactionSeriesModule::where('series_id', $invoice->series_id)
-                    ->lockForUpdate()
-                    ->first();
-                if ($seriesModule) {
-                    $mod = $seriesModule->getModule('Invoice');
-                    if ($mod) {
-                        // Use the suffix of the just-saved invoice number as the baseline
-                        $prefix     = (string) ($mod['prefix'] ?? '');
-                        $savedNum   = $prefix !== '' && str_starts_with($invoice->invoice_number, $prefix)
-                            ? (int) substr($invoice->invoice_number, strlen($prefix))
-                            : (int) ($mod['current_number'] ?? 1);
-                        $next       = max((int) ($mod['current_number'] ?? 1), $savedNum) + 1;
-                        $seriesModule->updateModule('Invoice', ['current_number' => $next]);
-                    }
-                }
-            }
-
-            // 6. Stock movements inside transaction — treat creation as transitioning from draft
+            // 5. Stock movements inside transaction — treat creation as transitioning from draft
             $finalStatus = $invoice->status;
             if ($finalStatus !== 'draft') {
                 app(StockMovementService::class)->onStatusChange(
@@ -216,6 +262,7 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
+            $this->flushInvoiceListCache($userId);
 
             // Activity logs written after commit so they reflect final state
             ActivityLogger::invoiceCreated($invoice, $userId);
@@ -247,9 +294,16 @@ class InvoiceController extends Controller
         try {
             $this->assertCustomerOwnership((int) $invoice->customer_id);
             $cacheKey = "invoice:detail:{$invoice->id}";
-            $data = Cache::remember($cacheKey, 300, fn () => $invoice->load(self::detailWith()));
-            $arr = $data->toArray();
-            $arr['is_fully_credited'] = $this->computeIsFullyCredited($invoice->id);
+
+            // Both the invoice relations AND is_fully_credited are cached together
+            // so every detail view after the first costs zero DB queries.
+            $arr = Cache::remember($cacheKey, 300, function () use ($invoice) {
+                $invoice->load(self::detailWith());
+                $data                    = $invoice->toArray();
+                $data['is_fully_credited'] = $this->computeIsFullyCredited($invoice->id);
+                return $data;
+            });
+
             return $this->successResponse(['data' => $arr]);
         } catch (Throwable $e) {
             $this->logException('InvoiceController::show', $e, $ctx);
@@ -358,6 +412,7 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
+            $this->flushInvoiceListCache($userId);
 
             ActivityLogger::invoiceUpdated($invoice, $userId, $oldData, $oldItems, $items);
 
@@ -399,6 +454,7 @@ class InvoiceController extends Controller
             });
 
             ActivityLogger::invoiceVoided($snapshot, $userId);
+            $this->flushInvoiceListCache($userId);
             Cache::forget("invoice:detail:{$invoice->id}");
             Log::info('[InvoiceController::destroy] Invoice deleted', array_merge($ctx, ['invoice_id' => $invoice->id]));
 
@@ -442,6 +498,7 @@ class InvoiceController extends Controller
             });
 
             ActivityLogger::invoiceVoided($invoice, $userId);
+            $this->flushInvoiceListCache($userId);
             Cache::forget("invoice:detail:{$invoice->id}");
             Log::info('[InvoiceController::void] Invoice voided', array_merge($ctx, ['invoice_id' => $invoice->id]));
 
@@ -465,6 +522,7 @@ class InvoiceController extends Controller
                 $invoice->restore();
                 app(StockMovementService::class)->onRestored($invoice, $userId);
             });
+            $this->flushInvoiceListCache($userId);
             Cache::forget("invoice:detail:{$invoice->id}");
             Log::info('[InvoiceController::restore] Invoice restored', array_merge($ctx, ['invoice_id' => $invoice->id]));
             return $this->successResponse(['data' => $invoice->load(self::detailWith())]);

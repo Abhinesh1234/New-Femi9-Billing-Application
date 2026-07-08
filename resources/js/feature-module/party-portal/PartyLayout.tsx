@@ -15,6 +15,8 @@ const PartyLayout = () => {
   const onItems           = useMatch("/party/items/*");
   const onCompositeItems  = useMatch("/party/composite-items/*");
   const onPriceList       = useMatch("/party/price-list/*");
+  const onProfile         = useMatch("/party/profile");
+  const onParties         = useMatch("/party/parties/*");
 
   const showCompositeItems = user?.settings?.enable_composite_items && user?.permissions?.composite_items?.view;
   const showPriceList      = user?.settings?.enable_price_lists     && user?.permissions?.price_list?.view;
@@ -84,6 +86,22 @@ const PartyLayout = () => {
               style={{ color: (!onAnyItems) ? "#E41F07" : "#6c757d", background: "transparent", border: "none" }}
             >
               Dashboard
+            </Link>
+
+            <Link
+              to={all_routes.partyParties}
+              className="btn btn-sm fs-13 fw-medium"
+              style={{ color: onParties ? "#E41F07" : "#6c757d", background: "transparent", border: "none" }}
+            >
+              My Parties
+            </Link>
+
+            <Link
+              to={all_routes.partyProfile}
+              className="btn btn-sm fs-13 fw-medium"
+              style={{ color: onProfile ? "#E41F07" : "#6c757d", background: "transparent", border: "none" }}
+            >
+              My Profile
             </Link>
 
             {/* Items — plain link when no sub-items, dropdown when sub-items exist */}

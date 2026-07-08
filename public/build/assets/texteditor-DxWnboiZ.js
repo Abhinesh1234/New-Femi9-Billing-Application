@@ -1,1 +1,0 @@
-import{R as r,j as t}from"./main-U-IBUujj.js";import{D as n}from"./index.es-fPFrGSYd.js";const l=()=>{const[e,a]=r.useState();function s(o){a(o.target.value)}return t.jsx("div",{children:t.jsx(n,{value:e,onChange:s})})};export{l as T};

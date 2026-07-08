@@ -46,6 +46,9 @@ const RouteChangeWatcher = () => {
 
     return () => {
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      // If Suspense unmounts this component (lazy chunk loading) before the
+      // timer fires, the "route" key would stay active forever. Clear it here.
+      dispatch(stopLoading("route"));
     };
   }, [location.pathname]);
 

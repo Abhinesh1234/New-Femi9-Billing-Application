@@ -1535,6 +1535,7 @@ export const publicRoutes = [
     element: <SecuritySettings />,
     route: Route,
     meta_title: "Settings - Security Settings",
+    permModule: "settings",
   },
   {
     id: "158",
@@ -1542,6 +1543,7 @@ export const publicRoutes = [
     element: <NotificationsSettings />,
     route: Route,
     meta_title: "Settings - Notification Settings",
+    permModule: "settings",
   },
   {
     id: "159",
@@ -1549,6 +1551,7 @@ export const publicRoutes = [
     element: <ConnectedApps />,
     route: Route,
     meta_title: "Settings - Connected Apps",
+    permModule: "settings",
   },
   {
     id: "160",
@@ -1556,6 +1559,7 @@ export const publicRoutes = [
     element: <CompanySettings />,
     route: Route,
     meta_title: "Settings - Company",
+    permModule: "settings",
   },
   {
     id: "161",
@@ -1563,6 +1567,7 @@ export const publicRoutes = [
     element: <LocalizationSettings />,
     route: Route,
     meta_title: "Settings - Localization",
+    permModule: "settings",
   },
   {
     id: "162",
@@ -1570,6 +1575,7 @@ export const publicRoutes = [
     element: <PrefixesSettings />,
     route: Route,
     meta_title: "Settings - Prefixes",
+    permModule: "settings",
   },
   {
     id: "163",
@@ -1577,6 +1583,7 @@ export const publicRoutes = [
     element: <PreferenceSettings />,
     route: Route,
     meta_title: "Settings - Preference",
+    permModule: "settings",
   },
   {
     id: "164",
@@ -1584,6 +1591,7 @@ export const publicRoutes = [
     element: <AppearanceSettings />,
     route: Route,
     meta_title: "Settings - Appearance",
+    permModule: "settings",
   },
   {
     id: "165",
@@ -1591,6 +1599,7 @@ export const publicRoutes = [
     element: <LanguageSettings />,
     route: Route,
     meta_title: "Settings - Language",
+    permModule: "settings",
   },
   {
     id: "166",
@@ -1598,6 +1607,7 @@ export const publicRoutes = [
     element: <InvoiceSettings />,
     route: Route,
     meta_title: "Settings - Invoice",
+    permModule: "settings",
   },
   {
     id: "167",
@@ -1605,6 +1615,7 @@ export const publicRoutes = [
     element: <PrintersSettings />,
     route: Route,
     meta_title: "Settings - Printers",
+    permModule: "settings",
   },
   {
     id: "168",
@@ -1612,6 +1623,7 @@ export const publicRoutes = [
     element: <CustomFieldsSetting />,
     route: Route,
     meta_title: "Settings - Custom Fields",
+    permModule: "settings",
   },
   {
     id: "settings-home",
@@ -1627,6 +1639,7 @@ export const publicRoutes = [
     element: <ProjectSettings />,
     route: Route,
     meta_title: "Settings - Product Settings",
+    permModule: "settings",
   },
   {
     id: "168b",
@@ -1634,6 +1647,7 @@ export const publicRoutes = [
     element: <CustomerSettings />,
     route: Route,
     meta_title: "Settings - Customer Settings",
+    permModule: "settings",
   },
   {
     id: "168c",
@@ -1641,6 +1655,7 @@ export const publicRoutes = [
     element: <PaymentReceivedSettings />,
     route: Route,
     meta_title: "Settings - Payments Received Settings",
+    permModule: "settings",
   },
   {
     id: "inventory-0",
@@ -1985,6 +2000,7 @@ export const publicRoutes = [
     route: Route,
     meta_title: "Party Overview",
     permModule: "parties",
+    permAllowParty: true,
   },
   {
     id: "168b",
@@ -1992,6 +2008,7 @@ export const publicRoutes = [
     element: <AddCustomField />,
     route: Route,
     meta_title: "Settings - New Custom Field",
+    permModule: "settings",
   },
   {
     id: "168c",
@@ -1999,6 +2016,7 @@ export const publicRoutes = [
     element: <EditCustomField />,
     route: Route,
     meta_title: "Settings - Edit Custom Field",
+    permModule: "settings",
   },
   {
     id: "168d",
@@ -2006,6 +2024,7 @@ export const publicRoutes = [
     element: <AddCustomField />,
     route: Route,
     meta_title: "Settings - New Custom Field",
+    permModule: "settings",
   },
   {
     id: "168e",
@@ -2013,6 +2032,7 @@ export const publicRoutes = [
     element: <EditCustomField />,
     route: Route,
     meta_title: "Settings - Edit Custom Field",
+    permModule: "settings",
   },
   {
     id: "168f",
@@ -2020,6 +2040,7 @@ export const publicRoutes = [
     element: <AddCustomField />,
     route: Route,
     meta_title: "Settings - New Custom Field",
+    permModule: "settings",
   },
   {
     id: "168g",
@@ -2027,6 +2048,7 @@ export const publicRoutes = [
     element: <EditCustomField />,
     route: Route,
     meta_title: "Settings - Edit Custom Field",
+    permModule: "settings",
   },
   {
     id: "168h",
@@ -2034,6 +2056,7 @@ export const publicRoutes = [
     element: <AddCustomField />,
     route: Route,
     meta_title: "Settings - New Custom Field",
+    permModule: "settings",
   },
   {
     id: "168i",
@@ -2041,6 +2064,7 @@ export const publicRoutes = [
     element: <EditCustomField />,
     route: Route,
     meta_title: "Settings - Edit Custom Field",
+    permModule: "settings",
   },
   {
     id: "169",
@@ -2048,6 +2072,7 @@ export const publicRoutes = [
     element: <EmailSettings />,
     route: Route,
     meta_title: "Settings - Email",
+    permModule: "settings",
   },
   {
     id: "170",
@@ -2055,6 +2080,7 @@ export const publicRoutes = [
     element: <SmsGateways />,
     route: Route,
     meta_title: "Settings - SMS Gateways",
+    permModule: "settings",
   },
   {
     id: "171",
@@ -2062,6 +2088,7 @@ export const publicRoutes = [
     element: <GdprCookies />,
     route: Route,
     meta_title: "Settings - GDPR",
+    permModule: "settings",
   },
   {
     id: "172",
@@ -2111,6 +2138,7 @@ export const publicRoutes = [
     element: <PaymentGateways />,
     route: Route,
     meta_title: "Settings - Payment Gateways",
+    permModule: "settings",
   },
   {
     id: "179",
@@ -2118,6 +2146,7 @@ export const publicRoutes = [
     element: <BankAccounts />,
     route: Route,
     meta_title: "Settings - Bank Account",
+    permModule: "settings",
   },
   {
     id: "180",
@@ -2125,6 +2154,7 @@ export const publicRoutes = [
     element: <TaxRates />,
     route: Route,
     meta_title: "Settings - Tax Rates",
+    permModule: "settings",
   },
   {
     id: "181",
@@ -2132,6 +2162,7 @@ export const publicRoutes = [
     element: <Currencies />,
     route: Route,
     meta_title: "Settings - Currencies",
+    permModule: "settings",
   },
   {
     id: "182",
@@ -2139,6 +2170,7 @@ export const publicRoutes = [
     element: <Sitemap />,
     route: Route,
     meta_title: "Settings - Sitemap",
+    permModule: "settings",
   },
   {
     id: "183",
@@ -2146,6 +2178,7 @@ export const publicRoutes = [
     element: <ClearCache />,
     route: Route,
     meta_title: "Settings - Clear Cache",
+    permModule: "settings",
   },
   {
     id: "184",
@@ -2153,6 +2186,7 @@ export const publicRoutes = [
     element: <Storage />,
     route: Route,
     meta_title: "Settings - Storage",
+    permModule: "settings",
   },
   {
     id: "185",
@@ -2160,6 +2194,7 @@ export const publicRoutes = [
     element: <Cronjob />,
     route: Route,
     meta_title: "Settings - Cronjob",
+    permModule: "settings",
   },
   {
     id: "186",
@@ -2167,6 +2202,7 @@ export const publicRoutes = [
     element: <BanIpAddress />,
     route: Route,
     meta_title: "Settings - Ban Ip Address",
+    permModule: "settings",
   },
   {
     id: "187",
@@ -2174,6 +2210,7 @@ export const publicRoutes = [
     element: <SystemBackup />,
     route: Route,
     meta_title: "Settings - System Backup",
+    permModule: "settings",
   },
   {
     id: "188",
@@ -2181,6 +2218,7 @@ export const publicRoutes = [
     element: <DatabaseBackup />,
     route: Route,
     meta_title: "Settings - Database Backup",
+    permModule: "settings",
   },
   {
     id: "189",
@@ -2188,6 +2226,7 @@ export const publicRoutes = [
     element: <SystemUpdate />,
     route: Route,
     meta_title: "Settings - System Update",
+    permModule: "settings",
   },
   {
     id: "190",

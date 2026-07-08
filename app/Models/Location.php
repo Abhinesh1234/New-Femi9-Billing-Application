@@ -17,6 +17,7 @@ class Location extends Model
         'party_id',
         'distribution_location_node_id',
         'name',
+        'org_name',
         'type',
         'parent_id',
         'logo_type',

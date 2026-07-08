@@ -49,3 +49,17 @@ export async function markAllNotificationsRead(): Promise<{ success: true; messa
     return data;
   } catch (e) { return handleError(e); }
 }
+
+export async function deleteNotification(id: number): Promise<{ success: true; message: string } | ErrorResponse> {
+  try {
+    const { data } = await axios.delete(`${BASE}/${id}`);
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
+export async function clearAllNotifications(): Promise<{ success: true; message: string } | ErrorResponse> {
+  try {
+    const { data } = await axios.delete(`${BASE}/all`);
+    return data;
+  } catch (e) { return handleError(e); }
+}

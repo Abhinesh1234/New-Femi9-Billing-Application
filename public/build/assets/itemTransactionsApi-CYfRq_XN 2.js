@@ -1,0 +1,1 @@
+import{n}from"./main-vJA-DQkP.js";async function c(a,t){try{const{data:s}=await n.get(`/api/items/${a}/transactions`,{params:t});return s}catch{return{success:!1,message:"Failed to load transactions."}}}export{c as f};

@@ -16,8 +16,13 @@ class PartySetupService
      * Separate location_type → one location per assigned node.
      * Unified (or null) → one combined location.
      */
-    public function createStockLocations(Party $party, array $nodeIds, int $createdBy): void
-    {
+    public function createStockLocations(
+        Party $party,
+        array $nodeIds,
+        ?int $createdBy,
+        ?array $billingAddress = null,
+        ?array $shippingAddress = null,
+    ): void {
         if (!$this->qualifies($party)) {
             return;
         }
@@ -26,12 +31,20 @@ class PartySetupService
             ? collect()
             : DistributionLocationNode::whereIn('id', array_unique($nodeIds))->get()->keyBy('id');
 
+        $addrData = [];
+        if ($billingAddress && count(array_filter($billingAddress)) > 0) {
+            $addrData['address'] = $billingAddress;
+        }
+        if ($shippingAddress && count(array_filter($shippingAddress)) > 0) {
+            $addrData['shipping_address'] = $shippingAddress;
+        }
+
         if ($party->location_type === 'separate' && $nodes->isNotEmpty()) {
             $first = true;
             foreach ($nodeIds as $nodeId) {
                 $node = $nodes->get($nodeId);
                 if (!$node) continue;
-                Location::create([
+                Location::create(array_merge([
                     'party_id'                      => $party->id,
                     'name'                          => $party->display_name . ' - ' . $node->name,
                     'type'                          => 'warehouse',
@@ -39,7 +52,7 @@ class PartySetupService
                     'is_primary'                    => $first,
                     'is_active'                     => true,
                     'created_by'                    => $createdBy,
-                ]);
+                ], $addrData));
                 $first = false;
             }
             return;
@@ -47,7 +60,7 @@ class PartySetupService
 
         // Unified: one location, suffixed with first node name if available
         $firstNode = $nodes->first();
-        Location::create([
+        Location::create(array_merge([
             'party_id'                      => $party->id,
             'name'                          => $firstNode
                                                 ? $party->display_name . ' - ' . $firstNode->name
@@ -57,7 +70,7 @@ class PartySetupService
             'is_primary'                    => true,
             'is_active'                     => true,
             'created_by'                    => $createdBy,
-        ]);
+        ], $addrData));
     }
 
     /**
@@ -67,15 +80,18 @@ class PartySetupService
      * or null when the node list was not part of the update payload
      * (in which case only names are refreshed).
      */
-    public function syncStockLocations(Party $party, ?array $nodeIds, int $updatedBy): void
+    public function syncStockLocations(Party $party, ?array $nodeIds, ?int $updatedBy): void
     {
         if (!$this->qualifies($party)) {
+            // Party no longer qualifies — deactivate and soft-delete so invoice history is preserved
+            Location::where('party_id', $party->id)->whereNull('deleted_at')
+                ->update(['is_active' => false]);
             Location::where('party_id', $party->id)->whereNull('deleted_at')->delete();
             return;
         }
 
         if ($nodeIds === null) {
-            // Nodes unchanged — just rename to match the new display_name
+            // Nodes and type unchanged — just rename active locations to match display_name
             foreach (Location::where('party_id', $party->id)->whereNull('deleted_at')->get() as $loc) {
                 $nodeName = $loc->distributionLocationNode?->name;
                 $loc->update([
@@ -87,8 +103,12 @@ class PartySetupService
             return;
         }
 
-        // Nodes or location_type changed — rebuild from scratch
-        Location::where('party_id', $party->id)->whereNull('deleted_at')->forceDelete();
+        // Nodes or location_type changed — deactivate + soft-delete existing locations
+        // so invoices that reference them still resolve the name via withTrashed queries.
+        Location::where('party_id', $party->id)->whereNull('deleted_at')
+            ->update(['is_active' => false]);
+        Location::where('party_id', $party->id)->whereNull('deleted_at')->delete();
+
         $this->createStockLocations($party, $nodeIds, $updatedBy);
     }
 
@@ -99,7 +119,7 @@ class PartySetupService
      * Username format: first4(first_name) + '@' + first4(digits of mobile)
      * Password: full mobile number (plaintext — hashed by model cast).
      */
-    public function createPortalUser(Party $party, int $createdBy): ?PartyUser
+    public function createPortalUser(Party $party, ?int $createdBy): ?PartyUser
     {
         if (!$this->qualifies($party)) {
             return null;
@@ -113,9 +133,9 @@ class PartySetupService
             'party_id'  => $party->id,
             'role_id'   => $party->role_id,
             'name'      => $party->display_name,
-            'username'  => $this->generateUsername($party->first_name, $party->mobile),
+            'username'  => $party->mobile,
             'mobile'    => $party->mobile,
-            'password'  => $party->mobile, // hashed by model cast
+            'password'  => $party->mobile, // hashed by model cast — temporary, user should change
             'is_active' => true,
         ]);
     }
@@ -142,20 +162,4 @@ class PartySetupService
             || ($party->party_type === 'individual' && $party->enable_portal);
     }
 
-    private function generateUsername(?string $firstName, ?string $mobile): string
-    {
-        $namePart   = strtolower(substr($firstName ?? 'user', 0, 4));
-        $mobilePart = substr(preg_replace('/\D/', '', $mobile ?? ''), 0, 4);
-        $base       = $namePart . '@' . $mobilePart;
-
-        if (!PartyUser::where('username', $base)->exists()) {
-            return $base;
-        }
-
-        $i = 2;
-        while (PartyUser::where('username', $base . '_' . $i)->exists()) {
-            $i++;
-        }
-        return $base . '_' . $i;
-    }
 }

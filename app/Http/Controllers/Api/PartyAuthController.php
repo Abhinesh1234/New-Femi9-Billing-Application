@@ -358,6 +358,26 @@ class PartyAuthController extends Controller
         }
     }
 
+    // ── PUT /api/party/auth/location/{id}/org-name ───────────────────────────
+    public function updateLocationOrgName(Request $request, int $locationId): JsonResponse
+    {
+        $request->validate([
+            'org_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            $location = $this->ownedLocation($request, $locationId);
+            if ($location instanceof JsonResponse) return $location;
+
+            $location->update(['org_name' => $request->input('org_name') ?: null]);
+
+            return $this->locationUpdatedResponse($request, $location);
+        } catch (Throwable $e) {
+            $this->logException('PartyAuthController::updateLocationOrgName', $e, $this->buildCtx($request, 'PartyAuthController::updateLocationOrgName'));
+            return $this->errorResponse('Failed to update organisation name.', 500);
+        }
+    }
+
     // ── PUT /api/party/auth/organisation ─────────────────────────────────────
     public function updateOrganisation(Request $request): JsonResponse
     {
@@ -625,6 +645,7 @@ class PartyAuthController extends Controller
             'account_number'  => $party?->account_number,
             'ifsc_code'       => $party?->ifsc_code,
             'upi_number'      => $party?->upi_number,
+            'location_type'   => $party?->location_type,
             'locations'       => $party
                 ? \App\Models\Location::where('party_id', $party->id)
                     ->whereNull('deleted_at')
@@ -635,13 +656,12 @@ class PartyAuthController extends Controller
                     ->map(fn($l) => [
                         'id'               => $l->id,
                         'name'             => $l->name,
+                        'org_name'         => $l->org_name,
                         'type'             => $l->type,
                         'is_primary'       => (bool) $l->is_primary,
                         'logo_type'        => $l->logo_type,
                         'logo_path'        => $l->logo_path,
-                        'logo_url'         => $l->logo_path
-                                                 ? Storage::disk('public')->url($l->logo_path)
-                                                 : null,
+                        'logo_url'         => $l->logo_path ? '/storage/' . $l->logo_path : null,
                         'address'          => $l->address,
                         'shipping_address' => $l->shipping_address,
                     ])

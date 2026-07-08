@@ -2,9 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Jobs\LogApiActivityJob;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class LogApiActivity
@@ -39,7 +39,8 @@ class LogApiActivity
             default        => 'info',
         };
 
-        Log::$level('[API] ' . $request->method() . ' ' . $request->path(), [
+        // Dispatch to background queue — never blocks the HTTP response
+        LogApiActivityJob::dispatch($level, '[API] ' . $request->method() . ' ' . $request->path(), [
             'timestamp'   => now()->format('Y-m-d H:i:s.u'),
             'user_id'     => $user?->id,
             'user_name'   => $user?->name,

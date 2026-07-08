@@ -8,7 +8,7 @@ import { nameInitial, nameToColor } from "../../../core/utils/avatarUtils";
 import {
   partyUpdateBanking, partyUpdateOrganisation,
   partyUpdateLocationLogo, partyRemoveLocationLogo,
-  partyUpdateLocationAddress, type AddressPayload,
+  partyUpdateLocationAddress, partyUpdateLocationOrgName, type AddressPayload,
   partyChangePassword,
 } from "../../../core/services/partyAuthApi";
 import { changePassword } from "../../../core/services/authApi";
@@ -234,28 +234,35 @@ const Profile = () => {
   };
 
   // ── Location state ──
-  const locations     = user?.locations ?? [];
-  const [selectedLoc, setSelectedLoc] = useState<{ id: number; name: string; type: string | null; is_primary: boolean } | null>(
+  const locations  = user?.locations ?? [];
+  const isSeparate = user?.location_type === "separate";
+  const [selectedLoc, setSelectedLoc] = useState<typeof locations[0] | null>(
     locations.length > 0 ? locations[0] : null
   );
+
+  // Sync selectedLoc when locations arrive (e.g. after session restoration)
+  useEffect(() => {
+    if (selectedLoc === null && locations.length > 0) {
+      setSelectedLoc(locations[0]);
+    }
+  }, [locations.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Location logo state (tied to selectedLoc) ──
   const [logoPreview,    setLogoPreview]    = useState<string | null>(selectedLoc?.logo_url ?? null);
   const [logoUploading,  setLogoUploading]  = useState(false);
   const [logoError,      setLogoError]      = useState<string | null>(null);
 
-  // sync logo preview when location changes
-  const prevLocId = useState<number | null>(selectedLoc?.id ?? null);
-  if (prevLocId[0] !== (selectedLoc?.id ?? null)) {
-    prevLocId[1](selectedLoc?.id ?? null);
+  // Sync logo preview whenever selectedLoc changes
+  useEffect(() => {
     setLogoPreview(selectedLoc?.logo_url ?? null);
     setLogoError(null);
-  }
+  }, [selectedLoc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogoChange = async (file: File) => {
     if (!selectedLoc) return;
+    const blobUrl = URL.createObjectURL(file);
     const prev = logoPreview;
-    setLogoPreview(URL.createObjectURL(file));
+    setLogoPreview(blobUrl);
     setLogoUploading(true);
     setLogoError(null);
     const res = await partyUpdateLocationLogo(selectedLoc.id, file);
@@ -269,7 +276,7 @@ const Profile = () => {
     dispatch(setUser(updated));
     const newLoc = updated.locations?.find((l) => l.id === selectedLoc.id) ?? null;
     setSelectedLoc(newLoc);
-    setLogoPreview(newLoc?.logo_url ?? null);
+    // Keep blobUrl as preview — server URL may differ from APP_URL on dev
   };
 
   const handleLogoRemove = async (e: MouseEvent) => {
@@ -290,7 +297,7 @@ const Profile = () => {
     dispatch(setUser(updated));
     const newLoc = updated.locations?.find((l) => l.id === selectedLoc.id) ?? null;
     setSelectedLoc(newLoc);
-    setLogoPreview(newLoc?.logo_url ?? null);
+    setLogoPreview(null);
   };
 
   // ── Country + phone max lengths ──
@@ -399,26 +406,38 @@ const Profile = () => {
     if (isBilling) setBillingEdit(false); else setShippingEdit(false);
   };
 
-  // ── Org name state ──
+  // ── Org name state (always per-location — never touches parties.display_name) ──
+  const orgNameCurrent = selectedLoc?.org_name ?? "";
+
   const [orgNameEdit,   setOrgNameEdit]   = useState(false);
-  const [orgNameValue,  setOrgNameValue]  = useState(user?.party_name ?? "");
+  const [orgNameValue,  setOrgNameValue]  = useState(orgNameCurrent);
   const [orgNameSaving, setOrgNameSaving] = useState(false);
   const [orgNameError,  setOrgNameError]  = useState<string | null>(null);
 
+  // Reset when selected location changes
+  useEffect(() => {
+    setOrgNameEdit(false);
+    setOrgNameError(null);
+    setOrgNameValue(selectedLoc?.org_name ?? "");
+  }, [selectedLoc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleOrgNameEdit = () => {
-    setOrgNameValue(user?.party_name ?? "");
+    setOrgNameValue(selectedLoc?.org_name ?? "");
     setOrgNameError(null);
     setOrgNameEdit(true);
   };
 
   const handleOrgNameSave = async () => {
-    if (!orgNameValue.trim()) { setOrgNameError("Organisation name is required."); return; }
+    if (!selectedLoc) return;
     setOrgNameSaving(true);
     setOrgNameError(null);
-    const res = await partyUpdateOrganisation(orgNameValue.trim());
+    const res = await partyUpdateLocationOrgName(selectedLoc.id, orgNameValue.trim() || null);
     setOrgNameSaving(false);
     if (!res.success) { setOrgNameError((res as any).message ?? "Failed to save."); return; }
-    dispatch(setUser((res as any).user as AuthUser));
+    const updated = (res as any).user as AuthUser;
+    dispatch(setUser(updated));
+    const newLoc = updated.locations?.find((l) => l.id === selectedLoc.id) ?? null;
+    setSelectedLoc(newLoc);
     setOrgNameEdit(false);
   };
 
@@ -727,57 +746,70 @@ const Profile = () => {
             {activeTab === "organisation" && (
               <div>
 
-                {/* ── Organisation Details card ── */}
-                <div className="card border mb-3">
-                  <div className="card-body p-0">
+                {/* ── Location selector strip (separate mode only) ── */}
+                {(isSeparate && locations.length > 1) || locations.length === 1 ? (
+                  <div className="d-flex align-items-center justify-content-between mb-3 px-1">
+                    <span className="fs-14 fw-medium text-muted">
+                      {isSeparate ? "Viewing location:" : "Location:"}
+                    </span>
+                    {isSeparate && locations.length > 1 ? (
+                      <div className="dropdown">
+                        <button
+                          type="button"
+                          className="btn btn-outline-light shadow d-flex align-items-center gap-1 dropdown-toggle"
+                          style={{ height: 36 }}
+                          data-bs-toggle="dropdown"
+                        >
+                          <i className="ti ti-map-pin fs-14" />
+                          {selectedLoc?.name ?? "Select Location"}
+                        </button>
+                        <ul className="dropdown-menu dropdown-menu-end">
+                          {locations.map((loc) => (
+                            <li key={loc.id}>
+                              <button
+                                type="button"
+                                className={`dropdown-item d-flex align-items-center gap-2 fs-13${selectedLoc?.id === loc.id ? " active" : ""}`}
+                                onClick={() => {
+                                  setSelectedLoc(loc);
+                                  setBillingEdit(false);
+                                  setBillingError(null);
+                                  setShippingEdit(false);
+                                  setShippingError(null);
+                                }}
+                              >
+                                {loc.name}
+                                {loc.is_primary && (
+                                  <span className="ms-auto badge fs-11" style={{ background: "#ffd6d2", color: "#E41F07" }}>Primary</span>
+                                )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <span className="badge fs-12" style={{ background: "#f1f3f5", color: "#6c757d" }}>
+                        {locations[0].name}
+                      </span>
+                    )}
+                  </div>
+                ) : null}
 
-                    <div className="px-4 py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
-                      <h6 className="fw-semibold fs-15 mb-0">Organisation Details</h6>
-                      {locations.length > 1 && (
-                        <div className="dropdown">
-                          <button
-                            type="button"
-                            className="btn btn-outline-light shadow d-flex align-items-center gap-1 dropdown-toggle"
-                            style={{ height: 36 }}
-                            data-bs-toggle="dropdown"
-                          >
-                            {selectedLoc?.name ?? "Select Location"}
-                          </button>
-                          <ul className="dropdown-menu dropdown-menu-end">
-                            {locations.map((loc) => (
-                              <li key={loc.id}>
-                                <button
-                                  type="button"
-                                  className={`dropdown-item d-flex align-items-center gap-2 fs-13${selectedLoc?.id === loc.id ? " active" : ""}`}
-                                  onClick={() => setSelectedLoc(loc)}
-                                >
-                                  {loc.name}
-                                  {loc.type && <span className="ms-auto text-muted text-capitalize" style={{ fontSize: 11 }}>{loc.type}</span>}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
+                {/* ── Logo + Org Name cards (side by side) ── */}
+                <div className="row g-3 mb-3">
+
+                  {/* Location Image */}
+                  <div className="col-md-6">
+                    <div className="card border h-100">
+                      <div className="card-body p-0">
+                        <div className="px-4 py-3 border-bottom">
+                          <h6 className="fw-semibold fs-15 mb-0">Location Image</h6>
                         </div>
-                      )}
-                      {locations.length === 1 && (
-                        <span className="badge fs-12" style={{ background: "#f1f3f5", color: "#6c757d" }}>
-                          {locations[0].name}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="px-4 py-4">
-                      {logoError && <div className="alert alert-danger py-2 fs-13 mb-3">{logoError}</div>}
-
-                      <div className="row g-4 align-items-start">
-
-                        {/* Left — location logo */}
-                        <div className="col-md-4 col-lg-3">
-                          <label className="form-label fs-14 text-muted mb-2">Location Image</label>
+                        <div className="px-4 py-4 d-flex flex-column align-items-center">
+                          {logoError && <div className="alert alert-danger py-2 fs-13 mb-3 w-100">{logoError}</div>}
                           <label
                             htmlFor="org_image_input"
-                            className="border rounded d-flex flex-column align-items-center justify-content-center text-center position-relative overflow-hidden w-100"
-                            style={{ cursor: logoUploading ? "wait" : "pointer", background: "#fafafa", height: 160 }}
+                            className="border rounded d-flex flex-column align-items-center justify-content-center text-center position-relative overflow-hidden"
+                            style={{ cursor: logoUploading ? "wait" : "pointer", background: "#fafafa", height: 180, width: "100%", maxWidth: 260 }}
                           >
                             {logoPreview ? (
                               <img src={logoPreview} alt="Location" style={{ height: "100%", width: "100%", objectFit: "contain", padding: 8 }} />
@@ -804,18 +836,24 @@ const Profile = () => {
                             onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
                             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLogoChange(f); }} />
                         </div>
+                      </div>
+                    </div>
+                  </div>
 
-                        {/* Right — org name */}
-                        <div className="col-md-8 col-lg-9">
-                          <div className="d-flex align-items-center justify-content-between mb-2">
-                            <label className="form-label fs-14 fw-medium mb-0">Organisation Name</label>
-                            {!orgNameEdit && (
-                              <button type="button" className="btn btn-outline-light shadow d-flex align-items-center gap-1"
-                                style={{ height: 38 }} onClick={handleOrgNameEdit}>
-                                <i className="ti ti-pencil" style={{ fontSize: 13 }} />Edit
-                              </button>
-                            )}
-                          </div>
+                  {/* Organisation Name */}
+                  <div className="col-md-6">
+                    <div className="card border h-100">
+                      <div className="card-body p-0">
+                        <div className="px-4 py-3 border-bottom d-flex align-items-center justify-content-between">
+                          <h6 className="fw-semibold fs-15 mb-0">Organisation Name</h6>
+                          {!orgNameEdit && (
+                            <button type="button" className="btn btn-outline-light shadow d-flex align-items-center gap-1"
+                              style={{ height: 36 }} onClick={handleOrgNameEdit}>
+                              <i className="ti ti-pencil" style={{ fontSize: 13 }} />Edit
+                            </button>
+                          )}
+                        </div>
+                        <div className="px-4 py-4">
                           {orgNameEdit ? (
                             <>
                               {orgNameError && <div className="text-danger fs-13 mb-1">{orgNameError}</div>}
@@ -834,14 +872,15 @@ const Profile = () => {
                               </div>
                             </>
                           ) : (
-                            <p className="fs-14 fw-medium mb-0">{user?.party_name || "—"}</p>
+                            <p className="fs-14 fw-medium mb-0">
+                              {orgNameCurrent || "—"}
+                            </p>
                           )}
                         </div>
-
                       </div>
                     </div>
-
                   </div>
+
                 </div>
 
                 {/* ── Address cards ── */}

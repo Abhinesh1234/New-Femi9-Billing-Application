@@ -81,6 +81,15 @@ class AuditLogController extends Controller
     }
 
     /**
+     * GET /api/audit-logs/party/{id}
+     * Full history of a single party — accessible by party users.
+     */
+    public function forParty(Request $request, int $id): JsonResponse
+    {
+        return $this->forRecord($request, 'party', $id);
+    }
+
+    /**
      * GET /api/audit-logs/{type}/{id}
      * Full history of a single record.
      */
@@ -102,14 +111,15 @@ class AuditLogController extends Controller
 
             $logs = AuditLog::with(['user:id,name,phone', 'partyUser:id,name,email'])
                 ->forModel($type, $id)
-                // Company users: show only their own actions (no party-originated entries)
-                ->when(!$isParty, fn($q) => $q->whereNull('party_user_id'))
-                // Party users: show only entries made by users of the same party
-                ->when($isParty, fn($q) => $q->whereNotNull('party_user_id')
-                    ->whereIn('party_user_id',
-                        PartyUser::where('party_id', $partyId)->pluck('id')
-                    )
-                )
+                // For party records, show the full history regardless of who made the change
+                // (admin-created entries have party_user_id = NULL; party-created have it set).
+                // For all other types: company users see only company actions; party users see only party actions.
+                ->when($type !== 'party', function ($q) use ($isParty, $partyId) {
+                    $q->when(!$isParty, fn($q2) => $q2->whereNull('party_user_id'))
+                      ->when($isParty,  fn($q2) => $q2->whereNotNull('party_user_id')
+                          ->whereIn('party_user_id', PartyUser::where('party_id', $partyId)->pluck('id'))
+                      );
+                })
                 ->when($request->query('event'), fn($q, $v) => $q->event($v))
                 ->latest('created_at')
                 ->paginate($perPage);

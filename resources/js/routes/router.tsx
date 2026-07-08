@@ -17,6 +17,9 @@ const PartyDashboard          = lazy(() => import("../feature-module/party-porta
 const PartyItemsList          = lazy(() => import("../feature-module/party-portal/PartyItemsList"));
 const PartyCompositeItemsList = lazy(() => import("../feature-module/party-portal/PartyCompositeItemsList"));
 const PartyPriceList          = lazy(() => import("../feature-module/party-portal/PartyPriceList"));
+const PartyProfile            = lazy(() => import("../feature-module/party-portal/PartyProfile"));
+const PartyPartiesOverview    = lazy(() => import("../feature-module/party-portal/PartyPartiesOverview"));
+const AddNewParty             = lazy(() => import("../feature-module/Pages/customers/distributors/addNewParty"));
 
 const ALLRoutes: React.FC = () => {
   return (
@@ -93,6 +96,10 @@ const ALLRoutes: React.FC = () => {
           <Route path="/party/items/:id"          element={<PartyItemsList />} />
           <Route path="/party/composite-items"    element={<PartyCompositeItemsList />} />
           <Route path="/party/price-list"         element={<PartyPriceList />} />
+          <Route path="/party/profile"            element={<PartyProfile />} />
+          <Route path="/party/parties"            element={<PartyPartiesOverview />} />
+          <Route path="/party/parties/:id"        element={<PartyPartiesOverview />} />
+          <Route path="/party/parties/:id/edit"   element={<AddNewParty />} />
         </Route>
       </Route>
 

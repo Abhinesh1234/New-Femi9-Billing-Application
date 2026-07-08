@@ -1,0 +1,1 @@
+import{j as a}from"./main-vJA-DQkP.js";const o=({value:e,onChange:r})=>a.jsx("div",{className:"datatable-search",children:a.jsx("input",{type:"search",className:"form-control",placeholder:"Search","aria-controls":"DataTables_Table_0",value:e,onChange:t=>r(t.target.value)})});export{o as S};

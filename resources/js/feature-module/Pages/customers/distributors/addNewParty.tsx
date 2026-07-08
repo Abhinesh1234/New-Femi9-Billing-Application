@@ -515,6 +515,7 @@ const AddNewParty = ({ modalMode = false, onModalClose, onModalSaved, prefillQue
   const pendingSubCatIdRef    = useRef<string | null>(null);
   const pendingLocationsRef   = useRef<Option[]>([]);
   const ownLocationNodeIdsRef = useRef<number[]>([]);
+  const skipRoleDefaultsRef   = useRef(false);
   const [contactPersons, setContactPersons] = useState<ContactPerson[]>([createEmptyContact()]);
   const [phoneCodeOptions, setPhoneCodeOptions] = useState<Option[]>(DEFAULT_PHONE_CODES);
   const [phoneMaxLengths, setPhoneMaxLengths] = useState<Record<string, number>>({});
@@ -569,6 +570,11 @@ const AddNewParty = ({ modalMode = false, onModalClose, onModalSaved, prefillQue
       setInventoryRows(BLANK_INVENTORY);
       setSalesRows(BLANK_SALES);
       setOthersRows(BLANK_OTHERS);
+      return;
+    }
+    // Edit prefill sets this flag so we don't overwrite party-specific permissions with role defaults
+    if (skipRoleDefaultsRef.current) {
+      skipRoleDefaultsRef.current = false;
       return;
     }
     setRoleDetailLoading(true);
@@ -631,7 +637,7 @@ const AddNewParty = ({ modalMode = false, onModalClose, onModalSaved, prefillQue
     if (!distCategory) {
       setDistSubCategoryOptions([]);
       setDistSubCategory(null);
-      setEnablePortal(false);
+      if (!isEditMode) setEnablePortal(false);
       return;
     }
     const filtered = allSubCategories.filter((s) => String(s.distribution_category_id) === distCategory.value);
@@ -645,7 +651,7 @@ const AddNewParty = ({ modalMode = false, onModalClose, onModalSaved, prefillQue
       setDistSubCategory(null);
     }
     const cat = allDistCategories.find((c) => String(c.id) === distCategory.value);
-    setEnablePortal(cat?.portal_access ?? false);
+    if (!isEditMode) setEnablePortal(cat?.portal_access ?? false);
   }, [distCategory, allSubCategories, allDistCategories]);
 
   useEffect(() => {
@@ -720,7 +726,7 @@ const AddNewParty = ({ modalMode = false, onModalClose, onModalSaved, prefillQue
   const clr = (key: string) => setErrors((p) => { const n = { ...p }; delete n[key]; return n; });
   const handleClose = () => {
     if (modalMode) { onModalClose?.(); }
-    else { navigate(isEditMode && editId ? `/distributors/${editId}` : -1 as any); }
+    else { navigate(-1 as any); }
   };
 
   // ── Modal: pre-fill from search query ────────────────────────────────────
@@ -859,6 +865,7 @@ const AddNewParty = ({ modalMode = false, onModalClose, onModalSaved, prefillQue
 
       // Role prefill (company users only)
       if (isCompanyUser && d.role_id) {
+        skipRoleDefaultsRef.current = true; // prevent overrideRoleId effect from wiping party-specific perms
         setOverrideRoleId(String(d.role_id));
         if (d.permissions && d.permissions.length > 0) {
           const pm: PermMap = new Map(d.permissions.map(p => [p.module, {

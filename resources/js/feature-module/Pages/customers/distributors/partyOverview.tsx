@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePermission } from "../../../../core/hooks/usePermission";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import type { RootState } from "../../../../core/redux/store";
 import { startLoading, stopLoading } from "../../../../core/redux/loaderSlice";
 import { useNavigate, useParams, useLocation as useRouterLocation, useSearchParams } from "react-router";
 import { Toast } from "react-bootstrap";
@@ -11,10 +12,8 @@ import {
   restoreParty,
   togglePartyStatus,
   fetchPartyReceivables,
-  fetchPartyChildren,
   type PartyDetail,
   type PartyReceivables,
-  type PartyChildItem,
 } from "../../../../core/services/partyApi";
 import {
   readPartyFullDetail,
@@ -25,9 +24,11 @@ import {
   getPartyAuditLogs,
   bustParty,
   bustAllPartyCache,
+  bustPartyList,
   hydratePartyFullDetail,
   type PartyListItem,
 } from "../../../../core/cache/partyCache";
+import { fetchDistributionCategories } from "../../../../core/services/distributionCategoryApi";
 import { type AuditLogEntry } from "../../../../core/services/auditLogApi";
 import { emitMutation, onMutation } from "../../../../core/cache/mutationEvents";
 import { all_routes } from "../../../../routes/all_routes";
@@ -40,6 +41,8 @@ import {
 
 const route = all_routes;
 type Tab = "overview" | "comments" | "transactions" | "statement" | "history";
+type CreatorFilter  = "all" | "company" | "party";
+type ApprovalFilter = "all" | "pending" | "approved" | "rejected";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -197,9 +200,12 @@ const PANEL_PER_PAGE = 50;
 const PartyOverview = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const authUser  = useSelector((state: RootState) => state.auth.user);
+  const isPartyUser = authUser?.user_type === "party";
   const canEdit   = usePermission("parties", "edit");
   const canDelete = usePermission("parties", "delete");
   const dispatch = useDispatch();
+
   const navState = useRouterLocation().state as { tab?: Tab; listFilter?: "active" | "deleted" } | null;
   const [searchParams] = useSearchParams();
 
@@ -225,6 +231,10 @@ const PartyOverview = () => {
   const [listSearch, setListSearch] = useState("");
   const [listFilter, setListFilter] = useState<"active" | "deleted">(navState?.listFilter ?? "active");
   const pendingDeletedNavRef = useRef(false);
+  const [panelCategoryFilter, setPanelCategoryFilter] = useState<string | null>(null);
+  const [panelCreatorFilter, setPanelCreatorFilter]   = useState<CreatorFilter>("company");
+  const [panelApprovalFilter, setPanelApprovalFilter] = useState<ApprovalFilter>("all");
+  const [panelCategoryOpts, setPanelCategoryOpts]     = useState<{ value: string; label: string }[]>();
 
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -241,9 +251,6 @@ const PartyOverview = () => {
 
   const [receivables, setReceivables]         = useState<PartyReceivables | null>(null);
   const [receivablesLoading, setReceivablesLoading] = useState(false);
-  const [childParties, setChildParties]       = useState<PartyChildItem[]>([]);
-  const [childrenLoading, setChildrenLoading] = useState(false);
-
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const refreshingRef = useRef(false);
@@ -261,15 +268,33 @@ const PartyOverview = () => {
   };
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
+  // ── Load category options ──
+  useEffect(() => {
+    fetchDistributionCategories().then(r => {
+      if (!r.success) return;
+      let opts = r.data.map(c => ({ value: String(c.id), label: c.name }));
+      const ids = authUser?.permissions?.parties?.others_data?.party_category_ids;
+      if (isPartyUser && Array.isArray(ids) && ids.length > 0) {
+        opts = opts.filter(o => (ids as number[]).includes(Number(o.value)));
+      }
+      setPanelCategoryOpts(opts);
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Panel load function ──
   const loadPanelPage = useCallback(async (
     filter: "active" | "deleted", page: number, search: string, append: boolean,
+    categoryId: string | null = null, creator: CreatorFilter = "company", approval: ApprovalFilter = "all",
   ) => {
     setPanelLoading(true);
     try {
       const result = await getPartyPage(
         filter === "deleted", page, PANEL_PER_PAGE,
         search.trim(), "display_name", "asc",
+        categoryId ? Number(categoryId) : undefined,
+        creator !== "all" ? creator : undefined,
+        approval !== "all" ? approval : undefined,
       );
       setPanelItems(prev => append ? [...prev, ...result.data] : result.data);
       setPanelHasMore(result.meta.current_page < result.meta.last_page);
@@ -289,8 +314,9 @@ const PartyOverview = () => {
   useEffect(() => {
     setPanelItems([]);
     setPanelPage(1);
-    loadPanelPage(listFilter, 1, panelSearchDebounced, false);
-  }, [listFilter, panelSearchDebounced, loadPanelPage]);
+    loadPanelPage(listFilter, 1, panelSearchDebounced, false, panelCategoryFilter, panelCreatorFilter, panelApprovalFilter);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listFilter, panelSearchDebounced, panelCategoryFilter, panelCreatorFilter, panelApprovalFilter, loadPanelPage]);
 
   // ── Auto-navigate when filter changes (O2) ──
   useEffect(() => {
@@ -323,9 +349,9 @@ const PartyOverview = () => {
     const el = e.currentTarget;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (nearBottom && panelHasMore && !panelLoading) {
-      loadPanelPage(listFilter, panelPage + 1, panelSearchDebounced, true);
+      loadPanelPage(listFilter, panelPage + 1, panelSearchDebounced, true, panelCategoryFilter, panelCreatorFilter, panelApprovalFilter);
     }
-  }, [panelHasMore, panelLoading, panelPage, listFilter, panelSearchDebounced, loadPanelPage]);
+  }, [panelHasMore, panelLoading, panelPage, listFilter, panelSearchDebounced, panelCategoryFilter, panelCreatorFilter, panelApprovalFilter, loadPanelPage]);
 
   // ── Scroll active item into view ──
   useEffect(() => {
@@ -342,7 +368,7 @@ const PartyOverview = () => {
     try {
       bustAllPartyCache();
       const tasks: Promise<unknown>[] = [
-        loadPanelPage(listFilter, 1, panelSearchDebounced, false),
+        loadPanelPage(listFilter, 1, panelSearchDebounced, false, panelCategoryFilter, panelCreatorFilter, panelApprovalFilter),
         getPartyFullDetail(numId)
           .then((detail) => { setParty(detail); setError(null); hydratePartyFullDetail(detail); })
           .catch(() => showToast("danger", "Failed to reload party.")),
@@ -364,7 +390,7 @@ const PartyOverview = () => {
       refreshingRef.current = false;
       setRefreshing(false);
     }
-  }, [id, listFilter, panelSearchDebounced, activeTab, auditPage, loadPanelPage]);
+  }, [id, listFilter, panelSearchDebounced, panelCategoryFilter, panelCreatorFilter, panelApprovalFilter, activeTab, auditPage, loadPanelPage]);
 
   useEffect(() => onMutation("parties:mutated", handleRefresh), [handleRefresh]);
 
@@ -424,19 +450,6 @@ const PartyOverview = () => {
       .then((res) => { if (res.success) setReceivables(res.data); })
       .catch(() => {})
       .finally(() => setReceivablesLoading(false));
-  }, [id]);
-
-  // ── Fetch direct children whenever the viewed party changes ──
-  useEffect(() => {
-    if (!id) return;
-    const numId = Number(id);
-    if (isNaN(numId)) return;
-    setChildParties([]);
-    setChildrenLoading(true);
-    fetchPartyChildren(numId)
-      .then((res) => { if (res.success) setChildParties(res.data); })
-      .catch(() => {})
-      .finally(() => setChildrenLoading(false));
   }, [id]);
 
   // ── Fetch comments when tab opens or party changes ──
@@ -568,7 +581,7 @@ const PartyOverview = () => {
                 <input
                   type="text"
                   className="form-control border-start-0 ps-0"
-                  placeholder="Search parties…"
+                  placeholder="Search by name, phone…"
                   value={listSearch}
                   onChange={(e) => setListSearch(e.target.value)}
                 />
@@ -588,23 +601,81 @@ const PartyOverview = () => {
                   title="Filter"
                 >
                   <i className="ti ti-filter fs-14 text-muted" />
-                  {listFilter === "deleted" && (
+                  {(listFilter === "deleted" || panelCategoryFilter !== null || panelApprovalFilter !== "all" || panelCreatorFilter !== "company") && (
                     <span style={{ position: "absolute", top: 5, right: 5, width: 7, height: 7, borderRadius: "50%", background: "#e03131", border: "1.5px solid #fff" }} />
                   )}
                 </button>
-                <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary" style={{ minWidth: 180 }}>
-                  {(["active", "deleted"] as const).map((f) => (
-                    <button
-                      key={f}
-                      className="dropdown-item d-flex align-items-center gap-2 fs-13"
-                      style={{ fontWeight: listFilter === f ? 600 : 400, color: listFilter === f ? "#e03131" : undefined }}
-                      onClick={() => setListFilter(f)}
-                    >
-                      <i className={`ti ${f === "active" ? "ti-users" : "ti-trash"} fs-13`} />
-                      {f === "active" ? "Active Parties" : "Deleted Parties"}
-                      {listFilter === f && <i className="ti ti-check ms-auto fs-12" style={{ color: "#e03131" }} />}
-                    </button>
-                  ))}
+                <div className="dropdown-menu dropdown-menu-end dropmenu-hover-primary" style={{ minWidth: 200 }}>
+                  <ul>
+                    <li>
+                      <button
+                        className={`dropdown-item d-flex align-items-center gap-2 fs-13${listFilter !== "deleted" && !panelCategoryFilter && panelApprovalFilter === "all" ? " active" : ""}`}
+                        onClick={() => { setListFilter("active"); setPanelCategoryFilter(null); setPanelApprovalFilter("all"); }}
+                      >
+                        <i className="ti ti-layout-list fs-14" />All Parties
+                      </button>
+                    </li>
+                    {(panelCategoryOpts ?? []).map(opt => (
+                      <li key={opt.value}>
+                        <button
+                          className={`dropdown-item d-flex align-items-center gap-2 fs-13${panelCategoryFilter === opt.value ? " active" : ""}`}
+                          onClick={() => { setPanelCategoryFilter(opt.value); setListFilter("active"); setPanelApprovalFilter("all"); }}
+                        >
+                          <i className="ti ti-tag fs-14" />{opt.label}
+                        </button>
+                      </li>
+                    ))}
+                    {!isPartyUser && authUser?.is_party_approver && (
+                      <>
+                        <li><hr className="dropdown-divider" /></li>
+                        <li>
+                          <button
+                            className={`dropdown-item d-flex align-items-center gap-2 fs-13${panelApprovalFilter === "pending" ? " active" : ""}`}
+                            onClick={() => { setPanelApprovalFilter("pending"); setListFilter("active"); setPanelCategoryFilter(null); setPanelCreatorFilter("all"); bustPartyList(); }}
+                          >
+                            <i className="ti ti-clock fs-14" />Pending Approval
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            className={`dropdown-item d-flex align-items-center gap-2 fs-13${panelApprovalFilter === "rejected" ? " active" : ""}`}
+                            onClick={() => { setPanelApprovalFilter("rejected"); setListFilter("active"); setPanelCategoryFilter(null); setPanelCreatorFilter("all"); bustPartyList(); }}
+                          >
+                            <i className="ti ti-circle-x fs-14" />Rejected
+                          </button>
+                        </li>
+                      </>
+                    )}
+                    <li><hr className="dropdown-divider" /></li>
+                    <li>
+                      <button
+                        className={`dropdown-item d-flex align-items-center gap-2 fs-13${listFilter === "deleted" ? " active" : ""}`}
+                        onClick={() => { setListFilter("deleted"); setPanelCategoryFilter(null); setPanelApprovalFilter("all"); }}
+                      >
+                        <i className="ti ti-trash fs-14" />Deleted
+                      </button>
+                    </li>
+                    {!isPartyUser && panelApprovalFilter === "all" && listFilter !== "deleted" && (
+                      <>
+                        <li><hr className="dropdown-divider" /></li>
+                        <li>
+                          <span className="dropdown-header fs-12 text-uppercase text-muted">Created By</span>
+                        </li>
+                        {(["all", "company", "party"] as CreatorFilter[]).map(c => (
+                          <li key={c}>
+                            <button
+                              className={`dropdown-item d-flex align-items-center gap-2 fs-13${panelCreatorFilter === c ? " active" : ""}`}
+                              onClick={() => setPanelCreatorFilter(c)}
+                            >
+                              <i className={`ti ${c === "all" ? "ti-layout-list" : c === "company" ? "ti-building" : "ti-users"} fs-14`} />
+                              {c === "all" ? "All" : c === "company" ? "Company" : "Party"}
+                              {panelCreatorFilter === c && <i className="ti ti-check ms-auto fs-12" style={{ color: "#e03131" }} />}
+                            </button>
+                          </li>
+                        ))}
+                      </>
+                    )}
+                  </ul>
                 </div>
               </div>
             </div>
@@ -618,8 +689,8 @@ const PartyOverview = () => {
               </div>
             ) : filteredList.length === 0 ? (
               <div className="text-center py-4 text-muted fs-13">
-                <i className={`ti ${listFilter === "deleted" ? "ti-trash" : "ti-mood-empty"} d-block fs-24 mb-1`} />
-                {listFilter === "deleted" ? "No deleted parties" : "No parties found"}
+                <i className={`ti ${listFilter === "deleted" ? "ti-trash" : panelApprovalFilter === "pending" ? "ti-clock" : panelApprovalFilter === "rejected" ? "ti-circle-x" : "ti-mood-empty"} d-block fs-24 mb-1`} />
+                {listFilter === "deleted" ? "No deleted parties" : panelApprovalFilter === "pending" ? "No pending approvals" : panelApprovalFilter === "rejected" ? "No rejected parties" : "No parties found"}
               </div>
             ) : (
               filteredList.map((p) => {
@@ -666,7 +737,6 @@ const PartyOverview = () => {
                       )}
                     </div>
 
-                    {/* Restore button for deleted */}
                     {listFilter === "deleted" && (
                       <button
                         type="button"
@@ -768,13 +838,14 @@ const PartyOverview = () => {
                   >
                     <i className="ti ti-refresh" style={{ fontSize: 14 }} />Restore
                   </button>
-                ) : (
+                ) : (!isPartyUser || canEdit || canDelete) ? (
                   <div className="dropdown">
                     <button
                       type="button"
                       className="btn btn-outline-light dropdown-toggle shadow d-flex align-items-center gap-1"
                       style={{ height: 36 }}
                       data-bs-toggle="dropdown"
+                      data-bs-boundary="viewport"
                     >
                       Actions
                     </button>
@@ -787,15 +858,17 @@ const PartyOverview = () => {
                             </button>
                           </li>
                         )}
-                        <li>
-                          <button className="dropdown-item" onClick={handleToggleStatus}>
-                            {party.is_active
-                              ? <><i className="ti ti-circle-x me-2" />Mark as Inactive</>
-                              : <><i className="ti ti-circle-check me-2" />Mark as Active</>
-                            }
-                          </button>
-                        </li>
-                        <li><hr className="dropdown-divider m-1" /></li>
+                        {!isPartyUser && (
+                          <li>
+                            <button className="dropdown-item" onClick={handleToggleStatus}>
+                              {party.is_active
+                                ? <><i className="ti ti-circle-x me-2" />Mark as Inactive</>
+                                : <><i className="ti ti-circle-check me-2" />Mark as Active</>
+                              }
+                            </button>
+                          </li>
+                        )}
+                        {(canEdit || !isPartyUser) && canDelete && <li><hr className="dropdown-divider m-1" /></li>}
                         {canDelete && (
                           <li>
                             <button className="dropdown-item text-danger" onClick={handleDelete}>
@@ -806,7 +879,7 @@ const PartyOverview = () => {
                       </ul>
                     </div>
                   </div>
-                )}
+                ) : null}
                 <button
                   type="button"
                   className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
@@ -817,15 +890,17 @@ const PartyOverview = () => {
                 >
                   <i className={`ti ti-refresh${refreshing ? " spin-animation" : ""}`} style={{ fontSize: 16 }} />
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
-                  style={{ height: 36, width: 36 }}
-                  onClick={() => navigate(route.distributors)}
-                  title="Close"
-                >
-                  <i className="ti ti-x" style={{ fontSize: 16 }} />
-                </button>
+                {!isPartyUser && (
+                  <button
+                    type="button"
+                    className="btn btn-outline-light d-flex align-items-center justify-content-center shadow"
+                    style={{ height: 36, width: 36 }}
+                    onClick={() => navigate(route.distributors)}
+                    title="Close"
+                  >
+                    <i className="ti ti-x" style={{ fontSize: 16 }} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -835,10 +910,12 @@ const PartyOverview = () => {
                 {(
                   [
                     { key: "overview",      label: "Overview"      },
-                    { key: "comments",      label: "Comments"      },
-                    { key: "transactions",  label: "Transactions"  },
-                    { key: "statement",     label: "Statement"     },
                     { key: "history",       label: "History"       },
+                    ...(!isPartyUser ? [
+                      { key: "comments",     label: "Comments"     },
+                      { key: "transactions", label: "Transactions" },
+                      { key: "statement",    label: "Statement"    },
+                    ] : []),
                   ] as { key: Tab; label: string }[]
                 ).map((t) => {
                   const isActive = activeTab === t.key;
@@ -973,10 +1050,18 @@ const PartyOverview = () => {
                       </div>
                     </div>
 
-                    {/* Footer row — created on */}
-                    <div className="d-flex align-items-center px-4 py-3 border-top" style={{ background: "#fafafa", borderRadius: "0 0 8px 8px" }}>
-                      <span className="text-muted fs-14 flex-shrink-0" style={{ width: "22.5%" }}>Created On</span>
-                      <span className="fs-14 fw-medium">{formatDate(party.created_at)}</span>
+                    {/* Footer row — created on / created by */}
+                    <div className="d-flex align-items-center flex-wrap px-4 py-3 border-top gap-4" style={{ background: "#fafafa", borderRadius: "0 0 8px 8px" }}>
+                      <div className="d-flex align-items-center gap-2">
+                        <span className="text-muted fs-14">Created On</span>
+                        <span className="fs-14 fw-medium">{formatDate(party.created_at)}</span>
+                      </div>
+                      {(party.created_by?.name ?? party.parent?.display_name) && (
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="text-muted fs-14">Created By</span>
+                          <span className="fs-14 fw-medium">{party.created_by?.name ?? party.parent?.display_name}</span>
+                        </div>
+                      )}
                     </div>
 
                   </div>
@@ -1107,63 +1192,6 @@ const PartyOverview = () => {
                   </div>
                 </div>
 
-                {/* Downstream Parties */}
-                <div className="card border mb-3">
-                  <div className="card-body p-0">
-                    <div className="px-4 py-3 border-bottom d-flex align-items-center justify-content-between">
-                      <h6 className="fw-semibold fs-15 mb-0">
-                        Downstream Parties
-                        {!childrenLoading && childParties.length > 0 && (
-                          <span className="badge badge-soft-primary fs-11 ms-2">{childParties.length}</span>
-                        )}
-                      </h6>
-                    </div>
-                    <div className="px-3 py-3">
-                      {childrenLoading ? (
-                        <div className="text-center py-4">
-                          <span className="spinner-border spinner-border-sm text-muted" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                        </div>
-                      ) : childParties.length === 0 ? (
-                        <div className="text-center py-4 text-muted fs-14">No downstream parties.</div>
-                      ) : (
-                        <div className="table-responsive">
-                          <table className="table table-sm mb-0" style={{ fontSize: 13 }}>
-                            <thead>
-                              <tr style={{ background: "#f8f9fa" }}>
-                                <th className="fw-medium text-muted border-0 py-2 ps-3">Name</th>
-                                <th className="fw-medium text-muted border-0 py-2">Category</th>
-                                <th className="fw-medium text-muted border-0 py-2">Mobile</th>
-                                <th className="fw-medium text-muted border-0 py-2">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {childParties.map((child) => (
-                                <tr key={child.id}>
-                                  <td className="py-2 ps-3">
-                                    <span className="fw-medium text-primary" style={{ cursor: "pointer" }}
-                                      onClick={() => navigate(route.distributorOverview.replace(":id", String(child.id)))}>
-                                      {child.display_name}
-                                    </span>
-                                    <div className="text-muted" style={{ fontSize: 11 }}>{child.party_id}</div>
-                                  </td>
-                                  <td className="py-2 text-muted">{child.distribution_category?.name ?? "—"}</td>
-                                  <td className="py-2 text-muted">{child.mobile ?? "—"}</td>
-                                  <td className="py-2">
-                                    {child.is_active
-                                      ? <span className="badge badge-soft-success fs-11">Active</span>
-                                      : <span className="badge badge-soft-secondary fs-11">Inactive</span>
-                                    }
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
                 {/* Recent Activity */}
                 <div className="mb-3 mt-4">
                   <h6 className="fw-semibold fs-15 mb-4">Recent Activity</h6>
@@ -1245,7 +1273,7 @@ const PartyOverview = () => {
                       const changedFields = Object.keys({ ...(log.old_values ?? {}), ...(log.new_values ?? {}) })
                         .filter(f => !SKIP_FIELDS.has(f));
 
-                      const actor = log.user?.name ?? log.user?.email ?? "System";
+                      const actor = log.user?.name ?? log.party_user?.name ?? log.user?.email ?? log.party_user?.email ?? "System";
                       const rawTs = log.created_at;
                       const utcTs = rawTs.replace(" ", "T").replace(/Z$|[+-]\d{2}:\d{2}$/, "");
                       const dateObj = new Date(utcTs);

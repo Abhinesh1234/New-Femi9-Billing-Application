@@ -52,6 +52,7 @@ export interface PartyListItem {
   distribution_sub_category_id: number | null;
   enable_portal:               boolean;
   is_active:                   boolean;
+  approval_status:             "pending" | "approved" | "rejected" | null;
   party_image:                 string | null;
   currency:                    string | null;
   payment_terms:               string | null;
@@ -131,6 +132,7 @@ export interface PartyDetail {
   distribution_sub_category:    { id: number; name: string } | null;
   parent:                       { id: number; display_name: string; party_type: string } | null;
   created_by:                   { id: number; name: string } | null;
+  created_by_party_user:        { id: number; name: string } | null;
   billing_address:              PartyAddressDetail | null;
   shipping_address:             PartyAddressDetail | null;
   locations:                    PartyLocationAssignment[];
@@ -255,6 +257,7 @@ export async function fetchParties(params?: {
   order_dir?: string;
   distribution_category_id?: number;
   creator_type?: "company" | "party";
+  approval_status?: "pending" | "approved" | "rejected";
 }): Promise<ListResult> {
   try {
     const { data } = await axios.get<ListResponse>(BASE, { params });
@@ -392,6 +395,22 @@ type ToggleStatusResult = ToggleStatusResponse | ErrorResponse;
 export async function togglePartyStatus(id: number): Promise<ToggleStatusResult> {
   try {
     const { data } = await axios.post<ToggleStatusResponse>(`${BASE}/${id}/toggle-status`);
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
+type ApprovalResult = ItemResult;
+
+export async function approveParty(id: number): Promise<ApprovalResult> {
+  try {
+    const { data } = await axios.post<ItemResponse>(`${BASE}/${id}/approve`);
+    return data;
+  } catch (e) { return handleError(e); }
+}
+
+export async function rejectParty(id: number, reason?: string): Promise<ApprovalResult> {
+  try {
+    const { data } = await axios.post<ItemResponse>(`${BASE}/${id}/reject`, { reason: reason ?? null });
     return data;
   } catch (e) { return handleError(e); }
 }

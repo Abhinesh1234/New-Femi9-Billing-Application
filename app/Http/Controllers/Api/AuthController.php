@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CustomerApprovalApprover;
+use App\Models\CustomerApprovalHierarchyLevel;
+use App\Models\CustomerApprovalSetting;
+use App\Models\PartyUser;
 use App\Models\User;
 use App\Services\SettingService;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +19,16 @@ use Throwable;
 class AuthController extends Controller
 {
     public function __construct(private readonly SettingService $settings) {}
+
+    private function isPartyApprover(int $userId): bool
+    {
+        $setting = CustomerApprovalSetting::first();
+        if (!$setting || $setting->approval_type === 'no_approval') return false;
+        if ($setting->approval_type === 'simple_approval') {
+            return CustomerApprovalApprover::where('user_id', $userId)->exists();
+        }
+        return CustomerApprovalHierarchyLevel::where('user_id', $userId)->exists();
+    }
     // ── POST /api/auth/login ──────────────────────────────────────────────────
     public function login(Request $request): JsonResponse
     {
@@ -94,17 +108,18 @@ class AuthController extends Controller
                 'token'      => $token,
                 'token_type' => 'Bearer',
                 'user'       => [
-                    'id'          => $user->id,
-                    'name'        => $user->name,
-                    'phone'       => $user->phone,
-                    'email'       => $user->email,
-                    'avatar'      => $user->avatar,
-                    'user_type'   => $user->user_type,
-                    'role_id'     => $user->role_id,
-                    'role_name'   => $user->role?->name,
+                    'id'                => $user->id,
+                    'name'              => $user->name,
+                    'phone'             => $user->phone,
+                    'email'             => $user->email,
+                    'avatar'            => $user->avatar,
+                    'user_type'         => $user->user_type,
+                    'role_id'           => $user->role_id,
+                    'role_name'         => $user->role?->name,
                     // null = full access; individual rows override even super_admin
-                    'permissions' => $user->computeEffectivePermissions(),
-                    'settings'    => $this->featureSettings(),
+                    'permissions'       => $user->computeEffectivePermissions(),
+                    'settings'          => $this->featureSettings(),
+                    'is_party_approver' => $this->isPartyApprover($user->id),
                 ],
             ]);
 
@@ -136,19 +151,26 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         try {
-            $user = $request->user();
+            $authUser = $request->user();
+
+            // Party tokens are accepted by the 'party' Sanctum guard — delegate to the party me endpoint
+            if ($authUser instanceof PartyUser) {
+                return app(PartyAuthController::class)->me($request);
+            }
+
             return $this->successResponse([
                 'user' => [
-                    'id'          => $user->id,
-                    'name'        => $user->name,
-                    'phone'       => $user->phone,
-                    'email'       => $user->email,
-                    'avatar'      => $user->avatar,
-                    'user_type'   => $user->user_type,
-                    'role_id'     => $user->role_id,
-                    'role_name'   => $user->role?->name,
-                    'permissions' => $user->computeEffectivePermissions(),
-                    'settings'    => $this->featureSettings(),
+                    'id'          => $authUser->id,
+                    'name'        => $authUser->name,
+                    'phone'       => $authUser->phone,
+                    'email'       => $authUser->email,
+                    'avatar'      => $authUser->avatar,
+                    'user_type'   => $authUser->user_type,
+                    'role_id'           => $authUser->role_id,
+                    'role_name'         => $authUser->role?->name,
+                    'permissions'       => $authUser->computeEffectivePermissions(),
+                    'settings'          => $this->featureSettings(),
+                    'is_party_approver' => $this->isPartyApprover($authUser->id),
                 ],
             ]);
         } catch (Throwable $e) {

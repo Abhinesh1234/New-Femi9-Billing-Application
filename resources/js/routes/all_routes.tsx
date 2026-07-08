@@ -381,4 +381,7 @@ export const all_routes = {
   partyItemDetail:        "/party/items/:id",
   partyCompositeItems:    "/party/composite-items",
   partyPriceList:         "/party/price-list",
+  partyProfile:           "/party/profile",
+  partyParties:           "/party/parties",
+  partyPartyDetail:       "/party/parties/:id",
 };

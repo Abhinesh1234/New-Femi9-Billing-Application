@@ -171,6 +171,11 @@ class CreditNoteController extends Controller
 
             DB::commit();
 
+            // Flush the source invoice detail cache — is_fully_credited may have changed
+            if ($creditNote->source_invoice_id) {
+                Cache::forget("invoice:detail:{$creditNote->source_invoice_id}");
+            }
+
             Log::info('[CreditNoteController::store] Created', array_merge($ctx, [
                 'credit_note_id'     => $creditNote->id,
                 'credit_note_number' => $creditNote->credit_note_number,

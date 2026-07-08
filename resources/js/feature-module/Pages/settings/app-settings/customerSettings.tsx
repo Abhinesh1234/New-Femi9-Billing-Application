@@ -147,6 +147,7 @@ const CustomerSettings = () => {
   const [billingAddressFormat, setBillingAddressFormat]       = useState(DEFAULTS.billing_address_format);
   const [shippingAddressFormat, setShippingAddressFormat]     = useState(DEFAULTS.shipping_address_format);
 
+
   // ── Refs for placeholder insertion ────────────────────────────────────────────
   const billingRef  = useRef<HTMLTextAreaElement>(null);
   const shippingRef = useRef<HTMLTextAreaElement>(null);
@@ -170,6 +171,7 @@ const CustomerSettings = () => {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
 
 
   // ── Load settings ─────────────────────────────────────────────────────────────

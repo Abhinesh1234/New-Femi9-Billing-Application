@@ -29,19 +29,34 @@ export interface PartySettings {
 export interface PartyAuthUser {
   id:            number;
   party_id:      number;
+  party_code:    string | null;
   name:          string;
+  phone:         string | null;
   email:         string | null;
   mobile:        string | null;
+  avatar:        string | null;
+  avatar_url:    string | null;
   user_type:     "party";
   role_id:       number | null;
+  role_name:     string | null;
   party_name:    string | null;
   party_type:    string | null;
   category_id:   number | null;
   category_name: string | null;
-  last_login_at: string | null;
-  categories:    PartyCategoryOption[];
-  permissions:   PartyPermissions;
-  settings:      PartySettings;
+  last_login_at:  string | null;
+  account_number: string | null;
+  ifsc_code:      string | null;
+  upi_number:     string | null;
+  location_type:  "unified" | "separate" | null;
+  locations:      {
+    id: number; name: string; org_name: string | null; type: string | null; is_primary: boolean;
+    logo_type: string | null; logo_path: string | null; logo_url: string | null;
+    address: Record<string, string | null> | null;
+    shipping_address: Record<string, string | null> | null;
+  }[];
+  categories:     PartyCategoryOption[];
+  permissions:    PartyPermissions;
+  settings:       PartySettings;
 }
 
 interface LoginSuccessResponse {
@@ -220,6 +235,16 @@ export async function partyUpdateLocationAddress(
     if (billing  !== undefined) payload.billing  = billing;
     if (shipping !== undefined) payload.shipping = shipping;
     const { data } = await axios.put(`/api/party/auth/location/${locationId}/address`, payload);
+    return data;
+  } catch (e) {
+    return handleError(e);
+  }
+}
+
+// ── PUT /api/party/auth/location/{id}/org-name ────────────────────────────────
+export async function partyUpdateLocationOrgName(locationId: number, org_name: string | null): Promise<MeResponse | ErrorResponse> {
+  try {
+    const { data } = await axios.put(`/api/party/auth/location/${locationId}/org-name`, { org_name });
     return data;
   } catch (e) {
     return handleError(e);

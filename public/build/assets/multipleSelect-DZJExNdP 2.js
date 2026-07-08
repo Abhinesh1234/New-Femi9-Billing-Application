@@ -1,0 +1,1 @@
+import{j as e}from"./main-vJA-DQkP.js";import{S as r}from"./index-NQUzGsYx.js";const c=({value:t,onChange:l,options:s,placeholder:m="Please select",style:o={width:"100%"}})=>e.jsx("div",{className:"common-multiSelect",children:e.jsx(r,{mode:"multiple",allowClear:!0,value:t,onChange:l,placeholder:m,options:s,style:o})});export{c as M};

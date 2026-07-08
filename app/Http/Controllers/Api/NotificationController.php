@@ -96,6 +96,43 @@ class NotificationController extends Controller
         }
     }
 
+    // ── DELETE /api/notifications/{id} ───────────────────────────────────────
+    public function destroy(Request $request, int $notificationId): JsonResponse
+    {
+        try {
+            [$type, $id] = $this->resolveScope($request);
+
+            $deleted = AppNotification::where('id', $notificationId)
+                ->where('notifiable_type', $type)
+                ->where('notifiable_id', $id)
+                ->delete();
+
+            if (!$deleted) {
+                return $this->errorResponse('Notification not found.', 404);
+            }
+
+            return $this->successResponse(['message' => 'Notification deleted.']);
+        } catch (Throwable $e) {
+            return $this->errorResponse('Failed to delete notification.', 500);
+        }
+    }
+
+    // ── DELETE /api/notifications ─────────────────────────────────────────────
+    public function destroyAll(Request $request): JsonResponse
+    {
+        try {
+            [$type, $id] = $this->resolveScope($request);
+
+            AppNotification::where('notifiable_type', $type)
+                ->where('notifiable_id', $id)
+                ->delete();
+
+            return $this->successResponse(['message' => 'All notifications cleared.']);
+        } catch (Throwable $e) {
+            return $this->errorResponse('Failed to clear notifications.', 500);
+        }
+    }
+
     // ── Scope resolution ──────────────────────────────────────────────────────
 
     /** Returns [notifiable_type, notifiable_id] based on who is calling. */

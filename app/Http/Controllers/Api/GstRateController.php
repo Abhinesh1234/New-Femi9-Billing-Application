@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreGstRateRequest;
 use App\Http\Requests\UpdateGstRateRequest;
 use App\Models\GstRate;
+use App\Services\AppCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -18,10 +19,9 @@ class GstRateController extends Controller
         $ctx = $this->buildCtx($request, 'GstRateController::index');
 
         try {
-            $rates = GstRate::select('id', 'label', 'rate')
-                ->when($request->boolean('trashed'), fn ($q) => $q->onlyTrashed())
-                ->orderBy('rate')
-                ->get();
+            $rates = $request->boolean('trashed')
+                ? GstRate::onlyTrashed()->select('id', 'label', 'rate')->orderBy('rate')->get()
+                : AppCache::gstRates();
 
             return $this->successResponse(['data' => $rates]);
 
@@ -37,6 +37,7 @@ class GstRateController extends Controller
 
         try {
             $rate = GstRate::create($request->validated());
+            AppCache::flushGstRates();
             Log::info('[GstRateController] Created', array_merge($ctx, ['gst_rate_id' => $rate->id]));
             return $this->successResponse(['message' => 'GST rate created.', 'data' => $rate], 201);
 
@@ -53,6 +54,7 @@ class GstRateController extends Controller
         try {
             $record = GstRate::findOrFail($gstRate);
             $record->update($request->validated());
+            AppCache::flushGstRates();
             Log::info('[GstRateController] Updated', $ctx);
             return $this->successResponse(['message' => 'GST rate updated.', 'data' => $record]);
 
@@ -70,6 +72,7 @@ class GstRateController extends Controller
 
         try {
             GstRate::findOrFail($gstRate)->delete();
+            AppCache::flushGstRates();
             Log::info('[GstRateController] Deleted', $ctx);
             return $this->successResponse(['message' => 'GST rate deleted.']);
 
