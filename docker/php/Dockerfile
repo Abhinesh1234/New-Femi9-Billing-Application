@@ -40,9 +40,10 @@ COPY --from=frontend /app/public/build ./public/build
 
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
 COPY docker/local/php.ini /usr/local/etc/php/conf.d/zz-custom.ini
+COPY docker/supervisord.conf /etc/supervisord.conf
 
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 EXPOSE 80
 
-CMD php-fpm -D && nginx -g 'daemon off;'
+CMD ["supervisord", "-c", "/etc/supervisord.conf"]
