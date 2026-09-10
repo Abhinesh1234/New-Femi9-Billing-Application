@@ -25,9 +25,13 @@ return new class extends Migration
                 $table->unsignedBigInteger('parent_node_id')->default(0)->after('depth');
             }
 
-            // Drop the old two-column unique index and replace with the correct three-column one
-            $table->dropUnique(['country_id', 'depth']);
+            // Replace the two-column unique index with the correct three-column one.
+            // On MySQL the (country_id, depth) unique index is the only index backing
+            // the country_id foreign key, so it cannot be dropped first (error 1553).
+            // Add the replacement composite unique — which still leads with country_id
+            // and therefore keeps the FK backed — BEFORE dropping the old one.
             $table->unique(['country_id', 'depth', 'parent_node_id'], 'uq_layer_country_depth_parent');
+            $table->dropUnique(['country_id', 'depth']);
         });
     }
 
@@ -39,8 +43,11 @@ return new class extends Migration
         });
 
         Schema::table('location_layer_schemas', function (Blueprint $table) {
-            $table->dropUnique('uq_layer_country_depth_parent');
+            // Re-add the two-column unique (still leads with country_id, keeps the
+            // country_id FK backed) BEFORE dropping the three-column one, so MySQL
+            // never sees the FK without a covering index (error 1553).
             $table->unique(['country_id', 'depth']);
+            $table->dropUnique('uq_layer_country_depth_parent');
         });
     }
 };
