@@ -136,3 +136,4 @@ vite.config.ts.timestamp-*
 
 # Laravel Installation files
 vendor
+staging-secret.json
