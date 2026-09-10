@@ -41,11 +41,14 @@ resource "aws_ecs_task_definition" "app" {
       ]
       environment = [
         { name = "APP_ENV", value = "staging" },
+        { name = "APP_DEBUG", value = "false" },
+        { name = "APP_URL", value = "http://${aws_lb.main.dns_name}" },
         { name = "DB_CONNECTION", value = "mysql" },
         { name = "CACHE_STORE", value = "redis" },
         { name = "SESSION_DRIVER", value = "redis" },
         { name = "QUEUE_CONNECTION", value = "redis" },
         { name = "FILESYSTEM_DISK", value = "s3" },
+        { name = "MAIL_MAILER", value = "log" },
         { name = "AWS_DEFAULT_REGION", value = var.aws_region }
       ]
     }
@@ -59,6 +62,8 @@ resource "aws_ecs_service" "app" {
   desired_count   = 1
   launch_type     = "FARGATE"
 
+  health_check_grace_period_seconds = 60
+
   network_configuration {
     subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
@@ -69,6 +74,11 @@ resource "aws_ecs_service" "app" {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = "app"
     container_port   = 80
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
 
   depends_on = [aws_lb_listener.http]
