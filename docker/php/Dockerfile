@@ -29,8 +29,12 @@ FROM php:8.4-fpm-alpine AS runtime
 RUN apk add --no-cache \
     nginx supervisor \
     libpng-dev libjpeg-turbo-dev freetype-dev libzip-dev icu-dev oniguruma-dev \
+    $PHPIZE_DEPS \
   && docker-php-ext-configure gd --with-freetype --with-jpeg \
-  && docker-php-ext-install pdo_mysql gd zip intl mbstring bcmath opcache
+  && docker-php-ext-install pdo_mysql gd zip intl mbstring bcmath opcache \
+  && pecl install redis \
+  && docker-php-ext-enable redis \
+  && apk del $PHPIZE_DEPS
 
 WORKDIR /var/www/html
 
