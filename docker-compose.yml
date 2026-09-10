@@ -12,6 +12,9 @@ services:
       - redis
     volumes:
       - ./storage:/var/www/html/storage
+      # Laravel's artisan needs a physical .env file; env_file alone only sets
+      # process env vars. Local dev only — staging/prod get env from Secrets Manager.
+      - ./.env:/var/www/html/.env
 
   mysql:
     image: mysql:8.0
