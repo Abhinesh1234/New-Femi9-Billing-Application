@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    ports:
+      - "8000:80"
+    env_file:
+      - .env
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./storage:/var/www/html/storage
+      # Laravel's artisan needs a physical .env file; env_file alone only sets
+      # process env vars. Local dev only — staging/prod get env from Secrets Manager.
+      - ./.env:/var/www/html/.env
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: femi9_local
+      MYSQL_USER: femi9_app
+      MYSQL_PASSWORD: femi9_local_pw
+      MYSQL_ROOT_PASSWORD: femi9_local_root_pw
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"   # web UI to view sent mail
+      - "1025:1025"   # SMTP port the app sends to
+
+volumes:
+  mysql_data:
