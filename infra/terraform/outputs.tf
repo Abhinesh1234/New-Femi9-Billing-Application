@@ -8,3 +8,8 @@ output "aurora_master_password" {
   value       = random_password.db.result
   sensitive   = true
 }
+
+output "redis_endpoint" {
+  description = "ElastiCache Redis primary endpoint"
+  value       = aws_elasticache_cluster.main.cache_nodes[0].address
+}
